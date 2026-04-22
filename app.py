@@ -1153,25 +1153,71 @@ def send_quote(quote_id):
         return redirect(url_for('quote_view', quote_id=quote_id))
 
     html = build_quote_email(quote, rfq, items, settings)
-    try:
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"Quotation {quote['quote_number']} — {settings['company_name']}"
-        msg['From']    = settings['smtp_user']
-        msg['To']      = to_email
-        msg.attach(MIMEText(html, 'html'))
 
-        with smtplib.SMTP(settings['smtp_host'], int(settings['smtp_port'])) as srv:
-            srv.starttls()
-            srv.login(settings['smtp_user'], settings['smtp_pass'])
-            srv.send_message(msg)
+    smtp_host = settings.get('smtp_host', 'smtp.gmail.com').strip()
+    smtp_port = int(settings.get('smtp_port', 587))
+    smtp_user = settings.get('smtp_user', '').strip()
+    smtp_pass = settings.get('smtp_pass', '').strip()
 
+    if not smtp_user or not smtp_pass:
+        flash('SMTP credentials are not configured. Go to Settings and enter your SMTP username and password.', 'error')
+        return redirect(url_for('quote_view', quote_id=quote_id))
+
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = f"Quotation {quote['quote_number']} — {settings['company_name']}"
+    msg['From']    = smtp_user
+    msg['To']      = to_email
+    msg.attach(MIMEText(html, 'html'))
+
+    sent = False
+    last_err = None
+
+    # Try STARTTLS first (port 587), then SSL (port 465), then plain (port 25)
+    attempts = [
+        ('starttls', smtp_host, smtp_port),
+        ('ssl',      smtp_host, 465),
+        ('starttls', smtp_host, 587),
+    ]
+    # Deduplicate while preserving order
+    seen_a = set()
+    unique_attempts = []
+    for a in attempts:
+        key = (a[0], a[2])
+        if key not in seen_a:
+            seen_a.add(key)
+            unique_attempts.append(a)
+
+    for mode, host, port in unique_attempts:
+        try:
+            if mode == 'ssl':
+                with smtplib.SMTP_SSL(host, port, timeout=20) as srv:
+                    srv.login(smtp_user, smtp_pass)
+                    srv.send_message(msg)
+            else:
+                with smtplib.SMTP(host, port, timeout=20) as srv:
+                    srv.ehlo()
+                    srv.starttls()
+                    srv.ehlo()
+                    srv.login(smtp_user, smtp_pass)
+                    srv.send_message(msg)
+            sent = True
+            break
+        except Exception as e:
+            last_err = e
+            continue
+
+    if sent:
         conn = get_db()
         conn.execute("UPDATE quotes SET status='sent', sent_at=CURRENT_TIMESTAMP WHERE id=?", (quote_id,))
         conn.commit()
         conn.close()
         flash(f'Quote sent to {to_email}!', 'success')
-    except Exception as e:
-        flash(f'Email failed: {e}', 'error')
+    else:
+        flash(
+            f'Email failed — could not reach SMTP server. '
+            f'Check Settings → SMTP host/port/credentials. '
+            f'Last error: {last_err}',
+            'error')
 
     return redirect(url_for('quote_view', quote_id=quote_id))
 

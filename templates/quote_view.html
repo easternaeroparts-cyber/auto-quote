@@ -19,10 +19,42 @@
 {% block head %}
 <style>
 @media print {
-  .sidebar,.topbar,.flash-wrap,.no-print{display:none !important;}
-  .main-wrap{margin-left:0 !important;}
-  .content{padding:0 !important;}
-  .card{box-shadow:none !important;border:1px solid #ddd !important;}
+  /* Hide chrome */
+  .sidebar,.topbar,.flash-wrap,.no-print { display:none !important; }
+  .main-wrap { margin-left:0 !important; }
+  .content { padding:0 !important; }
+
+  /* Fit to one page */
+  @page { size: US-Letter portrait; margin: 10mm 12mm; }
+
+  html, body { height:auto !important; overflow:visible !important; }
+
+  /* Compact cards */
+  .card { box-shadow:none !important; border:1px solid #ccc !important; margin-bottom:6px !important; }
+  .card-body { padding:8px 12px !important; }
+  .card-header { padding:6px 12px !important; }
+
+  /* Shrink fonts & spacing */
+  body, p, td, th, small, .small { font-size: 10px !important; }
+  h4, h5 { font-size: 12px !important; margin:0 !important; }
+  .fs-3 { font-size: 14px !important; }
+  .fs-5 { font-size: 11px !important; }
+  code  { font-size: 10px !important; }
+
+  /* Compact tables */
+  table { width:100% !important; }
+  td, th { padding: 3px 6px !important; }
+
+  /* Compact item blocks */
+  .border.rounded.mb-3 { margin-bottom:4px !important; }
+  .px-3.pb-3.pt-1 { padding: 4px 8px !important; }
+
+  /* Keep everything together */
+  .card, .border.rounded { page-break-inside: avoid; }
+  p.text-muted.small { margin:2px 0 !important; }
+
+  /* Scale down if still too tall */
+  .content-wrap, .container-fluid { zoom: 0.85; }
 }
 </style>
 {% endblock %}
