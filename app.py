@@ -1221,6 +1221,62 @@ def update_quote_item(quote_id):
     return jsonify({'success': True, 'extended': ext, 'total': total, 'quote_number': new_qnum})
 
 
+@app.route('/quotes/<int:quote_id>/add-item', methods=['POST'])
+@login_required
+def add_quote_item(quote_id):
+    """Manually add a line item to an existing quote."""
+    data       = request.get_json()
+    pn         = (data.get('part_number') or '').strip().upper()
+    if not pn:
+        return jsonify({'success': False, 'error': 'Part number required'})
+
+    description = (data.get('description') or '').strip()
+    qty         = max(1, int(data.get('quantity', 1)))
+    unit_price  = round(float(data.get('unit_price', 0)), 2)
+    lead_time   = (data.get('lead_time') or 'Stock').strip()
+    condition   = (data.get('condition') or 'SV').strip()
+    price_type  = (data.get('price_type') or 'Outright').strip()
+    extended    = round(unit_price * qty, 2)
+
+    conn = get_db()
+
+    # Check inventory for a match
+    inv = conn.execute(
+        'SELECT * FROM inventory WHERE UPPER(part_number)=? LIMIT 1', (pn,)
+    ).fetchone()
+    matched   = inv is not None
+    qty_avail = inv['quantity'] if matched else 0
+    if matched and not description:
+        description = inv['description'] or ''
+
+    conn.execute('''INSERT INTO quote_items
+        (quote_id, part_number, description, quantity_requested,
+         unit_price, extended_price, lead_time, condition, price_type,
+         quantity_available, matched)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+        (quote_id, pn, description, qty,
+         unit_price, extended, lead_time, condition, price_type,
+         qty_avail, 1 if matched else 0))
+
+    item_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    total   = conn.execute(
+        'SELECT COALESCE(SUM(extended_price),0) FROM quote_items WHERE quote_id=?',
+        (quote_id,)).fetchone()[0]
+    conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (total, quote_id))
+    refresh_quote_number(quote_id, conn)
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'success': True,
+        'item_id': item_id,
+        'extended': extended,
+        'total': total,
+        'matched': matched,
+        'qty_avail': qty_avail,
+    })
+
+
 @app.route('/quotes/<int:quote_id>/send', methods=['POST'])
 @login_required
 def send_quote(quote_id):

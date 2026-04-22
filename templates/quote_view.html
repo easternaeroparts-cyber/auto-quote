@@ -156,9 +156,12 @@
 <div class="card mb-3">
   <div class="card-header bg-white d-flex justify-content-between py-3">
     <strong>Line Items</strong>
-    <div class="no-print">
+    <div class="d-flex align-items-center gap-2 no-print">
       <span class="badge text-bg-success me-1">{{ items|selectattr('matched')|list|length }} matched</span>
       <span class="badge text-bg-danger">{{ items|rejectattr('matched')|list|length }} not found</span>
+      <button class="btn btn-sm btn-navy" onclick="openAddItem()">
+        <i class="bi bi-plus-lg"></i> Add Part
+      </button>
     </div>
   </div>
   <div class="card-body p-3">
@@ -236,6 +239,21 @@
 </div>
 {% endif %}
 
+<!-- Raw Email Reference Panel -->
+{% if rfq.raw_email %}
+<div class="card mb-3 no-print">
+  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center" style="cursor:pointer" onclick="toggleRawEmail()" id="rawEmailHeader">
+    <span class="text-muted small fw-semibold"><i class="bi bi-envelope-open me-1"></i> Original Email — Reference</span>
+    <i class="bi bi-chevron-down" id="rawEmailChevron" style="color:#888;font-size:.85rem"></i>
+  </div>
+  <div id="rawEmailBody" class="d-none">
+    <div class="card-body p-0">
+      <pre style="margin:0;padding:14px 18px;font-size:.78rem;color:#444;background:#f8f9fa;white-space:pre-wrap;word-break:break-word;max-height:380px;overflow-y:auto;border-radius:0 0 10px 10px">{{ rfq.raw_email }}</pre>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 <p class="text-muted small">All prices in {{ quote.currency or 'USD' }}. Quote valid {{ quote.valid_days }} days from {{ quote.created_at[:10] }}.
 All parts certified unless otherwise stated. Terms: COD unless prior credit arrangement established.</p>
 
@@ -266,6 +284,81 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
           </button>
         </div>
       </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Part Modal -->
+<div class="modal fade" id="addItemModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-plus-circle me-1"></i> Add Part Manually</h6>
+        <button class="btn-close" onclick="_closeAddModal()"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          <i class="bi bi-info-circle me-1"></i>
+          Use the original email below for reference. Added parts are saved to this quote and remembered for future quotes to the same customer.
+        </p>
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold">Part Number <span class="text-danger">*</span></label>
+            <input type="text" id="addPN" class="form-control" placeholder="e.g. 5000-0001-01" autocomplete="off">
+          </div>
+          <div class="col-md-5">
+            <label class="form-label fw-semibold">Description</label>
+            <input type="text" id="addDesc" class="form-control" placeholder="e.g. Filter Assembly">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold">Qty</label>
+            <input type="number" id="addQty" class="form-control" value="1" min="1">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Condition</label>
+            <select id="addCondition" class="form-select">
+              <option value="SV">SV — Serviceable</option>
+              <option value="NE">NE — New</option>
+              <option value="FN">FN — Factory New</option>
+              <option value="NS">NS — New Surplus</option>
+              <option value="OH">OH — Overhauled</option>
+              <option value="RP">RP — Repaired</option>
+              <option value="AR">AR — As Removed</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Unit Price ({{ quote.currency or 'USD' }})</label>
+            <input type="number" id="addPrice" class="form-control" value="0" step="0.01" min="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Lead Time</label>
+            <input type="text" id="addLeadTime" class="form-control" placeholder="Stock">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Price Type</label>
+            <select id="addPriceType" class="form-select">
+              <option>Outright</option>
+              <option>Exchange</option>
+              <option>Loan</option>
+              <option>Repair</option>
+              <option>Overhaul</option>
+            </select>
+          </div>
+        </div>
+        <!-- Mini raw email for reference inside modal -->
+        {% if rfq.raw_email %}
+        <div class="mt-3">
+          <div class="text-muted small fw-semibold mb-1"><i class="bi bi-envelope-open me-1"></i> Email Reference</div>
+          <pre style="font-size:.72rem;color:#555;background:#f8f9fa;padding:10px 14px;border-radius:6px;max-height:160px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;border:1px solid #e3e8ef">{{ rfq.raw_email }}</pre>
+        </div>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" onclick="_closeAddModal()">Cancel</button>
+        <button class="btn btn-navy btn-sm fw-semibold" onclick="saveAddItem()">
+          <i class="bi bi-check-lg me-1"></i> Add to Quote
+        </button>
+      </div>
     </div>
   </div>
 </div>
@@ -449,6 +542,139 @@ async function saveRef() {
   } else {
     alert('Save failed');
   }
+}
+
+// ── Raw email toggle ─────────────────────────────────────────────────────────
+function toggleRawEmail() {
+  const body    = document.getElementById('rawEmailBody');
+  const chevron = document.getElementById('rawEmailChevron');
+  const hidden  = body.classList.toggle('d-none');
+  chevron.className = hidden ? 'bi bi-chevron-down' : 'bi bi-chevron-up';
+  chevron.style.color = '#888';
+}
+
+// ── Add Part modal ────────────────────────────────────────────────────────────
+function openAddItem() {
+  document.getElementById('addPN').value        = '';
+  document.getElementById('addDesc').value      = '';
+  document.getElementById('addQty').value       = '1';
+  document.getElementById('addPrice').value     = '0';
+  document.getElementById('addLeadTime').value  = '';
+  document.getElementById('addCondition').value = 'SV';
+  document.getElementById('addPriceType').value = 'Outright';
+  _openAddModal();
+  setTimeout(() => document.getElementById('addPN').focus(), 200);
+}
+
+function _openAddModal() {
+  const el = document.getElementById('addItemModal');
+  el.style.display = 'block';
+  el.classList.add('show');
+  el.removeAttribute('aria-hidden');
+  const bd = document.createElement('div');
+  bd.className = 'modal-backdrop fade show';
+  bd.id = 'addModalBackdrop';
+  document.body.appendChild(bd);
+  document.body.classList.add('modal-open');
+}
+
+function _closeAddModal() {
+  const el = document.getElementById('addItemModal');
+  el.style.display = 'none';
+  el.classList.remove('show');
+  el.setAttribute('aria-hidden', 'true');
+  const bd = document.getElementById('addModalBackdrop');
+  if (bd) bd.remove();
+  document.querySelectorAll('.modal-backdrop').forEach(e => e.remove());
+  document.body.classList.remove('modal-open');
+  document.body.style.removeProperty('overflow');
+  document.body.style.removeProperty('padding-right');
+}
+
+async function saveAddItem() {
+  const pn = document.getElementById('addPN').value.trim();
+  if (!pn) { document.getElementById('addPN').focus(); return; }
+
+  const payload = {
+    part_number:       pn,
+    description:       document.getElementById('addDesc').value.trim(),
+    quantity:          parseInt(document.getElementById('addQty').value) || 1,
+    unit_price:        parseFloat(document.getElementById('addPrice').value) || 0,
+    lead_time:         document.getElementById('addLeadTime').value.trim() || 'Stock',
+    condition:         document.getElementById('addCondition').value,
+    price_type:        document.getElementById('addPriceType').value,
+  };
+
+  const res  = await fetch('/quotes/{{ quote.id }}/add-item', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const data = await res.json();
+  if (!data.success) { alert('Failed to add item: ' + (data.error || 'unknown')); return; }
+
+  // Inject new row into the line items table without full page reload
+  const extended = payload.unit_price * payload.quantity;
+  const markup   = {{ quote.markup_percent }};
+  const cur      = '{{ quote.currency or "USD" }}';
+
+  const block = document.createElement('div');
+  block.className = 'border rounded mb-3 overflow-hidden';
+  block.id = `item-block-${data.item_id}`;
+  block.innerHTML = `
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>Part</th><th>Description</th><th>Qty</th><th>CC</th><th>Lead Time</th>
+          <th class="text-end">Unit Price (${cur})</th>
+          <th class="text-end">Line Total (${cur})</th>
+          <th class="no-print"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="fw-bold"><code>${payload.part_number}</code></td>
+          <td class="text-muted small">${payload.description || '—'}</td>
+          <td id="qty-${data.item_id}">${payload.quantity} EA</td>
+          <td><span id="cond-${data.item_id}" class="badge text-bg-secondary">${payload.condition}</span></td>
+          <td id="lead-${data.item_id}">${payload.lead_time}</td>
+          <td class="text-end" id="price-${data.item_id}">$${payload.unit_price.toFixed(2)}</td>
+          <td class="text-end fw-bold" id="ext-${data.item_id}">$${data.extended.toFixed(2)}</td>
+          <td class="text-end no-print">
+            <button class="btn btn-sm btn-outline-secondary py-0"
+              onclick="editItem(${data.item_id}, ${payload.unit_price}, ${payload.quantity}, '', '${payload.lead_time}', '${payload.price_type}', '3 Months', '', '', '', '${payload.condition}', '${payload.part_number.replace(/'/g,"\\'")}')">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </td>
+        </tr>
+        <tr><td colspan="8" class="text-end text-muted small">Price Type: <span id="ptype-${data.item_id}">${payload.price_type}</span></td></tr>
+      </tbody>
+    </table>
+    <div class="px-3 pb-3 pt-1" style="background:#fafafa;font-size:.85rem">
+      <div class="row">
+        <div class="col-md-6">
+          <span class="text-muted">Condition:</span> ${payload.condition}<br>
+          <span class="text-muted">Warranty:</span> <span id="warranty-${data.item_id}">—</span><br>
+          <span class="text-muted">Trace To:</span> <span id="trace-${data.item_id}">${payload.description || '—'}</span>
+        </div>
+        <div class="col-md-6">
+          <span class="text-muted">Tag Type:</span> <span id="tagtype-${data.item_id}">—</span><br>
+          <span class="text-muted">Tagged by:</span> <span id="taggedby-${data.item_id}">—</span><br>
+          <span class="badge ${data.matched ? 'text-bg-success' : 'text-bg-danger'}">${data.matched ? 'In Stock (' + data.qty_avail + ' avail)' : 'Not in Inventory'}</span>
+        </div>
+      </div>
+    </div>`;
+
+  // Insert before the total row
+  const totalEl = document.querySelector('#grandTotal')?.closest('.text-end.mt-2');
+  if (totalEl) totalEl.parentNode.insertBefore(block, totalEl);
+
+  // Update totals
+  const fmtTotal = data.total.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+  document.getElementById('grandTotal').textContent  = fmtTotal;
+  document.getElementById('headerTotal').textContent = fmtTotal;
+
+  _closeAddModal();
 }
 
 // ── Line item edit ────────────────────────────────────────────────────────────
