@@ -1533,8 +1533,8 @@ def build_quote_email(quote, rfq, items, settings):
 <meta name="color-scheme" content="light only">
 <meta name="supported-color-schemes" content="light only">
 <style>
-  :root { color-scheme: light only; }
-  body { background-color: #ffffff !important; color: #111827 !important; }
+  :root {{ color-scheme: light only; }}
+  body {{ background-color: #ffffff !important; color: #111827 !important; }}
 </style>
 </head>
 <body bgcolor="#ffffff" style="background-color:#ffffff !important;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111827;max-width:760px;margin:32px auto;padding:0 16px">
