@@ -1366,51 +1366,86 @@ def _fetch_logo_b64(url):
 def _parse_email_signature(body, sender_name=''):
     """
     Find the email signature block (after Best Regards / Thanks etc.)
-    and extract company, phone, email, website from labelled lines.
-    Falls back to scanning the whole body if no sign-off is found.
+    and extract name, company, phone, email, website from labelled lines.
+    Handles markdown bold (*text*) formatting common in forwarded emails.
     """
     result = {}
 
+    def _strip_md(s):
+        """Strip markdown bold/italic asterisks and clean whitespace."""
+        s = re.sub(r'\*+', '', s)          # remove all asterisks
+        s = re.sub(r'\s{2,}', ' ', s)      # collapse multiple spaces
+        return s.strip()
+
     # ── 1. Locate signature block ─────────────────────────────────────────────
+    # Allow optional surrounding asterisks e.g. *Best Regards,*
     SIGNOFF = re.compile(
-        r'^\s*(?:best\s+regards?|kind\s+regards?|regards?|sincerely|thanks?(?:\s+and\s+regards?)?'
-        r'|cheers|warm\s+regards?|thank\s+you|yours\s+(?:truly|sincerely|faithfully))[,\.]?\s*$',
+        r'^\s*\*{0,2}\s*(?:best\s+regards?|kind\s+regards?|regards?|sincerely'
+        r'|thanks?(?:\s+and\s+regards?)?|cheers|warm\s+regards?|thank\s+you'
+        r'|yours\s+(?:truly|sincerely|faithfully))[,\.]?\s*\*{0,2}\s*$',
         re.I | re.MULTILINE
     )
     m = SIGNOFF.search(body)
     sig_block = body[m.end():] if m else body
 
-    # Take only first 30 lines of the signature area
-    lines = [l.strip() for l in sig_block.splitlines() if l.strip()][:30]
+    # Take first 30 non-empty lines, stripping markdown
+    raw_lines = [l.strip() for l in sig_block.splitlines() if l.strip()][:30]
+    lines = [_strip_md(l) for l in raw_lines]
 
     # ── 2. Patterns for labelled fields ──────────────────────────────────────
-    PH_LABEL  = re.compile(r'^(?:ph|phone|tel|mobile|cell|direct|office|fax)[:\s\.]+(.+)$', re.I)
-    EM_LABEL  = re.compile(r'^(?:e[\-]?mail|email)[:\s]+(.+)$', re.I)
-    WEB_LABEL = re.compile(r'^(?:web(?:site)?|url|www)[:\s]+(.+)$', re.I)
-    PH_BARE   = re.compile(r'^(\+?[\d][\d\s\-\.\(\)\/]{5,18}\d)$')
+    # Single-letter labels (P:, M:, T:, E:, W:) and full-word labels
+    PH_LABEL  = re.compile(
+        r'^(?:p|m|ph|phone|tel|mobile|cell|direct|office|fax)[:\s\.]+(.+)$', re.I)
+    EM_LABEL  = re.compile(
+        r'^(?:e|e[\-]?mail|email)[:\s]+(.+)$', re.I)
+    WEB_LABEL = re.compile(
+        r'^(?:w|web(?:site)?|url|www)[:\s]+(.+)$', re.I)
+    PH_BARE   = re.compile(r'^(\+{1,2}?[\d][\d\s\-\.\(\)\/]{5,25}\d)$')
     WEB_BARE  = re.compile(r'^((?:https?://|www\.)\S+)$', re.I)
     CO_SUFFIX = re.compile(
-        r'\b(?:Pty\.?\s*Ltd\.?|Ltd\.?|LLC\.?|Inc\.?|Corp\.?|GmbH|SAS|BV|PLC|Limited|Incorporated)\b', re.I
+        r'\b(?:Pvt\.?\s*Ltd\.?|Pty\.?\s*Ltd\.?|Ltd\.?|LLC\.?|Inc\.?|Corp\.?'
+        r'|GmbH|SAS|BV|PLC|Limited|Incorporated|Airlines?|Airways?|Aviation'
+        r'|Aerospace|Parts\s+Inc|Spares)\b', re.I
+    )
+    # Role/title keywords — skip these lines for name/company detection
+    ROLE_KW = re.compile(
+        r'\b(?:manager|director|officer|executive|engineer|purchasing|procurement'
+        r'|sales|unit|dept|department|division|representative|coordinator)\b', re.I
     )
 
-    for line in lines:
-        # Phone
+    for i, line in enumerate(lines):
+        if not line:
+            continue
+
+        # ── Name: first line after signoff that looks like a person's name
+        if 'sig_name' not in result and i == 0:
+            # Person name: 2-4 words, each capitalised, no digits, no special chars
+            if re.match(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}$', line):
+                result['sig_name'] = line
+
+        # ── Phone (skip if line already matched as email/web)
         if 'phone' not in result:
             lm = PH_LABEL.match(line)
             if lm:
-                result['phone'] = lm.group(1).strip()
+                val = lm.group(1).strip()
+                # Take first phone number if multiple separated by 'or'
+                val = re.split(r'\s+or\s+', val, maxsplit=1)[0].strip()
+                result['phone'] = val
             elif PH_BARE.match(line):
                 result['phone'] = line
 
-        # Email
+        # ── Email
         if 'email' not in result:
             em = EM_LABEL.match(line)
             if em:
-                result['email'] = em.group(1).strip()
+                val = em.group(1).strip()
+                # Handle "address <address>" format
+                angle = re.search(r'<([\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,})>', val)
+                result['email'] = angle.group(1) if angle else val.split()[0]
             elif re.match(r'^[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}$', line):
                 result['email'] = line
 
-        # Website
+        # ── Website
         if 'website' not in result:
             wm = WEB_LABEL.match(line)
             if wm:
@@ -1420,9 +1455,9 @@ def _parse_email_signature(body, sender_name=''):
                 if not any(s in line.lower() for s in skip):
                     result['website'] = line
 
-        # Company: line that contains a business suffix AND isn't the sender's name
+        # ── Company: line with a business suffix, not a role/title line
         if 'company' not in result and CO_SUFFIX.search(line):
-            if line.lower() != (sender_name or '').lower():
+            if line.lower() != (sender_name or '').lower() and not ROLE_KW.search(line):
                 result['company'] = line
 
     return result
@@ -1808,6 +1843,10 @@ def _fetch_imap(settings):
             cust_company = sig_info.get('company', '')
             cust_phone   = sig_info.get('phone', '')
             cust_website = sig_info.get('website', '')
+            # If signature has a proper person name, prefer it over sender display name
+            sig_name = sig_info.get('sig_name', '')
+            if sig_name and sig_name.lower() != cust_name.lower():
+                cust_name = sig_name
             # If signature has a better email, prefer sender email but keep sig as backup
             sig_email = sig_info.get('email', '')
             if sig_email and not cust_email:
