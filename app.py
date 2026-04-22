@@ -1867,22 +1867,38 @@ def fetch_email_rfqs():
 
 def _fetch_from_folder(mail, folder):
     """
-    Fetch UNSEEN emails from the folder.
-    Since rfq@eastern-aero.com is a dedicated RFQ inbox, we fetch all unseen
-    messages. Filtering (PartsBase / forwarded / keyword) happens after download.
+    Fetch emails from the folder: UNSEEN + anything received in the last 14 days.
+    Since rfq@eastern-aero.com is a dedicated RFQ inbox we cast a wide net and
+    rely on the imported_emails dedup table to avoid re-processing.
     """
+    from datetime import timedelta
     try:
         status, _ = mail.select(folder)
         if status != 'OK':
             return []
     except Exception:
         return []
+
+    msg_ids = set()
+
+    # 1. All UNSEEN messages
     try:
         _, data = mail.search(None, 'UNSEEN')
-        ids = data[0].split() if data and data[0] else []
+        for mid in (data[0].split() if data and data[0] else []):
+            msg_ids.add(mid)
     except Exception:
-        return []
-    return [(folder, mid) for mid in ids]
+        pass
+
+    # 2. Everything received in the last 14 days (catches already-read emails)
+    since_date = (datetime.now() - timedelta(days=14)).strftime('%d-%b-%Y')
+    try:
+        _, data = mail.search(None, 'SINCE', since_date)
+        for mid in (data[0].split() if data and data[0] else []):
+            msg_ids.add(mid)
+    except Exception:
+        pass
+
+    return [(folder, mid) for mid in msg_ids]
 
 
 def _fetch_imap(settings):
