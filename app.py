@@ -1375,6 +1375,105 @@ def _fetch_logo_b64(url):
     return _LOGO_DATA_URI
 
 
+def _strip_html(html):
+    """Strip HTML tags and decode entities, returning clean plain text."""
+    # Remove scripts and styles entirely
+    html = re.sub(r'<(script|style)[^>]*>.*?</\1>', ' ', html, flags=re.I | re.S)
+    # Replace block-level tags with newlines
+    html = re.sub(r'<(br|tr|p|div|li)[^>]*/?>',  '\n', html, flags=re.I)
+    html = re.sub(r'</(p|div|tr|table|ul|ol)>', '\n', html, flags=re.I)
+    # Remove all remaining tags
+    html = re.sub(r'<[^>]+>', ' ', html)
+    # Decode common HTML entities
+    entities = {'&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'"}
+    for ent, ch in entities.items():
+        html = html.replace(ent, ch)
+    # Collapse whitespace
+    html = re.sub(r'[ \t]+', ' ', html)
+    html = re.sub(r'\n{3,}', '\n\n', html)
+    return html.strip()
+
+
+def _parse_partsbase_html(html, subject):
+    """
+    Parse a PartsBase Quick Quote Request HTML email.
+    Returns dict with keys: company, contact, phone, email, address,
+                            customer_ref, parts (list of dicts)
+    """
+    result = {'parts': []}
+
+    # Extract RFQ number from subject or HTML
+    m = re.search(r'#(\d{6,})', subject + ' ' + html)
+    if m:
+        result['customer_ref'] = 'PartsBase RFQ #' + m.group(1)
+
+    # Helper: get cell text after a label
+    def cell_after(label, src):
+        pat = re.escape(label) + r'[^<]*</(?:td|span)[^>]*>\s*<(?:td|span)[^>]*>\s*<(?:b|span|strong)?[^>]*>\s*([^<]+)'
+        mm = re.search(pat, src, re.I | re.S)
+        return mm.group(1).strip() if mm else ''
+
+    # Strip for easier parsing
+    txt = _strip_html(html)
+    lines = [l.strip() for l in txt.splitlines() if l.strip()]
+
+    # Regex helpers on raw HTML (more reliable for structured tables)
+    def after_label_html(label):
+        pat = label + r'\s*</(?:td|span)[^>]*>.*?<(?:b|strong)[^>]*>([^<]+)</(?:b|strong)'
+        mm = re.search(pat, html, re.I | re.S)
+        return mm.group(1).strip() if mm else ''
+
+    result['company'] = after_label_html('Company:')
+    result['contact'] = after_label_html('Contact:')
+    result['phone']   = after_label_html('Phone:')
+    result['email']   = after_label_html('Email:')
+
+    # Address: City + State + ZIP + Country
+    city    = after_label_html('City:')
+    state   = after_label_html('State:')
+    zipcode = after_label_html('ZIP:')
+    country = after_label_html('Country:')
+    addr_line = after_label_html('Address:')
+    addr_parts = [p for p in [addr_line, city, state + ' ' + zipcode, country] if p.strip()]
+    result['address'] = ', '.join(addr_parts)
+
+    # Parts: find Part No, Description, Condition, Quantity blocks
+    part_blocks = re.findall(
+        r'Part\s*No[:\s]*</(?:td|span)[^>]*>.*?<(?:b|strong)[^>]*>([^<]+)</(?:b|strong)[^>]*>.*?'
+        r'Description[:\s]*</(?:td|span)[^>]*>.*?<(?:b|strong)[^>]*>([^<]+)</(?:b|strong)[^>]*>.*?'
+        r'Condition[:\s]*</(?:td|span)[^>]*>.*?<(?:b|strong)[^>]*>([^<]+)</(?:b|strong)[^>]*>.*?'
+        r'Quantity[:\s]*</(?:td|span)[^>]*>.*?<(?:b|strong)[^>]*>([^<]+)</(?:b|strong)',
+        html, re.I | re.S
+    )
+    for pn, desc, cond, qty in part_blocks:
+        try:
+            qty_int = int(re.search(r'\d+', qty).group())
+        except Exception:
+            qty_int = 1
+        result['parts'].append({
+            'part_number': pn.strip().upper(),
+            'description': desc.strip(),
+            'condition':   cond.strip().upper(),
+            'quantity':    qty_int,
+        })
+
+    # Fallback: scrape plain text for parts if HTML regex missed them
+    if not result['parts']:
+        pn_m = re.search(r'Part\s*No[:\s]+([A-Z0-9\-]+)', txt, re.I)
+        desc_m = re.search(r'Description[:\s]+([^\n]+)', txt, re.I)
+        cond_m = re.search(r'Condition[:\s]+([A-Z]+)', txt, re.I)
+        qty_m  = re.search(r'Quantity[:\s]+(\d+)', txt, re.I)
+        if pn_m:
+            result['parts'].append({
+                'part_number': pn_m.group(1).strip().upper(),
+                'description': desc_m.group(1).strip() if desc_m else '',
+                'condition':   cond_m.group(1).strip().upper() if cond_m else 'SV',
+                'quantity':    int(qty_m.group(1)) if qty_m else 1,
+            })
+
+    return result
+
+
 def _extract_customer_ref(subject, body=''):
     """
     Try to extract the customer's own RFQ/PO/reference number from the email subject or body.
@@ -1823,8 +1922,9 @@ def _fetch_imap(settings):
         cust_email = em_match.group() if em_match else from_raw
         cust_name  = from_raw.split('<')[0].strip().strip('"') if '<' in from_raw else ''
 
-        # Body
+        # Body — prefer plain text; fall back to stripped HTML
         body = ''
+        raw_html_body = ''
         if msg.is_multipart():
             for part in msg.walk():
                 ct = part.get_content_type()
@@ -1832,10 +1932,15 @@ def _fetch_imap(settings):
                     body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
                     break
                 if ct == 'text/html' and not body:
-                    raw_html = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                    body = re.sub(r'<[^>]+>', ' ', raw_html)
+                    raw_html_body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
         else:
-            body = msg.get_payload(decode=True).decode('utf-8', errors='ignore') or ''
+            ct = msg.get_content_type()
+            if ct == 'text/html':
+                raw_html_body = msg.get_payload(decode=True).decode('utf-8', errors='ignore') or ''
+            else:
+                body = msg.get_payload(decode=True).decode('utf-8', errors='ignore') or ''
+        if not body and raw_html_body:
+            body = _strip_html(raw_html_body)
 
         # Handle forwarded emails — extract original sender and content
         fwd_name, fwd_email, parse_body = extract_forwarded_content(body)
@@ -1874,30 +1979,48 @@ def _fetch_imap(settings):
         from_partsbase = 'rfqs@partsbase.com' in from_raw.lower()
 
         # Only import if addressed to rfq@eastern-aero.com, from PartsBase, or forwarded
-        # Plain emails that happen to contain keywords but aren't addressed to rfq@ are ignored
         is_rfq = addressed_to_rfq or from_partsbase or is_forwarded
         parsed = parse_rfq_text(parse_body)
 
         if parsed or is_rfq:
             rfq_no = gen_rfq_number()
-            source = 'email-forwarded' if is_forwarded else 'email'
+            source = 'partsbase' if from_partsbase else ('email-forwarded' if is_forwarded else 'email')
 
-            # ── Parse email signature block for contact info ──────────────────
-            sig_info = _parse_email_signature(parse_body, cust_name)
-            cust_company = sig_info.get('company', '')
-            cust_phone   = sig_info.get('phone', '')
-            cust_website = sig_info.get('website', '')
-            # If signature has a proper person name, prefer it over sender display name
-            sig_name = sig_info.get('sig_name', '')
-            if sig_name and sig_name.lower() != cust_name.lower():
-                cust_name = sig_name
-            # If signature has a better email, prefer sender email but keep sig as backup
-            sig_email = sig_info.get('email', '')
-            if sig_email and not cust_email:
-                cust_email = sig_email
+            cust_company = ''
+            cust_phone   = ''
+            cust_website = ''
+            cust_address = ''
+            customer_ref = ''
 
-            # ── Extract customer's own reference number from subject/body ────
-            customer_ref = _extract_customer_ref(subject, parse_body)
+            # ── PartsBase: parse structured HTML directly ─────────────────────
+            if from_partsbase and raw_html_body:
+                pb = _parse_partsbase_html(raw_html_body, subject)
+                cust_name    = pb.get('contact') or cust_name
+                cust_company = pb.get('company', '')
+                cust_phone   = pb.get('phone', '')
+                cust_address = pb.get('address', '')
+                customer_ref = pb.get('customer_ref', '')
+                # Use email from PartsBase HTML if sender is partsbase.com
+                pb_email = pb.get('email', '')
+                if pb_email:
+                    cust_email = pb_email
+                # Override parsed parts with PartsBase structured parts
+                if pb.get('parts'):
+                    parsed = pb['parts']
+            else:
+                # ── Parse email signature block for contact info ──────────────
+                sig_info = _parse_email_signature(parse_body, cust_name)
+                cust_company = sig_info.get('company', '')
+                cust_phone   = sig_info.get('phone', '')
+                cust_website = sig_info.get('website', '')
+                sig_name = sig_info.get('sig_name', '')
+                if sig_name and sig_name.lower() != cust_name.lower():
+                    cust_name = sig_name
+                sig_email = sig_info.get('email', '')
+                if sig_email and not cust_email:
+                    cust_email = sig_email
+                # ── Extract customer reference from subject/body ──────────────
+                customer_ref = _extract_customer_ref(subject, parse_body)
 
             # ── Check customer_profiles for previously saved/corrected info ──
             if cust_email:
@@ -1906,15 +2029,15 @@ def _fetch_imap(settings):
                     (cust_email.lower(),)
                 ).fetchone()
                 if profile:
-                    # Saved profile takes priority over parsed signature
                     cust_name    = profile['name']    or cust_name
                     cust_company = profile['company'] or cust_company
                     cust_phone   = profile['phone']   or cust_phone
                     cust_website = profile['website'] or cust_website
+                    cust_address = profile['address'] or cust_address
 
             conn.execute(
-                'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,phone,website,source,notes,raw_email,email_message_id,customer_ref) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-                (rfq_no, cust_name, cust_email, cust_company, cust_phone, cust_website, source, subject, body[:6000], message_id, customer_ref))
+                'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,phone,website,address,source,notes,raw_email,email_message_id,customer_ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+                (rfq_no, cust_name, cust_email, cust_company, cust_phone, cust_website, cust_address, source, subject, body[:6000], message_id, customer_ref))
             rfq_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
             for item in parsed:
