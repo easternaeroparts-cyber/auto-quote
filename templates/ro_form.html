@@ -60,14 +60,29 @@
     <div class="card h-100">
       <div class="card-header bg-white py-2"><strong><i class="bi bi-building"></i> Vendor / Repair Station</strong></div>
       <div class="card-body">
+        {% if vendors %}
+        <div class="mb-2">
+          <label class="lbl">Select from Vendors list</label>
+          <select id="vendorPicker" class="form-select form-select-sm" onchange="pickVendor(this)">
+            <option value="">— Pick a vendor —</option>
+            {% for v in vendors %}
+            <option value="{{ v.id }}"
+              data-name="{{ v.name }}"
+              data-addr="{{ [v.billing_name or '', v.billing_address or '', ((v.billing_city or '') + (', ' + v.billing_state if v.billing_state else '') + (' ' + v.billing_zip if v.billing_zip else ''))|trim]|select|join('\n') }}">
+              {{ v.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
         <div class="mb-2">
           <label class="lbl">Vendor Name</label>
-          <input name="vendor_name" class="form-control form-control-sm"
-            value="{{ ro.vendor_name if ro else '' }}">
+          <input name="vendor_name" id="vendorNameInput" class="form-control form-control-sm"
+            value="{{ ro.vendor_name if ro else '' }}" placeholder="Or type manually">
         </div>
         <div>
           <label class="lbl">Vendor Address</label>
-          <textarea name="vendor_address" class="form-control form-control-sm" rows="3"
+          <textarea name="vendor_address" id="vendorAddrInput" class="form-control form-control-sm" rows="3"
             >{{ ro.vendor_address if ro else '' }}</textarea>
         </div>
       </div>
@@ -248,6 +263,13 @@ function recalcTotals() {
   const tax  = sub * taxR / 100;
   document.getElementById('salesTaxField').value = tax.toFixed(2);
   document.getElementById('grandTotalField').value = (sub + ship + tax).toFixed(2);
+}
+
+function pickVendor(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt.value) return;
+  document.getElementById('vendorNameInput').value = opt.dataset.name || '';
+  document.getElementById('vendorAddrInput').value = opt.dataset.addr || '';
 }
 
 document.querySelectorAll('.item-row').forEach(attachRowListeners);

@@ -48,15 +48,30 @@
 <div class="card mb-3">
   <div class="card-header bg-white py-2"><strong><i class="bi bi-person"></i> Customer Details</strong></div>
   <div class="card-body">
+    {% if customers %}
+    <div class="mb-2">
+      <label class="lbl">Select from Customers list</label>
+      <select id="custPicker" class="form-select form-select-sm" onchange="pickCustomer(this)">
+        <option value="">— Pick a customer —</option>
+        {% for c in customers %}
+        <option value="{{ c.id }}"
+          data-name="{{ c.name }}"
+          data-addr="{{ [c.billing_name or '', c.billing_address or '', ((c.billing_city or '') + (', ' + c.billing_state if c.billing_state else '') + (' ' + c.billing_zip if c.billing_zip else ''))|trim]|select|join('\n') }}">
+          {{ c.name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
     <div class="row g-2">
       <div class="col-md-4">
         <label class="lbl">Customer Name</label>
-        <input name="customer_name" class="form-control form-control-sm"
-          value="{{ inv.customer_name if inv else '' }}">
+        <input name="customer_name" id="custNameInput" class="form-control form-control-sm"
+          value="{{ inv.customer_name if inv else '' }}" placeholder="Or type manually">
       </div>
       <div class="col-md-8">
         <label class="lbl">Customer Address</label>
-        <textarea name="customer_address" class="form-control form-control-sm" rows="2"
+        <textarea name="customer_address" id="custAddrInput" class="form-control form-control-sm" rows="2"
           >{{ inv.customer_address if inv else '' }}</textarea>
       </div>
     </div>
@@ -136,6 +151,56 @@
   </div>
 </div>
 
+{% if inv %}
+<!-- Customer PO Attachments -->
+<div class="card mb-3">
+  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+    <strong><i class="bi bi-paperclip"></i> Customer PO / Reference Documents</strong>
+    <span class="text-muted small">PDF, JPG, PNG accepted</span>
+  </div>
+  <div class="card-body">
+
+    <!-- Existing attachments -->
+    <div id="attachList" class="mb-3">
+      {% set atts = [] %}
+      {# We load these via JS after page load #}
+    </div>
+    <div id="attachListContent" class="mb-3"></div>
+
+    <!-- Upload form -->
+    <div class="border rounded p-3" style="background:#f8f9fa;">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+          <label class="lbl">Label</label>
+          <select id="attachLabel" class="form-select form-select-sm">
+            <option>Customer PO</option>
+            <option>Customer RFQ</option>
+            <option>Contract</option>
+            <option>Authorization</option>
+            <option>Other</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="lbl">File</label>
+          <input type="file" id="attachFile" class="form-control form-control-sm"
+            accept=".pdf,.jpg,.jpeg,.png,.gif,.tif,.tiff,.webp">
+        </div>
+        <div class="col-md-3">
+          <button type="button" class="btn btn-sm btn-navy w-100" onclick="uploadPO()">
+            <i class="bi bi-upload"></i> Upload
+          </button>
+        </div>
+      </div>
+      <div id="uploadStatus" class="mt-2"></div>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="alert alert-info py-2 small mb-3">
+  <i class="bi bi-info-circle"></i> Save the invoice first, then you can attach a Customer PO document.
+</div>
+{% endif %}
+
 <div class="d-flex gap-2 justify-content-end">
   <a href="{{ url_for('invoice_list') }}" class="btn btn-outline-secondary">Cancel</a>
   <button type="submit" class="btn btn-navy px-4">
@@ -192,7 +257,76 @@ function recalcTotals() {
   document.getElementById('grandTotalField').value = (sub + adj).toFixed(2);
 }
 
+function pickCustomer(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt.value) return;
+  document.getElementById('custNameInput').value = opt.dataset.name || '';
+  document.getElementById('custAddrInput').value = opt.dataset.addr || '';
+  const invFor = document.querySelector('[name=invoice_for]');
+  if (invFor && !invFor.value) invFor.value = opt.dataset.name || '';
+}
+
 document.querySelectorAll('.item-row').forEach(attachRowListeners);
 if (!document.querySelectorAll('.item-row').length) addRow();
+
+{% if inv %}
+const INV_ID = {{ inv.id }};
+
+// Load existing attachments on page load
+async function loadAttachments() {
+  const res  = await fetch(`/api/invoice-attachments/${INV_ID}`);
+  const data = await res.json();
+  renderAttachments(data.attachments || []);
+}
+
+function renderAttachments(atts) {
+  const wrap = document.getElementById('attachListContent');
+  if (!atts.length) { wrap.innerHTML = '<p class="text-muted small">No documents attached yet.</p>'; return; }
+  wrap.innerHTML = atts.map(a => `
+    <div class="d-flex align-items-center gap-2 mb-2 p-2 border rounded bg-white" id="att-${a.id}">
+      <i class="bi bi-${a.mime && a.mime.includes('pdf') ? 'file-pdf text-danger' : 'file-image text-primary'} fs-5"></i>
+      <div class="flex-grow-1">
+        <span class="badge bg-secondary me-1" style="font-size:.7rem;">${a.label}</span>
+        <a href="/invoices/${INV_ID}/po/${a.id}/view" target="_blank" class="fw-semibold text-decoration-none small">${a.filename}</a>
+        <span class="text-muted small ms-2">${a.uploaded_at ? a.uploaded_at.slice(0,10) : ''}</span>
+      </div>
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAttachment(${a.id})">
+        <i class="bi bi-trash"></i>
+      </button>
+    </div>
+  `).join('');
+}
+
+async function uploadPO() {
+  const file  = document.getElementById('attachFile').files[0];
+  const label = document.getElementById('attachLabel').value;
+  const status = document.getElementById('uploadStatus');
+  if (!file) { status.innerHTML = '<span class="text-danger small">Please select a file.</span>'; return; }
+
+  status.innerHTML = '<span class="text-muted small"><i class="bi bi-hourglass-split"></i> Uploading…</span>';
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('label', label);
+
+  const res  = await fetch(`/invoices/${INV_ID}/upload-po`, { method: 'POST', body: fd });
+  const data = await res.json();
+  if (data.success) {
+    status.innerHTML = `<span class="text-success small"><i class="bi bi-check-circle"></i> "${data.filename}" uploaded.</span>`;
+    document.getElementById('attachFile').value = '';
+    loadAttachments();
+  } else {
+    status.innerHTML = `<span class="text-danger small"><i class="bi bi-x-circle"></i> ${data.error}</span>`;
+  }
+}
+
+async function deleteAttachment(id) {
+  if (!confirm('Remove this attachment?')) return;
+  const res = await fetch(`/invoices/${INV_ID}/po/${id}/delete`, { method: 'POST' });
+  if ((await res.json()).ok) { loadAttachments(); }
+}
+
+// Load on page ready
+loadAttachments();
+{% endif %}
 </script>
 {% endblock %}

@@ -70,14 +70,29 @@
     <div class="card h-100">
       <div class="card-header bg-white py-2"><strong><i class="bi bi-building"></i> Vendor / From</strong></div>
       <div class="card-body">
+        {% if vendors %}
+        <div class="mb-2">
+          <label class="lbl">Select from Vendors list</label>
+          <select id="vendorPicker" class="form-select form-select-sm" onchange="pickVendor(this)">
+            <option value="">— Pick a vendor —</option>
+            {% for v in vendors %}
+            <option value="{{ v.id }}"
+              data-name="{{ v.name }}"
+              data-addr="{{ [v.billing_name or '', v.billing_address or '', ((v.billing_city or '') + (', ' + v.billing_state if v.billing_state else '') + (' ' + v.billing_zip if v.billing_zip else ''))|trim]|select|join('\n') }}">
+              {{ v.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        {% endif %}
         <div class="mb-2">
           <label class="lbl">Vendor Name</label>
-          <input name="vendor_name" class="form-control form-control-sm"
-            value="{{ ps.vendor_name if ps else '' }}">
+          <input name="vendor_name" id="vendorNameInput" class="form-control form-control-sm"
+            value="{{ ps.vendor_name if ps else '' }}" placeholder="Or type manually">
         </div>
         <div>
           <label class="lbl">Vendor Address</label>
-          <textarea name="vendor_address" class="form-control form-control-sm" rows="3"
+          <textarea name="vendor_address" id="vendorAddrInput" class="form-control form-control-sm" rows="3"
             >{{ ps.vendor_address if ps else '' }}</textarea>
         </div>
       </div>
@@ -101,6 +116,28 @@
     </div>
   </div>
 </div>
+
+<!-- Load from Invoice -->
+{% if invoices %}
+<div class="card mb-3 border-primary" style="border-style:dashed!important;">
+  <div class="card-body py-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <i class="bi bi-link-45deg text-primary"></i>
+      <span class="small fw-semibold text-primary">Load items from Invoice:</span>
+      <select id="invoicePicker" class="form-select form-select-sm" style="max-width:300px;">
+        <option value="">— Select invoice —</option>
+        {% for inv in invoices %}
+        <option value="{{ inv.id }}">{{ inv.invoice_number }}{% if inv.invoice_for or inv.customer_name %} — {{ inv.invoice_for or inv.customer_name }}{% endif %}</option>
+        {% endfor %}
+      </select>
+      <button type="button" class="btn btn-sm btn-primary" onclick="loadFromInvoice()">
+        <i class="bi bi-arrow-down-circle"></i> Load Items
+      </button>
+      <span class="text-muted small">(appends to existing rows)</span>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <!-- Line Items -->
 <div class="card mb-3">
@@ -184,21 +221,44 @@
 
 {% block scripts %}
 <script>
-function addRow() {
+function addRow(pn='', desc='', sn='', qty=1, coo='USA', hs='') {
   const tbody = document.getElementById('itemsTbody');
   const tr = document.createElement('tr');
   tr.className = 'item-row';
   tr.innerHTML = `
-    <td><input name="pn[]" class="form-control form-control-sm" placeholder="PN"></td>
-    <td><input name="desc[]" class="form-control form-control-sm" placeholder="Description"></td>
-    <td><input name="sn[]" class="form-control form-control-sm" placeholder="N/A"></td>
-    <td><input name="qty[]" type="number" step="any" class="form-control form-control-sm" value="1"></td>
-    <td><input name="coo[]" class="form-control form-control-sm" placeholder="USA"></td>
-    <td><input name="hs[]" class="form-control form-control-sm" placeholder="HS Code"></td>
+    <td><input name="pn[]" class="form-control form-control-sm" placeholder="PN" value="${pn}"></td>
+    <td><input name="desc[]" class="form-control form-control-sm" placeholder="Description" value="${desc}"></td>
+    <td><input name="sn[]" class="form-control form-control-sm" placeholder="N/A" value="${sn}"></td>
+    <td><input name="qty[]" type="number" step="any" class="form-control form-control-sm" value="${qty}"></td>
+    <td><input name="coo[]" class="form-control form-control-sm" placeholder="USA" value="${coo}"></td>
+    <td><input name="hs[]" class="form-control form-control-sm" placeholder="HS Code" value="${hs}"></td>
     <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()"><i class="bi bi-x"></i></button></td>
   `;
   tbody.appendChild(tr);
 }
+
+function pickVendor(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt.value) return;
+  document.getElementById('vendorNameInput').value = opt.dataset.name || '';
+  document.getElementById('vendorAddrInput').value = opt.dataset.addr || '';
+}
+
+async function loadFromInvoice() {
+  const sel = document.getElementById('invoicePicker');
+  const id  = sel.value;
+  if (!id) { alert('Select an invoice first.'); return; }
+  const res  = await fetch(`/api/invoice-items/${id}`);
+  const data = await res.json();
+  if (!data.ok) { alert('Could not load invoice.'); return; }
+  data.items.forEach(item => {
+    addRow(item.part_number, item.description, '', item.quantity, 'USA', '');
+  });
+  // Fill invoice number field if empty
+  const invNumField = document.querySelector('[name=invoice_number]');
+  if (invNumField && !invNumField.value) invNumField.value = data.invoice_number;
+}
+
 if (!document.querySelectorAll('.item-row').length) addRow();
 </script>
 {% endblock %}

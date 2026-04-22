@@ -287,6 +287,17 @@ def init_db():
             created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS invoice_attachments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id  INTEGER NOT NULL,
+            label       TEXT DEFAULT 'Customer PO',
+            filename    TEXT NOT NULL,
+            filepath    TEXT NOT NULL,
+            mimetype    TEXT,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+        );
+
         CREATE TABLE IF NOT EXISTS contacts (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             entity_type TEXT NOT NULL,
@@ -3262,6 +3273,59 @@ def api_contact_delete():
     return jsonify({'ok': True})
 
 
+@app.route('/api/vendors-json')
+@login_required
+def api_vendors_json():
+    conn = get_db()
+    rows = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip, billing_country FROM vendors WHERE status=\'Active\' ORDER BY name').fetchall()
+    conn.close()
+    def addr(r):
+        parts = []
+        if r['billing_name']:    parts.append(r['billing_name'])
+        if r['billing_address']: parts.append(r['billing_address'])
+        city_line = ', '.join(filter(None, [r['billing_city'], (r['billing_state'] or '') + ' ' + (r['billing_zip'] or '')]))
+        if city_line.strip(): parts.append(city_line.strip())
+        if r['billing_country'] and r['billing_country'] != 'USA': parts.append(r['billing_country'])
+        return '\n'.join(parts)
+    return jsonify([{'id': r['id'], 'name': r['name'], 'address': addr(r)} for r in rows])
+
+
+@app.route('/api/customers-json')
+@login_required
+def api_customers_json():
+    conn = get_db()
+    rows = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip, billing_country, email, phone FROM customers WHERE status=\'Active\' ORDER BY name').fetchall()
+    conn.close()
+    def addr(r):
+        parts = []
+        if r['billing_name']:    parts.append(r['billing_name'])
+        if r['billing_address']: parts.append(r['billing_address'])
+        city_line = ', '.join(filter(None, [r['billing_city'], (r['billing_state'] or '') + ' ' + (r['billing_zip'] or '')]))
+        if city_line.strip(): parts.append(city_line.strip())
+        if r['billing_country'] and r['billing_country'] != 'USA': parts.append(r['billing_country'])
+        return '\n'.join(parts)
+    return jsonify([{'id': r['id'], 'name': r['name'], 'address': addr(r), 'email': r['email'] or '', 'phone': r['phone'] or ''} for r in rows])
+
+
+@app.route('/api/invoice-items/<int:inv_id>')
+@login_required
+def api_invoice_items(inv_id):
+    conn  = get_db()
+    inv   = conn.execute('SELECT * FROM invoices WHERE id=?', (inv_id,)).fetchone()
+    items = conn.execute('SELECT * FROM invoice_items WHERE invoice_id=?', (inv_id,)).fetchall()
+    conn.close()
+    if not inv:
+        return jsonify({'ok': False}), 404
+    return jsonify({
+        'ok': True,
+        'invoice_number': inv['invoice_number'],
+        'customer_name': inv['customer_name'] or inv['invoice_for'] or '',
+        'customer_address': inv['customer_address'] or '',
+        'items': [{'part_number': i['part_number'], 'description': i['description'],
+                   'condition': i['condition'], 'quantity': i['quantity']} for i in items]
+    })
+
+
 # ─── ERP: Helpers ────────────────────────────────────────────────────────────
 
 def _next_erp_number(prefix, table, col):
@@ -3349,7 +3413,10 @@ def po_new():
         conn.close()
         flash(f'Purchase Order {po_number} created.', 'success')
         return redirect(url_for('po_view', po_id=po_id))
-    return render_template('po_form.html', po=None, items=[])
+    conn = get_db()
+    vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
+    conn.close()
+    return render_template('po_form.html', po=None, items=[], vendors=vendors)
 
 
 @app.route('/purchase-orders/<int:po_id>')
@@ -3423,8 +3490,9 @@ def po_edit(po_id):
         flash('Purchase Order updated.', 'success')
         return redirect(url_for('po_view', po_id=po_id))
     items = conn.execute('SELECT * FROM po_items WHERE po_id=?', (po_id,)).fetchall()
+    vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
     conn.close()
-    return render_template('po_form.html', po=po, items=items)
+    return render_template('po_form.html', po=po, items=items, vendors=vendors)
 
 
 @app.route('/purchase-orders/<int:po_id>/delete', methods=['POST'])
@@ -3496,7 +3564,10 @@ def invoice_new():
         conn.close()
         flash(f'Invoice {inv_number} created.', 'success')
         return redirect(url_for('invoice_view', inv_id=inv_id))
-    return render_template('invoice_form.html', inv=None, items=[])
+    conn = get_db()
+    customers = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM customers ORDER BY name').fetchall()
+    conn.close()
+    return render_template('invoice_form.html', inv=None, items=[], customers=customers)
 
 
 @app.route('/invoices/<int:inv_id>')
@@ -3505,12 +3576,13 @@ def invoice_view(inv_id):
     conn  = get_db()
     inv   = conn.execute('SELECT * FROM invoices WHERE id=?', (inv_id,)).fetchone()
     items = conn.execute('SELECT * FROM invoice_items WHERE invoice_id=?', (inv_id,)).fetchall()
+    attachments = conn.execute('SELECT * FROM invoice_attachments WHERE invoice_id=? ORDER BY uploaded_at', (inv_id,)).fetchall()
     conn.close()
     if not inv:
         flash('Invoice not found.', 'error')
         return redirect(url_for('invoice_list'))
     s = get_settings()
-    return render_template('invoice_view.html', inv=inv, items=items, s=s)
+    return render_template('invoice_view.html', inv=inv, items=items, s=s, attachments=attachments)
 
 
 @app.route('/invoices/<int:inv_id>/edit', methods=['GET', 'POST'])
@@ -3563,20 +3635,116 @@ def invoice_edit(inv_id):
         flash('Invoice updated.', 'success')
         return redirect(url_for('invoice_view', inv_id=inv_id))
     items = conn.execute('SELECT * FROM invoice_items WHERE invoice_id=?', (inv_id,)).fetchall()
+    customers = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM customers ORDER BY name').fetchall()
     conn.close()
-    return render_template('invoice_form.html', inv=inv, items=items)
+    return render_template('invoice_form.html', inv=inv, items=items, customers=customers)
 
 
 @app.route('/invoices/<int:inv_id>/delete', methods=['POST'])
 @login_required
 def invoice_delete(inv_id):
     conn = get_db()
+    # Also remove attachments from disk
+    atts = conn.execute('SELECT filepath FROM invoice_attachments WHERE invoice_id=?', (inv_id,)).fetchall()
+    for a in atts:
+        try: os.remove(a['filepath'])
+        except Exception: pass
+    conn.execute('DELETE FROM invoice_attachments WHERE invoice_id=?', (inv_id,))
     conn.execute('DELETE FROM invoice_items WHERE invoice_id=?', (inv_id,))
     conn.execute('DELETE FROM invoices WHERE id=?', (inv_id,))
     conn.commit()
     conn.close()
     flash('Invoice deleted.', 'success')
     return redirect(url_for('invoice_list'))
+
+
+# ─── Invoice: Customer PO Attachments ────────────────────────────────────────
+
+import mimetypes
+
+_INV_ALLOWED = {'.pdf', '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.webp'}
+
+@app.route('/api/invoice-attachments/<int:inv_id>')
+@login_required
+def api_invoice_attachments(inv_id):
+    conn = get_db()
+    atts = conn.execute(
+        'SELECT id, label, filename, mimetype, uploaded_at FROM invoice_attachments WHERE invoice_id=? ORDER BY uploaded_at',
+        (inv_id,)
+    ).fetchall()
+    conn.close()
+    return jsonify({'attachments': [dict(a) for a in atts]})
+
+
+@app.route('/invoices/<int:inv_id>/upload-po', methods=['POST'])
+@login_required
+def invoice_upload_po(inv_id):
+    conn = get_db()
+    inv = conn.execute('SELECT id FROM invoices WHERE id=?', (inv_id,)).fetchone()
+    conn.close()
+    if not inv:
+        return jsonify({'success': False, 'error': 'Invoice not found'}), 404
+
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'success': False, 'error': 'No file uploaded'})
+
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in _INV_ALLOWED:
+        return jsonify({'success': False, 'error': f'File type {ext} not allowed. Use PDF or image.'})
+
+    label    = (request.form.get('label') or 'Customer PO').strip()
+    safe_name = re.sub(r'[^\w\.\-]', '_', f.filename)
+    upload_dir = os.path.join(UPLOAD_FOLDER, 'invoices', str(inv_id))
+    os.makedirs(upload_dir, exist_ok=True)
+    filepath = os.path.join(upload_dir, safe_name)
+    f.save(filepath)
+
+    mime = mimetypes.guess_type(safe_name)[0] or 'application/octet-stream'
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO invoice_attachments (invoice_id, label, filename, filepath, mimetype) VALUES (?,?,?,?,?)',
+        (inv_id, label, safe_name, filepath, mime))
+    conn.commit()
+    att_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    conn.close()
+
+    return jsonify({
+        'success': True, 'id': att_id,
+        'filename': safe_name, 'label': label, 'mime': mime,
+    })
+
+
+@app.route('/invoices/<int:inv_id>/po/<int:att_id>/view')
+@login_required
+def invoice_po_view(inv_id, att_id):
+    from flask import send_file
+    conn = get_db()
+    att = conn.execute(
+        'SELECT * FROM invoice_attachments WHERE id=? AND invoice_id=?',
+        (att_id, inv_id)).fetchone()
+    conn.close()
+    if not att or not os.path.exists(att['filepath']):
+        flash('File not found.', 'error')
+        return redirect(url_for('invoice_view', inv_id=inv_id))
+    return send_file(att['filepath'], mimetype=att['mimetype'],
+                     download_name=att['filename'], as_attachment=False)
+
+
+@app.route('/invoices/<int:inv_id>/po/<int:att_id>/delete', methods=['POST'])
+@login_required
+def invoice_po_delete(inv_id, att_id):
+    conn = get_db()
+    att = conn.execute(
+        'SELECT * FROM invoice_attachments WHERE id=? AND invoice_id=?',
+        (att_id, inv_id)).fetchone()
+    if att:
+        try: os.remove(att['filepath'])
+        except Exception: pass
+        conn.execute('DELETE FROM invoice_attachments WHERE id=?', (att_id,))
+        conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
 
 
 # ─── ERP: Packing Slips ───────────────────────────────────────────────────────
@@ -3643,7 +3811,11 @@ def ps_new():
         conn.close()
         flash(f'Packing Slip {ps_number} created.', 'success')
         return redirect(url_for('ps_view', ps_id=ps_id))
-    return render_template('ps_form.html', ps=None, items=[])
+    conn = get_db()
+    vendors  = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
+    invoices = conn.execute("SELECT id, invoice_number, invoice_for, customer_name FROM invoices ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return render_template('ps_form.html', ps=None, items=[], vendors=vendors, invoices=invoices)
 
 
 @app.route('/packing-slips/<int:ps_id>')
@@ -3716,9 +3888,11 @@ def ps_edit(ps_id):
         conn.close()
         flash('Packing Slip updated.', 'success')
         return redirect(url_for('ps_view', ps_id=ps_id))
-    items = conn.execute('SELECT * FROM ps_items WHERE ps_id=?', (ps_id,)).fetchall()
+    items    = conn.execute('SELECT * FROM ps_items WHERE ps_id=?', (ps_id,)).fetchall()
+    vendors  = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
+    invoices = conn.execute("SELECT id, invoice_number, invoice_for, customer_name FROM invoices ORDER BY created_at DESC").fetchall()
     conn.close()
-    return render_template('ps_form.html', ps=ps, items=items)
+    return render_template('ps_form.html', ps=ps, items=items, vendors=vendors, invoices=invoices)
 
 
 @app.route('/packing-slips/<int:ps_id>/delete', methods=['POST'])
@@ -3800,7 +3974,10 @@ def ro_new():
         conn.close()
         flash(f'Repair Order {ro_number} created.', 'success')
         return redirect(url_for('ro_view', ro_id=ro_id))
-    return render_template('ro_form.html', ro=None, items=[])
+    conn = get_db()
+    vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
+    conn.close()
+    return render_template('ro_form.html', ro=None, items=[], vendors=vendors)
 
 
 @app.route('/repair-orders/<int:ro_id>')
@@ -3876,9 +4053,10 @@ def ro_edit(ro_id):
         conn.close()
         flash('Repair Order updated.', 'success')
         return redirect(url_for('ro_view', ro_id=ro_id))
-    items = conn.execute('SELECT * FROM ro_items WHERE ro_id=?', (ro_id,)).fetchall()
+    items   = conn.execute('SELECT * FROM ro_items WHERE ro_id=?', (ro_id,)).fetchall()
+    vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
     conn.close()
-    return render_template('ro_form.html', ro=ro, items=items)
+    return render_template('ro_form.html', ro=ro, items=items, vendors=vendors)
 
 
 @app.route('/repair-orders/<int:ro_id>/delete', methods=['POST'])

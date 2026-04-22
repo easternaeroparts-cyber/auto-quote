@@ -161,5 +161,35 @@
   <div class="mt-3 p-3" style="background:#f8f9fa;border-radius:6px;font-size:.82rem;white-space:pre-line;">{{ inv.notes }}</div>
   {% endif %}
 
+  <!-- Customer PO Attachments -->
+  {% if attachments %}
+  <div class="mt-4" style="border-top:2px dashed #dee2e6;padding-top:16px;">
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:#1a3c6e;margin-bottom:10px;">
+      <i class="bi bi-paperclip"></i> Referenced Documents
+    </div>
+    {% for a in attachments %}
+    <div class="d-flex align-items-center gap-3 mb-2 p-2 no-print"
+         style="background:#f8f9fa;border-radius:6px;border:1px solid #dee2e6;">
+      <i class="bi bi-{{ 'file-pdf text-danger' if a.mimetype and 'pdf' in a.mimetype else 'file-image text-primary' }} fs-5"></i>
+      <div class="flex-grow-1">
+        <span class="badge bg-navy me-1" style="font-size:.7rem;background:#1a3c6e;">{{ a.label }}</span>
+        <a href="{{ url_for('invoice_po_view', inv_id=inv.id, att_id=a.id) }}" target="_blank"
+           class="fw-semibold text-decoration-none small">{{ a.filename }}</a>
+        <span class="text-muted small ms-2">{{ a.uploaded_at[:10] if a.uploaded_at else '' }}</span>
+      </div>
+      <a href="{{ url_for('invoice_po_view', inv_id=inv.id, att_id=a.id) }}" target="_blank"
+         class="btn btn-sm btn-outline-primary no-print">
+        <i class="bi bi-eye"></i> View
+      </a>
+    </div>
+    <!-- Print version: show filename only -->
+    <div class="d-none d-print-block mb-1" style="font-size:.8rem;">
+      <i class="bi bi-paperclip"></i>
+      <strong>{{ a.label }}:</strong> {{ a.filename }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
 </div>
 {% endblock %}
