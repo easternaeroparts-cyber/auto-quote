@@ -252,39 +252,35 @@
     <ul class="list-group list-group-flush" id="attachList">
       {% if attachments %}
         {% for att in attachments %}
-        <li class="list-group-item" id="att-{{ att.id }}">
-          <div class="d-flex justify-content-between align-items-start">
-            <div>
-              <i class="bi bi-file-earmark me-2 text-muted"></i>
-              <strong>{{ att.filename }}</strong>
-              {% if att.part_number %}
-              <span class="badge text-bg-secondary ms-1">PN: {{ att.part_number }}</span>
-              {% endif %}
-              {% if att.serial_number %}
-              <span class="badge text-bg-info ms-1">SN: {{ att.serial_number }}</span>
-              {% endif %}
+        <li class="list-group-item py-2 px-3" id="att-{{ att.id }}">
+          <div class="d-flex justify-content-between align-items-center gap-2">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <i class="bi bi-file-earmark text-muted"></i>
+              <span class="fw-semibold" style="font-size:.9rem">{{ att.filename }}</span>
+              {% if att.part_number %}<span class="badge text-bg-secondary">PN: {{ att.part_number }}</span>{% endif %}
+              {% if att.serial_number %}<span class="badge text-bg-info">SN: {{ att.serial_number }}</span>{% endif %}
               {% if att.verified %}
-              <span class="badge text-bg-success ms-1"><i class="bi bi-check-circle-fill me-1"></i>Verified</span>
+              <span class="badge text-bg-success"><i class="bi bi-check-circle-fill me-1"></i>Verified</span>
               {% else %}
-              <span class="badge text-bg-warning ms-1">Unverified — not sent</span>
+              <span class="badge text-bg-warning" id="unverBadge-{{ att.id }}">Unverified — not sent</span>
               {% endif %}
             </div>
-            <div class="d-flex gap-1">
+            <div class="d-flex gap-1 flex-shrink-0">
               <a href="{{ url_for('view_attachment', quote_id=quote.id, att_id=att.id) }}"
                  target="_blank"
-                 class="btn btn-sm btn-outline-secondary py-0"
-                 onclick="scheduleVerify({{ att.id }}, this)">
+                 class="btn btn-sm btn-outline-secondary py-0 px-2"
+                 onclick="scheduleVerify({{ att.id }})">
                 <i class="bi bi-eye"></i> Open &amp; Verify
               </a>
               {% if att.verified %}
-              <span class="btn btn-sm btn-outline-success py-0 disabled"><i class="bi bi-check2"></i></span>
+              <span class="btn btn-sm btn-outline-success py-0 px-2 disabled"><i class="bi bi-check2"></i></span>
               {% else %}
-              <button class="btn btn-sm btn-outline-success py-0" id="verifyBtn-{{ att.id }}"
-                      onclick="markVerified({{ att.id }})" title="Mark as verified">
+              <button type="button" class="btn btn-sm btn-outline-success py-0 px-2" id="verifyBtn-{{ att.id }}"
+                      onclick="markVerified({{ att.id }})">
                 <i class="bi bi-check2"></i> Mark Verified
               </button>
               {% endif %}
-              <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteAttachment({{ att.id }})">
+              <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteAttachment({{ att.id }})">
                 <i class="bi bi-trash"></i>
               </button>
             </div>
@@ -292,7 +288,7 @@
         </li>
         {% endfor %}
       {% else %}
-        <li class="list-group-item text-muted fst-italic" id="noAttMsg">No attachments — upload files here to send with the quote email. Only verified files are sent.</li>
+        <li class="list-group-item py-3 px-3 text-muted fst-italic small" id="noAttMsg">No attachments — upload files here to send with the quote email. Only verified files are sent.</li>
       {% endif %}
     </ul>
   </div>
@@ -311,21 +307,24 @@
           <label class="form-label fw-semibold">File <small class="text-muted">(PDF, JPEG or GIF only)</small></label>
           <input type="file" id="attachFileInput" class="form-control" accept=".pdf,.jpg,.jpeg,.gif">
         </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Part Number <small class="text-muted">(optional)</small></label>
-          <input type="text" id="attachPN" class="form-control text-uppercase" placeholder="e.g. 5011T62G02">
+        <div class="row g-2 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold mb-1">Part Number <small class="text-muted">(optional)</small></label>
+            <input type="text" id="attachPN" class="form-control text-uppercase" placeholder="e.g. 5011T62G02">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold mb-1">Serial Number <small class="text-muted">(optional)</small></label>
+            <input type="text" id="attachSN" class="form-control text-uppercase" placeholder="e.g. 12345ABC">
+          </div>
         </div>
-        <div class="mb-3">
-          <label class="form-label fw-semibold">Serial Number <small class="text-muted">(required for auto-suggest)</small></label>
-          <input type="text" id="attachSN" class="form-control text-uppercase" placeholder="e.g. 12345ABC">
-          <div class="form-text">If a serial number is entered, a matching document from a previous quote will be suggested.</div>
-        </div>
-        <div id="attachError" class="alert alert-danger d-none"></div>
-        <div id="attachSuggestion" class="alert alert-info d-none"></div>
+        <p class="text-muted small mb-2"><i class="bi bi-info-circle me-1"></i>If both PN and SN are entered, matching documents from previous quotes will be suggested. Only <strong>verified</strong> files are sent with the email.</p>
+        <!-- Use att- prefix class, NOT .alert, so auto-dismiss doesn't touch them -->
+        <div id="attachMsgError" class="p-2 rounded text-danger bg-danger bg-opacity-10 border border-danger d-none mb-2" style="font-size:.875rem"></div>
+        <div id="attachMsgSuggest" class="p-2 rounded text-info bg-info bg-opacity-10 border border-info d-none mb-2" style="font-size:.875rem"></div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-navy" onclick="doUploadAttachment()">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="uploadAttachBtn" class="btn btn-navy" onclick="doUploadAttachment()">
           <i class="bi bi-upload me-1"></i> Upload &amp; Compress
         </button>
       </div>
@@ -648,149 +647,166 @@ async function saveRef() {
 }
 
 // ── Attachments ──────────────────────────────────────────────────────────────
-function attItemHtml(data) {
-  const pnBadge = data.part_number
-    ? `<span class="badge text-bg-secondary ms-1">PN: ${data.part_number}</span>` : '';
-  const snBadge = data.serial_number
-    ? `<span class="badge text-bg-info ms-1">SN: ${data.serial_number}</span>` : '';
-  const verBadge = data.verified
-    ? `<span class="badge text-bg-success ms-1"><i class="bi bi-check-circle-fill me-1"></i>Verified</span>`
-    : `<span class="badge text-bg-warning ms-1" id="unverBadge-${data.id}">Unverified — not sent</span>`;
-  const verBtn = data.verified
-    ? `<span class="btn btn-sm btn-outline-success py-0 disabled"><i class="bi bi-check2"></i></span>`
-    : `<button class="btn btn-sm btn-outline-success py-0" id="verifyBtn-${data.id}"
-         onclick="markVerified(${data.id})" title="Mark as verified">
-         <i class="bi bi-check2"></i> Mark Verified
-       </button>`;
-  return `
-    <div class="d-flex justify-content-between align-items-start">
-      <div>
-        <i class="bi bi-file-earmark me-2 text-muted"></i>
-        <strong>${data.filename}</strong>
-        ${pnBadge}${snBadge}${verBadge}
-      </div>
-      <div class="d-flex gap-1">
-        <a href="/quotes/{{ quote.id }}/attach/${data.id}/view"
-           target="_blank"
-           class="btn btn-sm btn-outline-secondary py-0"
-           onclick="scheduleVerify(${data.id}, this)">
-          <i class="bi bi-eye"></i> Open &amp; Verify
-        </a>
-        ${verBtn}
-        <button class="btn btn-sm btn-outline-danger py-0" onclick="deleteAttachment(${data.id})">
-          <i class="bi bi-trash"></i>
-        </button>
-      </div>
-    </div>`;
+const QUOTE_ID = {{ quote.id }};
+
+function buildAttachItem(d) {
+  const pn  = d.part_number   ? '<span class="badge text-bg-secondary">PN: ' + d.part_number + '</span>' : '';
+  const sn  = d.serial_number ? '<span class="badge text-bg-info">SN: '      + d.serial_number + '</span>' : '';
+  const ver = d.verified
+    ? '<span class="badge text-bg-success"><i class="bi bi-check-circle-fill me-1"></i>Verified</span>'
+    : '<span class="badge text-bg-warning" id="unverBadge-' + d.id + '">Unverified \u2014 not sent</span>';
+  const verBtn = d.verified
+    ? '<span class="btn btn-sm btn-outline-success py-0 px-2 disabled"><i class="bi bi-check2"></i></span>'
+    : '<button type="button" class="btn btn-sm btn-outline-success py-0 px-2" id="verifyBtn-' + d.id + '" onclick="markVerified(' + d.id + ')"><i class="bi bi-check2"></i> Mark Verified</button>';
+  return '<div class="d-flex justify-content-between align-items-center gap-2">'
+    + '<div class="d-flex align-items-center gap-2 flex-wrap">'
+    + '<i class="bi bi-file-earmark text-muted"></i>'
+    + '<span class="fw-semibold" style="font-size:.9rem">' + d.filename + '</span>'
+    + pn + sn + ver
+    + '</div>'
+    + '<div class="d-flex gap-1 flex-shrink-0">'
+    + '<a href="/quotes/' + QUOTE_ID + '/attach/' + d.id + '/view" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="scheduleVerify(' + d.id + ')">'
+    + '<i class="bi bi-eye"></i> Open &amp; Verify</a>'
+    + verBtn
+    + '<button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" onclick="deleteAttachment(' + d.id + ')"><i class="bi bi-trash"></i></button>'
+    + '</div></div>';
+}
+
+function showAttachMsg(type, html) {
+  // type: 'error' | 'suggest'
+  const errEl  = document.getElementById('attachMsgError');
+  const sugEl  = document.getElementById('attachMsgSuggest');
+  errEl.classList.add('d-none');
+  sugEl.classList.add('d-none');
+  if (type === 'error')   { errEl.innerHTML = html; errEl.classList.remove('d-none'); }
+  if (type === 'suggest') { sugEl.innerHTML = html; sugEl.classList.remove('d-none'); }
 }
 
 async function doUploadAttachment() {
+  const btn       = document.getElementById('uploadAttachBtn');
   const fileInput = document.getElementById('attachFileInput');
-  const pn = document.getElementById('attachPN').value.trim().toUpperCase();
-  const sn = document.getElementById('attachSN').value.trim().toUpperCase();
-  const errBox = document.getElementById('attachError');
-  const sugBox = document.getElementById('attachSuggestion');
-  errBox.classList.add('d-none');
-  sugBox.classList.add('d-none');
+  const pn        = document.getElementById('attachPN').value.trim().toUpperCase();
+  const sn        = document.getElementById('attachSN').value.trim().toUpperCase();
+
+  document.getElementById('attachMsgError').classList.add('d-none');
+  document.getElementById('attachMsgSuggest').classList.add('d-none');
 
   const file = fileInput.files[0];
-  if (!file) { errBox.textContent = 'Please select a file.'; errBox.classList.remove('d-none'); return; }
+  if (!file) {
+    showAttachMsg('error', 'Please select a file first.');
+    return;
+  }
   const allowed = ['.pdf', '.jpg', '.jpeg', '.gif'];
   const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
   if (!allowed.includes(ext)) {
-    errBox.textContent = 'Only PDF, JPEG and GIF files are allowed.';
-    errBox.classList.remove('d-none');
+    showAttachMsg('error', 'Only PDF, JPEG and GIF files are allowed.');
     return;
   }
 
-  const fd = new FormData();
-  fd.append('file', file);
-  if (pn) fd.append('part_number', pn);
-  if (sn) fd.append('serial_number', sn);
+  // Show loading state
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
 
-  const res  = await fetch('/quotes/{{ quote.id }}/attach', { method: 'POST', body: fd });
-  const data = await res.json();
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (pn) fd.append('part_number', pn);
+    if (sn) fd.append('serial_number', sn);
 
-  if (!data.success) {
-    errBox.textContent = 'Upload failed: ' + (data.error || 'unknown error');
-    errBox.classList.remove('d-none');
-    return;
+    const res  = await fetch('/quotes/' + QUOTE_ID + '/attach', { method: 'POST', body: fd });
+    const data = await res.json();
+
+    if (!data.success) {
+      showAttachMsg('error', 'Upload failed: ' + (data.error || 'unknown error'));
+      return;
+    }
+
+    // Add new item to list
+    const noMsg = document.getElementById('noAttMsg');
+    if (noMsg) noMsg.remove();
+    const li = document.createElement('li');
+    li.className = 'list-group-item py-2 px-3';
+    li.id = 'att-' + data.id;
+    li.innerHTML = buildAttachItem(data);
+    document.getElementById('attachList').appendChild(li);
+
+    // If server found a matching PN+SN from a previous quote, show suggestion inside modal
+    if (data.suggestion) {
+      const s = data.suggestion;
+      showAttachMsg('suggest',
+        '<i class="bi bi-lightbulb-fill me-1"></i>A matching file <strong>' + s.filename +
+        '</strong> was found on quote <strong>' + s.quote_number +
+        '</strong>. You may want to open and verify that file too.');
+      // Reset file + PN/SN but keep modal open to show suggestion
+      fileInput.value = '';
+      document.getElementById('attachPN').value = '';
+      document.getElementById('attachSN').value = '';
+    } else {
+      // Close modal and fully reset
+      const modalEl = document.getElementById('uploadAttachModal');
+      const modal   = bootstrap.Modal.getOrCreateInstance(modalEl);
+      modal.hide();
+      fileInput.value = '';
+      document.getElementById('attachPN').value = '';
+      document.getElementById('attachSN').value = '';
+    }
+
+  } catch (err) {
+    showAttachMsg('error', 'Network error: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-upload me-1"></i> Upload &amp; Compress';
   }
-
-  // Add to list
-  const noMsg = document.getElementById('noAttMsg');
-  if (noMsg) noMsg.remove();
-  const li = document.createElement('li');
-  li.className = 'list-group-item';
-  li.id = `att-${data.id}`;
-  li.innerHTML = attItemHtml(data);
-  document.getElementById('attachList').appendChild(li);
-
-  // Show suggestion if server found a matching PN+SN from a previous quote
-  if (data.suggestion) {
-    const s = data.suggestion;
-    sugBox.innerHTML = `<i class="bi bi-lightbulb me-1"></i>
-      A matching document <strong>${s.filename}</strong> was found on quote <strong>${s.quote_number}</strong>.
-      You may also want to open and verify that file if it applies here.`;
-    sugBox.classList.remove('d-none');
-  } else {
-    // Close modal and reset
-    bootstrap.Modal.getInstance(document.getElementById('uploadAttachModal')).hide();
-  }
-
-  // Reset inputs
-  fileInput.value = '';
-  document.getElementById('attachPN').value = '';
-  document.getElementById('attachSN').value = '';
 }
 
-// Called when user clicks "Open & Verify" — give them 5 s after the new tab
-// opens to come back; if they do, the button changes to "Mark Verified"
-function scheduleVerify(id, linkEl) {
-  // After a brief delay (tab opens), make the Mark Verified button pulse
-  setTimeout(() => {
-    const btn = document.getElementById(`verifyBtn-${id}`);
+function scheduleVerify(id) {
+  // After 3 s (enough time for the tab to open and user to glance at the file),
+  // pulse the Mark Verified button so it's obvious what to click next
+  setTimeout(function() {
+    var btn = document.getElementById('verifyBtn-' + id);
     if (btn) {
-      btn.classList.add('btn-success');
-      btn.classList.remove('btn-outline-success');
+      btn.classList.replace('btn-outline-success', 'btn-success');
     }
   }, 3000);
 }
 
 async function markVerified(id) {
-  const res  = await fetch(`/quotes/{{ quote.id }}/attach/${id}/verify`, { method: 'POST' });
-  const data = await res.json();
-  if (data.success) {
-    // Update badge
-    const unverBadge = document.getElementById(`unverBadge-${id}`);
-    if (unverBadge) {
-      unverBadge.className = 'badge text-bg-success ms-1';
-      unverBadge.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>Verified';
+  try {
+    const res  = await fetch('/quotes/' + QUOTE_ID + '/attach/' + id + '/verify', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      const badge = document.getElementById('unverBadge-' + id);
+      if (badge) {
+        badge.className = 'badge text-bg-success';
+        badge.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>Verified';
+        badge.removeAttribute('id');
+      }
+      const btn = document.getElementById('verifyBtn-' + id);
+      if (btn) {
+        btn.outerHTML = '<span class="btn btn-sm btn-outline-success py-0 px-2 disabled"><i class="bi bi-check2"></i></span>';
+      }
     }
-    // Replace verify button with disabled check
-    const btn = document.getElementById(`verifyBtn-${id}`);
-    if (btn) {
-      btn.outerHTML = `<span class="btn btn-sm btn-outline-success py-0 disabled"><i class="bi bi-check2"></i></span>`;
-    }
-  }
+  } catch(e) { console.error('markVerified failed', e); }
 }
 
 async function deleteAttachment(id) {
   if (!confirm('Remove this attachment?')) return;
-  const res  = await fetch(`/quotes/{{ quote.id }}/attach/${id}/delete`, { method: 'POST' });
-  const data = await res.json();
-  if (data.success) {
-    const el = document.getElementById(`att-${id}`);
-    if (el) el.remove();
-    const list = document.getElementById('attachList');
-    if (!list.children.length) {
-      const li = document.createElement('li');
-      li.className = 'list-group-item text-muted fst-italic';
-      li.id = 'noAttMsg';
-      li.textContent = 'No attachments — upload files here to send with the quote email. Only verified files are sent.';
-      list.appendChild(li);
+  try {
+    const res  = await fetch('/quotes/' + QUOTE_ID + '/attach/' + id + '/delete', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      var el = document.getElementById('att-' + id);
+      if (el) el.remove();
+      var list = document.getElementById('attachList');
+      if (list && !list.children.length) {
+        var li = document.createElement('li');
+        li.className = 'list-group-item py-3 px-3 text-muted fst-italic small';
+        li.id = 'noAttMsg';
+        li.textContent = 'No attachments \u2014 upload files here to send with the quote email. Only verified files are sent.';
+        list.appendChild(li);
+      }
     }
-  }
+  } catch(e) { console.error('deleteAttachment failed', e); }
 }
 
 // ── Raw email toggle ─────────────────────────────────────────────────────────
