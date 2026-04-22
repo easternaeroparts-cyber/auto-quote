@@ -1187,12 +1187,13 @@ def send_quote(quote_id):
 
         if resend_key:
             try:
-                from_addr = smtp_user or settings.get('company_email', 'noreply@eastern-aero.com')
-                email_id = send_via_resend(
-                    resend_key, from_addr, to_email,
-                    f"Quotation {quote['quote_number']} — {settings['company_name']}",
-                    html
-                )
+                # Build "Display Name <email>" format
+                company = settings.get('company_name', 'Eastern Aero Parts')
+                raw_from = smtp_user or 'sales@eastern-aero.com'
+                from_addr = f"{company} <{raw_from}>"
+                subj = f"Quotation {quote['quote_number']} — {company}"
+                print(f'[Email] Trying Resend from={from_addr} to={to_email}')
+                email_id = send_via_resend(resend_key, from_addr, to_email, subj, html)
                 if email_id:
                     sent = True
                     print(f'[Email] Sent via Resend. ID={email_id}')
@@ -1254,6 +1255,7 @@ def send_via_resend(api_key, from_addr, to_addr, subject, html_body):
     Works on Railway (no SMTP port restrictions).
     Docs: https://resend.com/docs/api-reference/emails/send-email
     """
+    import urllib.error
     payload = json.dumps({
         'from': from_addr,
         'to': [to_addr],
@@ -1269,9 +1271,14 @@ def send_via_resend(api_key, from_addr, to_addr, subject, html_body):
         },
         method='POST'
     )
-    with urllib.request.urlopen(req, timeout=20) as resp:
-        result = json.loads(resp.read())
-        return result.get('id')  # returns email ID if successful
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            result = json.loads(resp.read())
+            return result.get('id')  # returns email ID if successful
+    except urllib.error.HTTPError as e:
+        # Capture the full Resend error message for debugging
+        body = e.read().decode('utf-8', errors='ignore')
+        raise Exception(f"Resend HTTP {e.code}: {body}")
 
 
 def build_quote_email(quote, rfq, items, settings):
