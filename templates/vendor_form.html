@@ -1,0 +1,435 @@
+{% extends "base.html" %}
+{% block title %}{% if v %}{{ v.name }}{% else %}New Vendor{% endif %}{% endblock %}
+{% block page_title %}{% if v %}{{ v.name }}{% else %}New Vendor{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+{% if v %}
+<span class="badge rounded-pill {% if v.status == 'Active' %}bg-success{% else %}bg-secondary{% endif %} me-2">
+  {{ v.status or 'Active' }}
+</span>
+<form method="post" action="{{ url_for('vendor_delete', vid=v.id) }}" class="d-inline"
+      onsubmit="return confirm('Delete this vendor?')">
+  <button class="btn btn-sm btn-outline-danger me-1"><i class="bi bi-trash"></i> Delete</button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<style>
+  .lbl{font-size:.78rem;font-weight:600;color:#666;text-transform:uppercase;letter-spacing:.4px;margin-bottom:3px;display:block;}
+  .req{color:#dc3545;}
+  .tab-section{display:none;}
+  .tab-section.active{display:block;}
+  .tab-nav .nav-link{color:#666;border-bottom:2px solid transparent;border-radius:0;padding:10px 18px;}
+  .tab-nav .nav-link.active{color:#1a3c6e;border-bottom-color:#1a3c6e;font-weight:600;}
+  .contact-row{background:#f8f9fa;border-radius:8px;padding:12px 14px;margin-bottom:10px;}
+</style>
+{% endblock %}
+
+{% block content %}
+{% set action_url = url_for('vendor_save', vid=v.id) if v else url_for('vendor_new') %}
+<form method="post" action="{{ action_url }}" id="vendorForm">
+
+<!-- Tab nav -->
+<div class="card mb-0" style="border-radius:10px 10px 0 0;border-bottom:none;">
+  <div class="card-header bg-white py-0">
+    <ul class="nav tab-nav">
+      <li class="nav-item"><a class="nav-link active" href="#" onclick="showTab('main',this);return false;">Main</a></li>
+      <li class="nav-item"><a class="nav-link" href="#" onclick="showTab('address',this);return false;">Billing / Shipping Address</a></li>
+      <li class="nav-item"><a class="nav-link" href="#" onclick="showTab('contacts',this);return false;">Contacts</a></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ── MAIN TAB ── -->
+<div class="tab-section active card" id="tab-main" style="border-radius:0 0 10px 10px;border-top:none;">
+  <div class="card-body">
+    <div class="row g-3">
+
+      <!-- LEFT -->
+      <div class="col-md-6">
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="lbl">Name <span class="req">*</span></label>
+            <input name="name" class="form-control" required value="{{ v.name if v else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="lbl">Phone</label>
+            <input name="phone" class="form-control" value="{{ v.phone if v else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="lbl">Fax</label>
+            <input name="fax" class="form-control" value="{{ v.fax if v else '' }}">
+          </div>
+          <div class="col-12">
+            <label class="lbl">Email</label>
+            <input name="email" type="email" class="form-control" value="{{ v.email if v else '' }}">
+          </div>
+          <div class="col-12">
+            <label class="lbl">Website</label>
+            <input name="website" type="url" class="form-control" value="{{ v.website if v else '' }}"
+              placeholder="https://…">
+          </div>
+          <div class="col-md-6">
+            <label class="lbl">Payment Method <span class="req">*</span></label>
+            <select name="payment_method" class="form-select">
+              {% for m in ['Check','Wire Transfer','Credit Card','ACH','Cash'] %}
+              <option {% if (v.payment_method if v else 'Check')==m %}selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="lbl">Terms <span class="req">*</span></label>
+            <select name="terms" class="form-select">
+              {% for t in ['30 days','15 days','45 days','60 days','COD','Prepaid','Net 30','Net 60'] %}
+              <option {% if (v.terms if v else '30 days')==t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="lbl">Credit Limit <span class="req">*</span></label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input name="credit_limit" type="number" step="0.01" class="form-control"
+                value="{{ '%.2f'|format(v.credit_limit or 0) if v else '0.00' }}">
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="lbl">Balance</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input class="form-control bg-light" value="{{ '%.2f'|format(v.balance or 0) if v else '0.00' }}" readonly>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="lbl">Tags</label>
+            <input name="tags" class="form-control" value="{{ v.tags if v else '' }}"
+              placeholder="e.g. Approved, DER, OEM">
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div class="col-md-6">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="lbl">Account #</label>
+            <input name="account_number" class="form-control" value="{{ v.account_number if v else '' }}">
+          </div>
+          <div class="col-md-6">
+            <label class="lbl">Min PO</label>
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              <input name="min_po" type="number" step="0.01" class="form-control"
+                value="{{ '%.2f'|format(v.min_po or 0) if v else '0.00' }}">
+            </div>
+          </div>
+          <div class="col-md-5">
+            <label class="lbl">Tax ID #</label>
+            <input name="tax_id" class="form-control" value="{{ v.tax_id if v else '' }}">
+          </div>
+          <div class="col-md-3">
+            <label class="lbl">Tax %</label>
+            <input name="tax_percent" type="number" step="0.01" class="form-control"
+              value="{{ v.tax_percent if v else '0' }}">
+          </div>
+          <div class="col-12">
+            <label class="lbl">GL Account <span class="req">*</span></label>
+            <select name="gl_account" class="form-select">
+              {% set gl_opts = [
+                '1200 | Inventory - rotables',
+                '1210 | Inventory - expendables',
+                '1220 | Inventory - raw materials',
+                '5000 | Cost of Goods Sold',
+                '6000 | Operating Expenses',
+              ] %}
+              {% for g in gl_opts %}
+              <option {% if (v.gl_account if v else '1200 | Inventory - rotables')==g %}selected{% endif %}>{{ g }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="lbl">Status</label>
+            <select name="status" class="form-select">
+              <option {% if not v or v.status=='Active' %}selected{% endif %}>Active</option>
+              <option {% if v and v.status=='Inactive' %}selected{% endif %}>Inactive</option>
+              <option {% if v and v.status=='On Hold' %}selected{% endif %}>On Hold</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="lbl">Currency</label>
+            <select name="currency" class="form-select">
+              <option {% if not v or v.currency=='USD' %}selected{% endif %}>USD</option>
+              <option {% if v and v.currency=='EUR' %}selected{% endif %}>EUR</option>
+              <option {% if v and v.currency=='GBP' %}selected{% endif %}>GBP</option>
+              <option {% if v and v.currency=='CAD' %}selected{% endif %}>CAD</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="lbl">Notes</label>
+            <textarea name="notes" class="form-control" rows="5">{{ v.notes if v else '' }}</textarea>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── ADDRESS TAB ── -->
+<div class="tab-section card" id="tab-address" style="border-radius:0 0 10px 10px;border-top:none;">
+  <div class="card-body">
+    <div class="row g-4">
+      <div class="col-md-6">
+        <h6 class="fw-bold mb-3" style="color:#1a3c6e;"><i class="bi bi-receipt"></i> Billing Address</h6>
+        <div class="mb-2">
+          <label class="lbl">Name / Attn</label>
+          <input name="billing_name" class="form-control" value="{{ v.billing_name if v else '' }}">
+        </div>
+        <div class="mb-2">
+          <label class="lbl">Street Address</label>
+          <input name="billing_address" class="form-control" value="{{ v.billing_address if v else '' }}">
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="lbl">City</label>
+            <input name="billing_city" class="form-control" value="{{ v.billing_city if v else '' }}">
+          </div>
+          <div class="col-3">
+            <label class="lbl">State</label>
+            <input name="billing_state" class="form-control" value="{{ v.billing_state if v else '' }}">
+          </div>
+          <div class="col-3">
+            <label class="lbl">ZIP</label>
+            <input name="billing_zip" class="form-control" value="{{ v.billing_zip if v else '' }}">
+          </div>
+        </div>
+        <div>
+          <label class="lbl">Country</label>
+          <input name="billing_country" class="form-control" value="{{ v.billing_country if v else 'USA' }}">
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h6 class="fw-bold mb-0" style="color:#1a3c6e;"><i class="bi bi-geo-alt"></i> Shipping Address</h6>
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyBillingToShipping()" style="font-size:.78rem;">
+            <i class="bi bi-copy"></i> Same as Billing
+          </button>
+        </div>
+        <div class="mb-2">
+          <label class="lbl">Name / Attn</label>
+          <input name="shipping_name" id="ship_name" class="form-control" value="{{ v.shipping_name if v else '' }}">
+        </div>
+        <div class="mb-2">
+          <label class="lbl">Street Address</label>
+          <input name="shipping_address" id="ship_addr" class="form-control" value="{{ v.shipping_address if v else '' }}">
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="lbl">City</label>
+            <input name="shipping_city" id="ship_city" class="form-control" value="{{ v.shipping_city if v else '' }}">
+          </div>
+          <div class="col-3">
+            <label class="lbl">State</label>
+            <input name="shipping_state" id="ship_state" class="form-control" value="{{ v.shipping_state if v else '' }}">
+          </div>
+          <div class="col-3">
+            <label class="lbl">ZIP</label>
+            <input name="shipping_zip" id="ship_zip" class="form-control" value="{{ v.shipping_zip if v else '' }}">
+          </div>
+        </div>
+        <div>
+          <label class="lbl">Country</label>
+          <input name="shipping_country" id="ship_country" class="form-control" value="{{ v.shipping_country if v else 'USA' }}">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CONTACTS TAB ── -->
+<div class="tab-section card" id="tab-contacts" style="border-radius:0 0 10px 10px;border-top:none;">
+  <div class="card-body">
+    {% if v %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <span class="text-muted small">{{ contacts|length }} contact(s)</span>
+      <button type="button" class="btn btn-sm btn-navy" onclick="openContactModal(null)">
+        <i class="bi bi-plus"></i> Add Contact
+      </button>
+    </div>
+    <div id="contactsWrap">
+      {% for ct in contacts %}
+      <div class="contact-row d-flex justify-content-between align-items-start" id="cr-{{ ct.id }}">
+        <div>
+          <div class="fw-semibold">
+            {{ ct.first_name }} {{ ct.last_name }}
+            {% if ct.is_primary %}<span class="badge bg-primary ms-1" style="font-size:.7rem;">Primary</span>{% endif %}
+          </div>
+          {% if ct.title %}<div class="text-muted small">{{ ct.title }}</div>{% endif %}
+          <div class="small mt-1">
+            {% if ct.email %}<i class="bi bi-envelope me-1"></i>{{ ct.email }}&emsp;{% endif %}
+            {% if ct.phone %}<i class="bi bi-telephone me-1"></i>{{ ct.phone }}&emsp;{% endif %}
+            {% if ct.mobile %}<i class="bi bi-phone me-1"></i>{{ ct.mobile }}{% endif %}
+          </div>
+          {% if ct.notes %}<div class="text-muted small mt-1">{{ ct.notes }}</div>{% endif %}
+        </div>
+        <div class="d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-outline-primary"
+            onclick='openContactModal({{ {"id":ct.id,"first_name":ct.first_name,"last_name":ct.last_name,"title":ct.title,"email":ct.email,"phone":ct.phone,"mobile":ct.mobile,"is_primary":ct.is_primary,"notes":ct.notes}|tojson }})'>
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-danger"
+            onclick="deleteContact({{ ct.id }}, 'cr-{{ ct.id }}')">
+            <i class="bi bi-trash"></i>
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center text-muted py-4">
+      <i class="bi bi-person-badge display-6 d-block mb-2 opacity-25"></i>
+      Save the vendor first, then add contacts.
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Save bar -->
+<div class="d-flex gap-2 justify-content-end mt-3">
+  <a href="{{ url_for('vendor_list') }}" class="btn btn-outline-secondary">Close</a>
+  <button type="submit" class="btn btn-navy px-4">
+    <i class="bi bi-save"></i> Save
+  </button>
+</div>
+
+</form>
+
+<!-- Contact Modal -->
+{% if v %}
+<div class="modal fade" id="contactModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-bold" id="contactModalTitle">Add Contact</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="ctId">
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="lbl">First Name</label>
+            <input id="ctFirst" class="form-control">
+          </div>
+          <div class="col-6">
+            <label class="lbl">Last Name</label>
+            <input id="ctLast" class="form-control">
+          </div>
+          <div class="col-12">
+            <label class="lbl">Title / Position</label>
+            <input id="ctTitle" class="form-control" placeholder="e.g. Sales Manager">
+          </div>
+          <div class="col-md-7">
+            <label class="lbl">Email</label>
+            <input id="ctEmail" type="email" class="form-control">
+          </div>
+          <div class="col-md-5">
+            <label class="lbl">Phone</label>
+            <input id="ctPhone" class="form-control">
+          </div>
+          <div class="col-md-5">
+            <label class="lbl">Mobile</label>
+            <input id="ctMobile" class="form-control">
+          </div>
+          <div class="col-md-5 d-flex align-items-end">
+            <div class="form-check mb-1">
+              <input class="form-check-input" type="checkbox" id="ctPrimary">
+              <label class="form-check-label lbl mb-0" for="ctPrimary">Primary Contact</label>
+            </div>
+          </div>
+          <div class="col-12">
+            <label class="lbl">Notes</label>
+            <textarea id="ctNotes" class="form-control" rows="2"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-navy" onclick="saveContact()">Save Contact</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showTab(name, el) {
+  document.querySelectorAll('.tab-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab-nav .nav-link').forEach(a => a.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  el.classList.add('active');
+}
+
+function copyBillingToShipping() {
+  document.getElementById('ship_name').value    = document.querySelector('[name=billing_name]').value;
+  document.getElementById('ship_addr').value    = document.querySelector('[name=billing_address]').value;
+  document.getElementById('ship_city').value    = document.querySelector('[name=billing_city]').value;
+  document.getElementById('ship_state').value   = document.querySelector('[name=billing_state]').value;
+  document.getElementById('ship_zip').value     = document.querySelector('[name=billing_zip]').value;
+  document.getElementById('ship_country').value = document.querySelector('[name=billing_country]').value;
+}
+
+{% if v %}
+const ENTITY_TYPE = 'vendor';
+const ENTITY_ID   = {{ v.id }};
+const modal = new bootstrap.Modal(document.getElementById('contactModal'));
+
+function openContactModal(ct) {
+  document.getElementById('contactModalTitle').textContent = ct ? 'Edit Contact' : 'Add Contact';
+  document.getElementById('ctId').value      = ct ? ct.id : '';
+  document.getElementById('ctFirst').value   = ct ? ct.first_name : '';
+  document.getElementById('ctLast').value    = ct ? ct.last_name : '';
+  document.getElementById('ctTitle').value   = ct ? ct.title : '';
+  document.getElementById('ctEmail').value   = ct ? ct.email : '';
+  document.getElementById('ctPhone').value   = ct ? ct.phone : '';
+  document.getElementById('ctMobile').value  = ct ? ct.mobile : '';
+  document.getElementById('ctPrimary').checked = ct ? !!ct.is_primary : false;
+  document.getElementById('ctNotes').value   = ct ? ct.notes : '';
+  modal.show();
+}
+
+async function saveContact() {
+  const payload = {
+    entity_type: ENTITY_TYPE, entity_id: ENTITY_ID,
+    id: document.getElementById('ctId').value || null,
+    first_name: document.getElementById('ctFirst').value,
+    last_name:  document.getElementById('ctLast').value,
+    title:      document.getElementById('ctTitle').value,
+    email:      document.getElementById('ctEmail').value,
+    phone:      document.getElementById('ctPhone').value,
+    mobile:     document.getElementById('ctMobile').value,
+    is_primary: document.getElementById('ctPrimary').checked,
+    notes:      document.getElementById('ctNotes').value,
+  };
+  const res = await fetch('/api/contacts/save', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if ((await res.json()).ok) { modal.hide(); location.reload(); }
+}
+
+async function deleteContact(id, rowId) {
+  if (!confirm('Remove this contact?')) return;
+  const res = await fetch('/api/contacts/delete', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({id})
+  });
+  if ((await res.json()).ok) {
+    document.getElementById(rowId)?.remove();
+  }
+}
+{% endif %}
+</script>
+{% endblock %}

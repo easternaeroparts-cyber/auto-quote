@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Vendors{% endblock %}
+{% block page_title %}Vendors{% endblock %}
+
+{% block topbar_actions %}
+<form class="d-flex gap-2" method="get">
+  <input name="q" class="form-control form-control-sm" placeholder="Search name, email, phone…"
+    value="{{ q }}" style="width:220px;">
+  <button class="btn btn-sm btn-outline-secondary">Search</button>
+</form>
+<a href="{{ url_for('vendor_new') }}" class="btn btn-navy btn-sm">
+  <i class="bi bi-building-add"></i> New Vendor
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Phone</th>
+          <th>Email</th>
+          <th>Terms</th>
+          <th>Account #</th>
+          <th class="text-end">Credit Limit</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in vendors %}
+        <tr>
+          <td>
+            <a href="{{ url_for('vendor_view', vid=v.id) }}" class="fw-semibold text-decoration-none">{{ v.name }}</a>
+          </td>
+          <td>{{ v.phone or '—' }}</td>
+          <td>{{ v.email or '—' }}</td>
+          <td>{{ v.terms or '—' }}</td>
+          <td>{{ v.account_number or '—' }}</td>
+          <td class="text-end">${{ '%.2f'|format(v.credit_limit or 0) }}</td>
+          <td>
+            <span class="badge rounded-pill {% if v.status == 'Active' %}bg-success{% else %}bg-secondary{% endif %}">
+              {{ v.status or 'Active' }}
+            </span>
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('vendor_view', vid=v.id) }}" class="btn btn-sm btn-outline-primary me-1">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <form method="post" action="{{ url_for('vendor_delete', vid=v.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete {{ v.name }}?')">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="text-center text-muted py-5">
+            <i class="bi bi-building display-6 d-block mb-2 opacity-25"></i>
+            No vendors yet. <a href="{{ url_for('vendor_new') }}">Create one.</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

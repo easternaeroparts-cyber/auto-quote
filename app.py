@@ -211,13 +211,95 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS vendors (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            name       TEXT NOT NULL,
-            contact    TEXT,
-            email      TEXT,
-            phone      TEXT,
-            address    TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            name            TEXT NOT NULL,
+            phone           TEXT,
+            fax             TEXT,
+            email           TEXT,
+            website         TEXT,
+            payment_method  TEXT DEFAULT 'Check',
+            terms           TEXT DEFAULT '30 days',
+            credit_limit    REAL DEFAULT 0,
+            balance         REAL DEFAULT 0,
+            account_number  TEXT,
+            min_po          REAL DEFAULT 0,
+            tax_id          TEXT,
+            tax_percent     REAL DEFAULT 0,
+            gl_account      TEXT DEFAULT '1200 | Inventory - rotables',
+            status          TEXT DEFAULT 'Active',
+            currency        TEXT DEFAULT 'USD',
+            tags            TEXT,
+            notes           TEXT,
+            billing_name    TEXT,
+            billing_address TEXT,
+            billing_city    TEXT,
+            billing_state   TEXT,
+            billing_zip     TEXT,
+            billing_country TEXT DEFAULT 'USA',
+            shipping_name   TEXT,
+            shipping_address TEXT,
+            shipping_city   TEXT,
+            shipping_state  TEXT,
+            shipping_zip    TEXT,
+            shipping_country TEXT DEFAULT 'USA',
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS customers (
+            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                    TEXT NOT NULL,
+            phone                   TEXT,
+            fax                     TEXT,
+            email                   TEXT,
+            payment_method          TEXT DEFAULT 'Check',
+            payment_terms           TEXT DEFAULT 'COD',
+            credit_limit            REAL DEFAULT 0,
+            balance                 REAL DEFAULT 0,
+            hourly_rate             REAL DEFAULT 100,
+            tax_id                  TEXT,
+            tax_percent             REAL DEFAULT 0,
+            vat_number              TEXT,
+            date_format             TEXT DEFAULT 'mm-yyyy',
+            sales_person            TEXT,
+            purchasing_person       TEXT,
+            customer_service_rep    TEXT,
+            shipping_service        TEXT,
+            status                  TEXT DEFAULT 'Active',
+            required_part_categories TEXT,
+            currency                TEXT DEFAULT 'USD',
+            tags                    TEXT,
+            statement_notes         TEXT,
+            invoice_notes           TEXT,
+            notes                   TEXT,
+            related_vendor_id       INTEGER,
+            billing_name            TEXT,
+            billing_address         TEXT,
+            billing_city            TEXT,
+            billing_state           TEXT,
+            billing_zip             TEXT,
+            billing_country         TEXT DEFAULT 'USA',
+            shipping_name           TEXT,
+            shipping_address        TEXT,
+            shipping_city           TEXT,
+            shipping_state          TEXT,
+            shipping_zip            TEXT,
+            shipping_country        TEXT DEFAULT 'USA',
+            created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS contacts (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            entity_type TEXT NOT NULL,
+            entity_id   INTEGER NOT NULL,
+            first_name  TEXT,
+            last_name   TEXT,
+            title       TEXT,
+            email       TEXT,
+            phone       TEXT,
+            mobile      TEXT,
+            is_primary  INTEGER DEFAULT 0,
+            notes       TEXT,
+            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS purchase_orders (
@@ -436,6 +518,37 @@ def init_db():
         "ALTER TABLE quote_attachments ADD COLUMN serial_number TEXT",
         "ALTER TABLE quote_attachments ADD COLUMN verified INTEGER DEFAULT 0",
     ]
+    # ERP vendor/customer migrations — extend existing vendors table if needed
+    erp_migrations = [
+        "ALTER TABLE vendors ADD COLUMN fax TEXT",
+        "ALTER TABLE vendors ADD COLUMN website TEXT",
+        "ALTER TABLE vendors ADD COLUMN payment_method TEXT DEFAULT 'Check'",
+        "ALTER TABLE vendors ADD COLUMN terms TEXT DEFAULT '30 days'",
+        "ALTER TABLE vendors ADD COLUMN credit_limit REAL DEFAULT 0",
+        "ALTER TABLE vendors ADD COLUMN balance REAL DEFAULT 0",
+        "ALTER TABLE vendors ADD COLUMN account_number TEXT",
+        "ALTER TABLE vendors ADD COLUMN min_po REAL DEFAULT 0",
+        "ALTER TABLE vendors ADD COLUMN tax_id TEXT",
+        "ALTER TABLE vendors ADD COLUMN tax_percent REAL DEFAULT 0",
+        "ALTER TABLE vendors ADD COLUMN gl_account TEXT DEFAULT '1200 | Inventory - rotables'",
+        "ALTER TABLE vendors ADD COLUMN status TEXT DEFAULT 'Active'",
+        "ALTER TABLE vendors ADD COLUMN currency TEXT DEFAULT 'USD'",
+        "ALTER TABLE vendors ADD COLUMN tags TEXT",
+        "ALTER TABLE vendors ADD COLUMN billing_name TEXT",
+        "ALTER TABLE vendors ADD COLUMN billing_address TEXT",
+        "ALTER TABLE vendors ADD COLUMN billing_city TEXT",
+        "ALTER TABLE vendors ADD COLUMN billing_state TEXT",
+        "ALTER TABLE vendors ADD COLUMN billing_zip TEXT",
+        "ALTER TABLE vendors ADD COLUMN billing_country TEXT DEFAULT 'USA'",
+        "ALTER TABLE vendors ADD COLUMN shipping_name TEXT",
+        "ALTER TABLE vendors ADD COLUMN shipping_address TEXT",
+        "ALTER TABLE vendors ADD COLUMN shipping_city TEXT",
+        "ALTER TABLE vendors ADD COLUMN shipping_state TEXT",
+        "ALTER TABLE vendors ADD COLUMN shipping_zip TEXT",
+        "ALTER TABLE vendors ADD COLUMN shipping_country TEXT DEFAULT 'USA'",
+    ]
+    migrations = migrations + erp_migrations
+
     for sql in migrations:
         try:
             conn.execute(sql)
@@ -2795,6 +2908,358 @@ def settings_page():
         flash('Settings saved.', 'success')
         return redirect(url_for('settings_page'))
     return render_template('settings.html', s=get_settings())
+
+
+# ─── Customers ───────────────────────────────────────────────────────────────
+
+@app.route('/customers')
+@login_required
+def customer_list():
+    conn = get_db()
+    q    = request.args.get('q','').strip()
+    if q:
+        customers = conn.execute(
+            "SELECT * FROM customers WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? ORDER BY name",
+            (f'%{q}%', f'%{q}%', f'%{q}%')
+        ).fetchall()
+    else:
+        customers = conn.execute('SELECT * FROM customers ORDER BY name').fetchall()
+    conn.close()
+    return render_template('customer_list.html', customers=customers, q=q)
+
+
+@app.route('/customers/new', methods=['GET', 'POST'])
+@login_required
+def customer_new():
+    if request.method == 'POST':
+        conn = get_db()
+        cur = conn.execute('''
+            INSERT INTO customers
+              (name, phone, fax, email, payment_method, payment_terms, credit_limit,
+               hourly_rate, tax_id, tax_percent, vat_number, date_format,
+               sales_person, purchasing_person, customer_service_rep, shipping_service,
+               status, required_part_categories, currency, tags,
+               statement_notes, invoice_notes, notes, related_vendor_id,
+               billing_name, billing_address, billing_city, billing_state, billing_zip, billing_country,
+               shipping_name, shipping_address, shipping_city, shipping_state, shipping_zip, shipping_country)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ''', (
+            request.form.get('name',''),
+            request.form.get('phone',''),
+            request.form.get('fax',''),
+            request.form.get('email',''),
+            request.form.get('payment_method','Check'),
+            request.form.get('payment_terms','COD'),
+            float(request.form.get('credit_limit',0) or 0),
+            float(request.form.get('hourly_rate',100) or 100),
+            request.form.get('tax_id',''),
+            float(request.form.get('tax_percent',0) or 0),
+            request.form.get('vat_number',''),
+            request.form.get('date_format','mm-yyyy'),
+            request.form.get('sales_person',''),
+            request.form.get('purchasing_person',''),
+            request.form.get('customer_service_rep',''),
+            request.form.get('shipping_service',''),
+            request.form.get('status','Active'),
+            request.form.get('required_part_categories',''),
+            request.form.get('currency','USD'),
+            request.form.get('tags',''),
+            request.form.get('statement_notes',''),
+            request.form.get('invoice_notes',''),
+            request.form.get('notes',''),
+            request.form.get('related_vendor_id') or None,
+            request.form.get('billing_name',''),
+            request.form.get('billing_address',''),
+            request.form.get('billing_city',''),
+            request.form.get('billing_state',''),
+            request.form.get('billing_zip',''),
+            request.form.get('billing_country','USA'),
+            request.form.get('shipping_name',''),
+            request.form.get('shipping_address',''),
+            request.form.get('shipping_city',''),
+            request.form.get('shipping_state',''),
+            request.form.get('shipping_zip',''),
+            request.form.get('shipping_country','USA'),
+        ))
+        cid = cur.lastrowid
+        conn.commit()
+        conn.close()
+        flash(f'Customer created.', 'success')
+        return redirect(url_for('customer_view', cid=cid))
+    conn = get_db()
+    vendors = conn.execute('SELECT id, name FROM vendors ORDER BY name').fetchall()
+    conn.close()
+    return render_template('customer_form.html', c=None, vendors=vendors, contacts=[])
+
+
+@app.route('/customers/<int:cid>')
+@login_required
+def customer_view(cid):
+    conn     = get_db()
+    c        = conn.execute('SELECT * FROM customers WHERE id=?', (cid,)).fetchone()
+    contacts = conn.execute("SELECT * FROM contacts WHERE entity_type='customer' AND entity_id=? ORDER BY is_primary DESC", (cid,)).fetchall()
+    vendors  = conn.execute('SELECT id, name FROM vendors ORDER BY name').fetchall()
+    conn.close()
+    if not c:
+        flash('Customer not found.', 'error')
+        return redirect(url_for('customer_list'))
+    return render_template('customer_form.html', c=c, vendors=vendors, contacts=contacts)
+
+
+@app.route('/customers/<int:cid>/save', methods=['POST'])
+@login_required
+def customer_save(cid):
+    conn = get_db()
+    conn.execute('''
+        UPDATE customers SET
+          name=?, phone=?, fax=?, email=?, payment_method=?, payment_terms=?, credit_limit=?,
+          hourly_rate=?, tax_id=?, tax_percent=?, vat_number=?, date_format=?,
+          sales_person=?, purchasing_person=?, customer_service_rep=?, shipping_service=?,
+          status=?, required_part_categories=?, currency=?, tags=?,
+          statement_notes=?, invoice_notes=?, notes=?, related_vendor_id=?,
+          billing_name=?, billing_address=?, billing_city=?, billing_state=?, billing_zip=?, billing_country=?,
+          shipping_name=?, shipping_address=?, shipping_city=?, shipping_state=?, shipping_zip=?, shipping_country=?
+        WHERE id=?
+    ''', (
+        request.form.get('name',''),
+        request.form.get('phone',''),
+        request.form.get('fax',''),
+        request.form.get('email',''),
+        request.form.get('payment_method','Check'),
+        request.form.get('payment_terms','COD'),
+        float(request.form.get('credit_limit',0) or 0),
+        float(request.form.get('hourly_rate',100) or 100),
+        request.form.get('tax_id',''),
+        float(request.form.get('tax_percent',0) or 0),
+        request.form.get('vat_number',''),
+        request.form.get('date_format','mm-yyyy'),
+        request.form.get('sales_person',''),
+        request.form.get('purchasing_person',''),
+        request.form.get('customer_service_rep',''),
+        request.form.get('shipping_service',''),
+        request.form.get('status','Active'),
+        request.form.get('required_part_categories',''),
+        request.form.get('currency','USD'),
+        request.form.get('tags',''),
+        request.form.get('statement_notes',''),
+        request.form.get('invoice_notes',''),
+        request.form.get('notes',''),
+        request.form.get('related_vendor_id') or None,
+        request.form.get('billing_name',''),
+        request.form.get('billing_address',''),
+        request.form.get('billing_city',''),
+        request.form.get('billing_state',''),
+        request.form.get('billing_zip',''),
+        request.form.get('billing_country','USA'),
+        request.form.get('shipping_name',''),
+        request.form.get('shipping_address',''),
+        request.form.get('shipping_city',''),
+        request.form.get('shipping_state',''),
+        request.form.get('shipping_zip',''),
+        request.form.get('shipping_country','USA'),
+        cid
+    ))
+    conn.commit()
+    conn.close()
+    flash('Customer saved.', 'success')
+    return redirect(url_for('customer_view', cid=cid))
+
+
+@app.route('/customers/<int:cid>/delete', methods=['POST'])
+@login_required
+def customer_delete(cid):
+    conn = get_db()
+    conn.execute("DELETE FROM contacts WHERE entity_type='customer' AND entity_id=?", (cid,))
+    conn.execute('DELETE FROM customers WHERE id=?', (cid,))
+    conn.commit()
+    conn.close()
+    flash('Customer deleted.', 'success')
+    return redirect(url_for('customer_list'))
+
+
+# ─── Vendors ──────────────────────────────────────────────────────────────────
+
+@app.route('/vendors')
+@login_required
+def vendor_list():
+    conn = get_db()
+    q    = request.args.get('q','').strip()
+    if q:
+        vendors = conn.execute(
+            "SELECT * FROM vendors WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? ORDER BY name",
+            (f'%{q}%', f'%{q}%', f'%{q}%')
+        ).fetchall()
+    else:
+        vendors = conn.execute('SELECT * FROM vendors ORDER BY name').fetchall()
+    conn.close()
+    return render_template('vendor_list.html', vendors=vendors, q=q)
+
+
+@app.route('/vendors/new', methods=['GET', 'POST'])
+@login_required
+def vendor_new():
+    if request.method == 'POST':
+        conn = get_db()
+        cur = conn.execute('''
+            INSERT INTO vendors
+              (name, phone, fax, email, website, payment_method, terms, credit_limit,
+               account_number, min_po, tax_id, tax_percent, gl_account, status, currency, tags, notes,
+               billing_name, billing_address, billing_city, billing_state, billing_zip, billing_country,
+               shipping_name, shipping_address, shipping_city, shipping_state, shipping_zip, shipping_country)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ''', (
+            request.form.get('name',''),
+            request.form.get('phone',''),
+            request.form.get('fax',''),
+            request.form.get('email',''),
+            request.form.get('website',''),
+            request.form.get('payment_method','Check'),
+            request.form.get('terms','30 days'),
+            float(request.form.get('credit_limit',0) or 0),
+            request.form.get('account_number',''),
+            float(request.form.get('min_po',0) or 0),
+            request.form.get('tax_id',''),
+            float(request.form.get('tax_percent',0) or 0),
+            request.form.get('gl_account','1200 | Inventory - rotables'),
+            request.form.get('status','Active'),
+            request.form.get('currency','USD'),
+            request.form.get('tags',''),
+            request.form.get('notes',''),
+            request.form.get('billing_name',''),
+            request.form.get('billing_address',''),
+            request.form.get('billing_city',''),
+            request.form.get('billing_state',''),
+            request.form.get('billing_zip',''),
+            request.form.get('billing_country','USA'),
+            request.form.get('shipping_name',''),
+            request.form.get('shipping_address',''),
+            request.form.get('shipping_city',''),
+            request.form.get('shipping_state',''),
+            request.form.get('shipping_zip',''),
+            request.form.get('shipping_country','USA'),
+        ))
+        vid = cur.lastrowid
+        conn.commit()
+        conn.close()
+        flash('Vendor created.', 'success')
+        return redirect(url_for('vendor_view', vid=vid))
+    return render_template('vendor_form.html', v=None, contacts=[])
+
+
+@app.route('/vendors/<int:vid>')
+@login_required
+def vendor_view(vid):
+    conn     = get_db()
+    v        = conn.execute('SELECT * FROM vendors WHERE id=?', (vid,)).fetchone()
+    contacts = conn.execute("SELECT * FROM contacts WHERE entity_type='vendor' AND entity_id=? ORDER BY is_primary DESC", (vid,)).fetchall()
+    conn.close()
+    if not v:
+        flash('Vendor not found.', 'error')
+        return redirect(url_for('vendor_list'))
+    return render_template('vendor_form.html', v=v, contacts=contacts)
+
+
+@app.route('/vendors/<int:vid>/save', methods=['POST'])
+@login_required
+def vendor_save(vid):
+    conn = get_db()
+    conn.execute('''
+        UPDATE vendors SET
+          name=?, phone=?, fax=?, email=?, website=?, payment_method=?, terms=?, credit_limit=?,
+          account_number=?, min_po=?, tax_id=?, tax_percent=?, gl_account=?, status=?, currency=?, tags=?, notes=?,
+          billing_name=?, billing_address=?, billing_city=?, billing_state=?, billing_zip=?, billing_country=?,
+          shipping_name=?, shipping_address=?, shipping_city=?, shipping_state=?, shipping_zip=?, shipping_country=?
+        WHERE id=?
+    ''', (
+        request.form.get('name',''),
+        request.form.get('phone',''),
+        request.form.get('fax',''),
+        request.form.get('email',''),
+        request.form.get('website',''),
+        request.form.get('payment_method','Check'),
+        request.form.get('terms','30 days'),
+        float(request.form.get('credit_limit',0) or 0),
+        request.form.get('account_number',''),
+        float(request.form.get('min_po',0) or 0),
+        request.form.get('tax_id',''),
+        float(request.form.get('tax_percent',0) or 0),
+        request.form.get('gl_account','1200 | Inventory - rotables'),
+        request.form.get('status','Active'),
+        request.form.get('currency','USD'),
+        request.form.get('tags',''),
+        request.form.get('notes',''),
+        request.form.get('billing_name',''),
+        request.form.get('billing_address',''),
+        request.form.get('billing_city',''),
+        request.form.get('billing_state',''),
+        request.form.get('billing_zip',''),
+        request.form.get('billing_country','USA'),
+        request.form.get('shipping_name',''),
+        request.form.get('shipping_address',''),
+        request.form.get('shipping_city',''),
+        request.form.get('shipping_state',''),
+        request.form.get('shipping_zip',''),
+        request.form.get('shipping_country','USA'),
+        vid
+    ))
+    conn.commit()
+    conn.close()
+    flash('Vendor saved.', 'success')
+    return redirect(url_for('vendor_view', vid=vid))
+
+
+@app.route('/vendors/<int:vid>/delete', methods=['POST'])
+@login_required
+def vendor_delete(vid):
+    conn = get_db()
+    conn.execute("DELETE FROM contacts WHERE entity_type='vendor' AND entity_id=?", (vid,))
+    conn.execute('DELETE FROM vendors WHERE id=?', (vid,))
+    conn.commit()
+    conn.close()
+    flash('Vendor deleted.', 'success')
+    return redirect(url_for('vendor_list'))
+
+
+# ─── Contacts API (shared by customers and vendors) ───────────────────────────
+
+@app.route('/api/contacts/save', methods=['POST'])
+@login_required
+def api_contact_save():
+    data = request.get_json(force=True)
+    entity_type = data.get('entity_type')
+    entity_id   = data.get('entity_id')
+    contact_id  = data.get('id')
+    conn = get_db()
+    if contact_id:
+        conn.execute('''
+            UPDATE contacts SET first_name=?, last_name=?, title=?, email=?, phone=?, mobile=?, is_primary=?, notes=?
+            WHERE id=? AND entity_type=? AND entity_id=?
+        ''', (data.get('first_name',''), data.get('last_name',''), data.get('title',''),
+              data.get('email',''), data.get('phone',''), data.get('mobile',''),
+              1 if data.get('is_primary') else 0, data.get('notes',''),
+              contact_id, entity_type, entity_id))
+    else:
+        cur = conn.execute('''
+            INSERT INTO contacts (entity_type, entity_id, first_name, last_name, title, email, phone, mobile, is_primary, notes)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
+        ''', (entity_type, entity_id, data.get('first_name',''), data.get('last_name',''),
+              data.get('title',''), data.get('email',''), data.get('phone',''),
+              data.get('mobile',''), 1 if data.get('is_primary') else 0, data.get('notes','')))
+        contact_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'id': contact_id})
+
+
+@app.route('/api/contacts/delete', methods=['POST'])
+@login_required
+def api_contact_delete():
+    data = request.get_json(force=True)
+    conn = get_db()
+    conn.execute('DELETE FROM contacts WHERE id=?', (data.get('id'),))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
 
 
 # ─── ERP: Helpers ────────────────────────────────────────────────────────────

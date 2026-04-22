@@ -72,6 +72,14 @@
       <i class="bi bi-box-seam"></i> Parts
     </a>
 
+    <div class="sidebar-section">Contacts</div>
+    <a href="{{ url_for('customer_list') }}" class="nav-link {% if 'customer' in request.endpoint %}active{% endif %}">
+      <i class="bi bi-people"></i> Customers
+    </a>
+    <a href="{{ url_for('vendor_list') }}" class="nav-link {% if 'vendor' in request.endpoint %}active{% endif %}">
+      <i class="bi bi-building"></i> Vendors
+    </a>
+
     <div class="sidebar-section">Documents</div>
     <a href="{{ url_for('po_list') }}" class="nav-link {% if 'po_' in request.endpoint %}active{% endif %}">
       <i class="bi bi-cart3"></i> Purchase Orders
