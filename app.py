@@ -1163,62 +1163,64 @@ def send_quote(quote_id):
         flash('SMTP credentials are not configured. Go to Settings and enter your SMTP username and password.', 'error')
         return redirect(url_for('quote_view', quote_id=quote_id))
 
-    msg = MIMEMultipart('alternative')
-    msg['Subject'] = f"Quotation {quote['quote_number']} — {settings['company_name']}"
-    msg['From']    = smtp_user
-    msg['To']      = to_email
-    msg.attach(MIMEText(html, 'html'))
+    # Mark as sending immediately so the page doesn't hang
+    conn2 = get_db()
+    conn2.execute("UPDATE quotes SET status='sending' WHERE id=?", (quote_id,))
+    conn2.commit()
+    conn2.close()
 
-    sent = False
-    last_err = None
+    import threading
 
-    # Try STARTTLS first (port 587), then SSL (port 465), then plain (port 25)
-    attempts = [
-        ('starttls', smtp_host, smtp_port),
-        ('ssl',      smtp_host, 465),
-        ('starttls', smtp_host, 587),
-    ]
-    # Deduplicate while preserving order
-    seen_a = set()
-    unique_attempts = []
-    for a in attempts:
-        key = (a[0], a[2])
-        if key not in seen_a:
-            seen_a.add(key)
-            unique_attempts.append(a)
+    def do_send():
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = f"Quotation {quote['quote_number']} — {settings['company_name']}"
+        msg['From']    = smtp_user
+        msg['To']      = to_email
+        msg.attach(MIMEText(html, 'html'))
 
-    for mode, host, port in unique_attempts:
-        try:
-            if mode == 'ssl':
-                with smtplib.SMTP_SSL(host, port, timeout=20) as srv:
-                    srv.login(smtp_user, smtp_pass)
-                    srv.send_message(msg)
-            else:
-                with smtplib.SMTP(host, port, timeout=20) as srv:
-                    srv.ehlo()
-                    srv.starttls()
-                    srv.ehlo()
-                    srv.login(smtp_user, smtp_pass)
-                    srv.send_message(msg)
-            sent = True
-            break
-        except Exception as e:
-            last_err = e
-            continue
+        sent = False
+        last_err = None
 
-    if sent:
-        conn = get_db()
-        conn.execute("UPDATE quotes SET status='sent', sent_at=CURRENT_TIMESTAMP WHERE id=?", (quote_id,))
-        conn.commit()
-        conn.close()
-        flash(f'Quote sent to {to_email}!', 'success')
-    else:
-        flash(
-            f'Email failed — could not reach SMTP server. '
-            f'Check Settings → SMTP host/port/credentials. '
-            f'Last error: {last_err}',
-            'error')
+        # Try STARTTLS (configured port), then SSL port 465
+        attempts = []
+        if smtp_port == 465:
+            attempts = [('ssl', smtp_host, 465), ('starttls', smtp_host, 587)]
+        else:
+            attempts = [('starttls', smtp_host, smtp_port), ('ssl', smtp_host, 465)]
 
+        for mode, host, port in attempts:
+            try:
+                if mode == 'ssl':
+                    with smtplib.SMTP_SSL(host, port, timeout=15) as srv:
+                        srv.login(smtp_user, smtp_pass)
+                        srv.send_message(msg)
+                else:
+                    with smtplib.SMTP(host, port, timeout=15) as srv:
+                        srv.ehlo()
+                        srv.starttls()
+                        srv.ehlo()
+                        srv.login(smtp_user, smtp_pass)
+                        srv.send_message(msg)
+                sent = True
+                break
+            except Exception as e:
+                last_err = e
+                continue
+
+        db = get_db()
+        if sent:
+            db.execute("UPDATE quotes SET status='sent', sent_at=CURRENT_TIMESTAMP WHERE id=?", (quote_id,))
+            print(f'[Email] Quote {quote["quote_number"]} sent to {to_email}')
+        else:
+            db.execute("UPDATE quotes SET status='draft' WHERE id=?", (quote_id,))
+            print(f'[Email] FAILED to send {quote["quote_number"]}: {last_err}')
+        db.commit()
+        db.close()
+
+    thread = threading.Thread(target=do_send, daemon=True)
+    thread.start()
+
+    flash(f'Sending quote to {to_email}… Refresh in a few seconds to confirm it was sent.', 'success')
     return redirect(url_for('quote_view', quote_id=quote_id))
 
 
