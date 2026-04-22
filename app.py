@@ -540,7 +540,7 @@ def parse_rfq_text(text):
     #          "Condition: OH  Quantity: 1  Currency: dollars"
     # Search the entire text as one block for all Part No occurrences
     BLOCK_PN   = re.compile(r'Part\s*No[:\s]+([A-Z0-9][A-Z0-9\-/\.]{2,24})', re.I)
-    BLOCK_DESC = re.compile(r'Description[:\s]+([A-Z0-9][^\n\r:]{2,60}?)(?:\s{2,}|\t|$)', re.I)
+    BLOCK_DESC = re.compile(r'Description[:\s]+([A-Z0-9][^\n\r:]{2,60}?)(?:\s{2,}|\t|\s*(?:Quantity|Condition|Part|Alt)\b|$)', re.I)
     BLOCK_QTY  = re.compile(r'Quantity[:\s]+(\d+)', re.I)
     BLOCK_COND = re.compile(r'Condition[:\s]+([A-Z]{1,4})', re.I)
 
@@ -1328,13 +1328,15 @@ def build_quote_email(quote, rfq, items, settings):
         unit_p   = f"${it['unit_price']:,.2f}"
         line_t   = f"${it['extended_price']:,.2f}"
 
+        desc_short = (it['description'] or '—')[:60]
         item_blocks += f"""
 <table width="100%" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px;font-size:14px">
   <thead>
     <tr style="background:#f9fafb">
       <th style="{thd}">Part</th>
-      <th style="{thd}">CC</th>
+      <th style="{thd}">Description</th>
       <th style="{thd}">Qty</th>
+      <th style="{thd}">CC</th>
       <th style="{thd}">Lead Time</th>
       <th style="{thd}text-align:right">Unit Price ({currency})</th>
       <th style="{thd}text-align:right">Line Total ({currency})</th>
@@ -1343,8 +1345,9 @@ def build_quote_email(quote, rfq, items, settings):
   <tbody>
     <tr>
       <td style="{td}font-weight:600">{it['part_number']}</td>
-      <td style="{td}">{it['condition'] or 'SV'}</td>
+      <td style="{td};color:#6b7280">{desc_short}</td>
       <td style="{td}">{qty_str}</td>
+      <td style="{td}">{it['condition'] or 'SV'}</td>
       <td style="{td}">{lead}</td>
       <td style="{td}text-align:right">{unit_p}</td>
       <td style="{td}text-align:right;font-weight:600">{line_t}</td>
@@ -1357,7 +1360,7 @@ def build_quote_email(quote, rfq, items, settings):
     <tr>
       <td colspan="6" style="padding:0 12px 14px">
         <table cellspacing="0" style="font-size:13px;color:#374151">
-          <tr><td style="padding:2px 16px 2px 0;width:120px;color:#6b7280">Description:</td><td>{it['description'] or '—'}</td></tr>
+          <tr><td style="padding:2px 16px 2px 0;width:120px;color:#6b7280">Condition:</td><td>{it['condition'] or 'SV'}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Warranty:</td><td>{warranty}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Trace To:</td><td>{trace}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tag Type:</td><td>{tag_type}</td></tr>
@@ -1372,12 +1375,28 @@ def build_quote_email(quote, rfq, items, settings):
     return f"""<!DOCTYPE html>
 <html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111827;max-width:760px;margin:32px auto;padding:0 16px;background:#fff">
 
-<h1 style="font-size:22px;font-weight:700;margin-bottom:4px">
-  Quote from <span style="background:#fef08a;padding:0 4px">{settings['company_name']}</span> for RFQ # {rfq['rfq_number']}
+<!-- Logo header -->
+<table width="100%" cellspacing="0" style="margin-bottom:20px">
+  <tr>
+    <td>
+      <img src="https://www.eastern-aero.com/wp-content/uploads/2021/03/Eastern-Aero-Logo.png"
+           alt="Eastern Aero" height="60"
+           onerror="this.style.display='none'"
+           style="height:60px;max-width:220px;object-fit:contain">
+    </td>
+    <td style="text-align:right;vertical-align:middle">
+      <span style="font-size:11px;color:#6b7280">
+        Date: {quote['created_at'][:10]} &nbsp;|&nbsp; Valid: {quote['valid_days']} days &nbsp;|&nbsp; {currency}
+      </span>
+    </td>
+  </tr>
+</table>
+
+<h1 style="font-size:20px;font-weight:700;margin-bottom:4px">
+  Quote from <span style="background:#fef08a;padding:0 4px">Eastern Aero Pty Ltd</span> for RFQ # {rfq['rfq_number']}
 </h1>
 <p style="color:#6b7280;font-size:13px;margin-top:0">
-  Date: {quote['created_at'][:10]} &nbsp;·&nbsp; Valid: {quote['valid_days']} days
-  &nbsp;·&nbsp; To: {rfq['customer_name'] or ''}{(' — ' + rfq['company']) if rfq['company'] else ''}
+  To: {rfq['customer_name'] or ''}{(' — ' + rfq['company']) if rfq['company'] else ''}
 </p>
 
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
@@ -1396,18 +1415,34 @@ def build_quote_email(quote, rfq, items, settings):
 
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
 
+<!-- Signature -->
 <table width="100%" cellspacing="0" style="font-size:13px">
   <tr>
-    <td style="vertical-align:top;width:50%">
-      <p style="font-weight:700;margin-bottom:6px">Sent By</p>
-      <p style="margin:0;line-height:1.8">
-        {settings.get('company_name','')}<br>
-        {settings.get('company_address','')}<br>
-        Phone: {settings.get('company_phone','')}<br>
-        <a href="mailto:{settings.get('company_email','')}" style="color:#2563eb">{settings.get('company_email','')}</a>
-      </p>
+    <td style="vertical-align:top;width:55%">
+      <div style="border-top:3px solid #1a3c6e;padding-top:10px">
+        <p style="margin:0 0 2px;font-weight:700;font-size:15px">James Cook</p>
+        <p style="margin:0 0 10px;color:#555;font-size:13px">Sales Manager</p>
+        <img src="https://www.eastern-aero.com/wp-content/uploads/2021/03/Eastern-Aero-Logo.png"
+             alt="Eastern Aero" height="40"
+             onerror="this.style.display='none'"
+             style="height:40px;max-width:160px;object-fit:contain;margin-bottom:10px;display:block">
+        <p style="margin:4px 0;font-size:13px">
+          <strong style="color:#1a3c6e">Office:</strong>
+          <a href="tel:+13213419779" style="color:#1a3c6e;text-decoration:none">+1 321-341-9779</a>
+        </p>
+        <p style="margin:4px 0;font-size:13px">
+          <strong style="color:#1a3c6e">Cell / WhatsApp:</strong>
+          <a href="tel:+17722032109" style="color:#1a3c6e;text-decoration:none">+1 772-203-2109</a>
+        </p>
+        <p style="margin:4px 0;font-size:12px;color:#555">Port St. Lucie, FL 34987</p>
+        <p style="margin:4px 0;font-size:12px;color:#555">Morayfield, QLD 4506</p>
+        <p style="margin:4px 0;font-size:12px;color:#555">Kathmandu, Nepal, 44600</p>
+        <p style="margin:6px 0 0;font-size:13px">
+          <a href="http://www.eastern-aero.com" style="color:#1a3c6e">www.eastern-aero.com</a>
+        </p>
+      </div>
     </td>
-    <td style="vertical-align:top;width:50%">
+    <td style="vertical-align:top;width:45%;padding-left:20px">
       <p style="font-weight:700;margin-bottom:6px">Attachments</p>
       <p style="margin:0;color:#6b7280">No attachments</p>
     </td>

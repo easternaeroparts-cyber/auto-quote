@@ -20,7 +20,7 @@
 <style>
 @media print {
   /* Hide chrome */
-  .sidebar,.topbar,.flash-wrap,.no-print { display:none !important; }
+  .sidebar,.topbar,.flash-wrap,.no-print,footer { display:none !important; }
   .main-wrap { margin-left:0 !important; }
   .content { padding:0 !important; }
 
@@ -114,7 +114,7 @@
     <table class="table table-sm mb-0">
       <thead class="table-light">
         <tr>
-          <th>Part</th><th>CC</th><th>Qty</th><th>Lead Time</th>
+          <th>Part</th><th>Description</th><th>Qty</th><th>CC</th><th>Lead Time</th>
           <th class="text-end">Unit Price ({{ quote.currency or 'USD' }})</th>
           <th class="text-end">Line Total ({{ quote.currency or 'USD' }})</th>
           <th class="no-print"></th>
@@ -123,8 +123,9 @@
       <tbody>
         <tr>
           <td class="fw-bold"><code>{{ it.part_number }}</code></td>
-          <td><span class="badge text-bg-secondary">{{ it.condition or 'SV' }}</span></td>
+          <td class="text-muted small">{{ it.description or '—' }}</td>
           <td id="qty-{{ it.id }}">{{ it.quantity_requested }} EA</td>
+          <td><span class="badge text-bg-secondary">{{ it.condition or 'SV' }}</span></td>
           <td id="lead-{{ it.id }}">{{ it.lead_time or 'Stock' }}</td>
           <td class="text-end" id="price-{{ it.id }}">${{ '%.2f'|format(it.unit_price) }}</td>
           <td class="text-end fw-bold" id="ext-{{ it.id }}">${{ '%.2f'|format(it.extended_price) }}</td>
@@ -144,7 +145,7 @@
           </td>
         </tr>
         <tr>
-          <td colspan="7" class="text-end text-muted small">Price Type: <span id="ptype-{{ it.id }}">{{ it.price_type or 'Outright' }}</span></td>
+          <td colspan="8" class="text-end text-muted small">Price Type: <span id="ptype-{{ it.id }}">{{ it.price_type or 'Outright' }}</span></td>
         </tr>
       </tbody>
     </table>
@@ -152,7 +153,7 @@
     <div class="px-3 pb-3 pt-1" style="background:#fafafa;font-size:.85rem">
       <div class="row">
         <div class="col-md-6">
-          <span class="text-muted">Description:</span> {{ it.description or '—' }}<br>
+          <span class="text-muted">Condition:</span> {{ it.condition or 'SV' }}<br>
           <span class="text-muted">Warranty:</span> <span id="warranty-{{ it.id }}">{{ it.warranty or '—' }}</span><br>
           <span class="text-muted">Trace To:</span> <span id="trace-{{ it.id }}">{{ it.trace_to or it.description or '—' }}</span>
         </div>
