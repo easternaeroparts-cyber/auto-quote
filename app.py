@@ -403,7 +403,56 @@ def parse_rfq_text(text):
         if items:
             return items  # Successfully parsed table — don't fall through
 
-    # ── Step 2: PartsBase / structured block format ──────────────────────────
+    # ── Step 2: Vertical / one-value-per-line table format ───────────────────
+    # Handles emails where each column header AND each value is on its own line:
+    #   S/N.          Description      Part Number    Qty    Unit
+    #   1             BRACKET-400      C6E1065-3      3      EA
+    # (each word on a separate line, columns cycling through)
+    VERTICAL_HEADERS = {
+        'S/N': 'sn', 'S/N.': 'sn', 'SNO': 'sn', 'SN': 'sn', 'NO': 'sn', 'NO.': 'sn',
+        'DESCRIPTION': 'desc', 'DESC': 'desc',
+        'PART NUMBER': 'pn', 'PART NO': 'pn', 'PARTNO': 'pn', 'PART NO.': 'pn',
+        'P/N': 'pn', 'PN': 'pn',
+        'QTY': 'qty', 'QUANTITY': 'qty',
+        'UNIT': 'unit', 'UOM': 'unit',
+        'CONDITION': 'cond', 'COND': 'cond',
+    }
+    stripped_lines = [l.strip() for l in lines if l.strip()]
+    col_order = []
+    header_end = None
+    for i, sl in enumerate(stripped_lines):
+        key = sl.upper().rstrip('.')
+        if key in VERTICAL_HEADERS:
+            col_order.append(VERTICAL_HEADERS[key])
+        else:
+            if len(col_order) >= 3 and 'pn' in col_order:
+                header_end = i
+                break
+            else:
+                col_order = []  # reset if interrupted before completing
+
+    if header_end and col_order and 'pn' in col_order:
+        data_lines = stripped_lines[header_end:]
+        num_cols = len(col_order)
+        # Group data lines into rows of num_cols
+        for row_start in range(0, len(data_lines) - num_cols + 1, num_cols):
+            row = data_lines[row_start:row_start + num_cols]
+            if len(row) < num_cols:
+                break
+            row_dict = dict(zip(col_order, row))
+            pn = row_dict.get('pn', '').upper().strip()
+            desc = row_dict.get('desc', '').strip()
+            qty = 1
+            cond = 'SV'
+            try: qty = int(re.search(r'\d+', row_dict.get('qty', '1')).group())
+            except: pass
+            cond_val = row_dict.get('cond', 'SV').strip().upper()
+            if cond_val: cond = cond_val
+            add(pn, desc, qty, cond)
+        if items:
+            return items
+
+    # ── Step 3: PartsBase / structured block format ──────────────────────────
     # Handles: "Part No: 23048-004M  Alt Part No:  Description:STARTER GENERATOR"
     #          "Condition: OH  Quantity: 1  Currency: dollars"
     # Search the entire text as one block for all Part No occurrences
