@@ -329,11 +329,46 @@ def gen_rfq_number():
             return candidate
 
 
-def gen_quote_number():
+def get_quote_prefix(quote_id, conn):
+    """
+    Determine quote number prefix based on price types of all line items:
+      QEX — all items are Exchange
+      QOR — all items are Outright
+      QTE — mixed, or any other combination
+    """
+    items = conn.execute(
+        'SELECT price_type FROM quote_items WHERE quote_id=?', (quote_id,)
+    ).fetchall()
+    types = set((it['price_type'] or 'Outright').strip() for it in items)
+    if types == {'Exchange'}:
+        return 'QEX'
+    if types == {'Outright'}:
+        return 'QOR'
+    return 'QTE'
+
+
+def gen_quote_number(prefix='QTE'):
     conn = get_db()
     n = conn.execute('SELECT COUNT(*) FROM quotes').fetchone()[0]
     conn.close()
-    return f"QTE-{datetime.now().strftime('%Y%m%d')}-{n+1:04d}"
+    return f"{prefix}-{datetime.now().strftime('%Y%m%d')}-{n+1:04d}"
+
+
+def refresh_quote_number(quote_id, conn):
+    """
+    After items are edited, recalculate and persist the correct prefix on the quote number.
+    Keeps the date+sequence suffix intact, only swaps the prefix.
+    """
+    prefix = get_quote_prefix(quote_id, conn)
+    row = conn.execute('SELECT quote_number FROM quotes WHERE id=?', (quote_id,)).fetchone()
+    if not row:
+        return
+    old = row['quote_number'] or ''
+    # Replace only the prefix (first segment before the first dash+date)
+    parts = old.split('-', 1)
+    new_number = f"{prefix}-{parts[1]}" if len(parts) == 2 else old
+    if new_number != old:
+        conn.execute('UPDATE quotes SET quote_number=? WHERE id=?', (new_number, quote_id))
 
 
 def parse_rfq_text(text):
@@ -1095,9 +1130,11 @@ def update_quote_item(quote_id):
          iid, quote_id))
     total = conn.execute('SELECT COALESCE(SUM(extended_price),0) FROM quote_items WHERE quote_id=?', (quote_id,)).fetchone()[0]
     conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (total, quote_id))
+    refresh_quote_number(quote_id, conn)
+    new_qnum = conn.execute('SELECT quote_number FROM quotes WHERE id=?', (quote_id,)).fetchone()['quote_number']
     conn.commit()
     conn.close()
-    return jsonify({'success': True, 'extended': ext, 'total': total})
+    return jsonify({'success': True, 'extended': ext, 'total': total, 'quote_number': new_qnum})
 
 
 @app.route('/quotes/<int:quote_id>/send', methods=['POST'])

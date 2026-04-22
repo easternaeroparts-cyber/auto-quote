@@ -39,7 +39,7 @@
       </div>
       <div class="col-md-6 text-md-end mt-3 mt-md-0">
         <h5 class="fw-bold mb-1">QUOTATION</h5>
-        <code class="fs-6">{{ quote.quote_number }}</code>
+        <code class="fs-6" id="quoteNumber">{{ quote.quote_number }}</code>
         <div class="text-muted small">Date: {{ quote.created_at[:10] }} &nbsp;|&nbsp; Valid: {{ quote.valid_days }} days &nbsp;|&nbsp; Currency: {{ quote.currency or 'USD' }}</div>
         <span class="badge badge-{{ quote.status }} mt-1">{{ quote.status.upper() }}</span>
       </div>
@@ -288,6 +288,11 @@ async function saveItem() {
     document.getElementById(`tagtype-${id}`).textContent  = tagType;
     document.getElementById(`taggedby-${id}`).textContent = taggedBy;
     document.getElementById('grandTotal').textContent     = data.total.toLocaleString('en-US',{minimumFractionDigits:2});
+    // Update quote number prefix live (QEX / QOR / QTE)
+    if (data.quote_number) {
+      document.getElementById('quoteNumber').textContent = data.quote_number;
+      document.title = data.quote_number;
+    }
     bootstrap.Modal.getInstance(document.getElementById('editItemModal')).hide();
   }
 }
