@@ -124,16 +124,32 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS quotes (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            quote_number   TEXT UNIQUE,
-            rfq_id         INTEGER,
-            status         TEXT DEFAULT 'draft',
-            markup_percent REAL DEFAULT 30,
-            total_amount   REAL DEFAULT 0,
-            notes          TEXT,
-            valid_days     INTEGER DEFAULT 30,
-            created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            sent_at        TIMESTAMP,
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            quote_number        TEXT UNIQUE,
+            rfq_id              INTEGER,
+            status              TEXT DEFAULT 'draft',
+            markup_percent      REAL DEFAULT 30,
+            total_amount        REAL DEFAULT 0,
+            notes               TEXT,
+            valid_days          INTEGER DEFAULT 30,
+            currency            TEXT DEFAULT 'USD',
+            exchange_loan_fee   REAL DEFAULT 0,
+            entry_date          TEXT,
+            overhaul_price_est  REAL DEFAULT 0,
+            core_price          REAL DEFAULT 0,
+            outright_amount     REAL DEFAULT 0,
+            days_core_return    INTEGER DEFAULT 30,
+            fee_billings_count  INTEGER DEFAULT 1,
+            billing_start_date  TEXT,
+            billing_interval_days INTEGER DEFAULT 30,
+            deposit_amount      REAL DEFAULT 0,
+            core_due_date       TEXT,
+            schedule_billing_date TEXT,
+            periodic_billing_amt  REAL DEFAULT 0,
+            cogs_percent        REAL DEFAULT 0,
+            cogs_amount         REAL DEFAULT 0,
+            created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            sent_at             TIMESTAMP,
             FOREIGN KEY (rfq_id) REFERENCES rfqs(id)
         );
 
@@ -213,6 +229,22 @@ def init_db():
     migrations = [
         "ALTER TABLE rfqs ADD COLUMN email_message_id TEXT",
         "CREATE TABLE IF NOT EXISTS blocked_senders (email TEXT PRIMARY KEY, reason TEXT, blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+        "ALTER TABLE quotes ADD COLUMN currency TEXT DEFAULT 'USD'",
+        "ALTER TABLE quotes ADD COLUMN exchange_loan_fee REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN entry_date TEXT",
+        "ALTER TABLE quotes ADD COLUMN overhaul_price_est REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN core_price REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN outright_amount REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN days_core_return INTEGER DEFAULT 30",
+        "ALTER TABLE quotes ADD COLUMN fee_billings_count INTEGER DEFAULT 1",
+        "ALTER TABLE quotes ADD COLUMN billing_start_date TEXT",
+        "ALTER TABLE quotes ADD COLUMN billing_interval_days INTEGER DEFAULT 30",
+        "ALTER TABLE quotes ADD COLUMN deposit_amount REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN core_due_date TEXT",
+        "ALTER TABLE quotes ADD COLUMN schedule_billing_date TEXT",
+        "ALTER TABLE quotes ADD COLUMN periodic_billing_amt REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN cogs_percent REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN cogs_amount REAL DEFAULT 0",
     ]
     for sql in migrations:
         try:
@@ -926,11 +958,49 @@ def create_quote(rfq_id):
     markup     = float(request.form.get('markup', settings.get('default_markup', 30)))
     valid_days = int(request.form.get('valid_days', settings.get('quote_valid_days', 30)))
     notes      = request.form.get('notes', '')
+    today      = datetime.now().strftime('%Y-%m-%d')
     quote_no   = gen_quote_number()
 
-    conn.execute(
-        'INSERT INTO quotes (quote_number,rfq_id,status,markup_percent,valid_days,notes) VALUES (?,?,?,?,?,?)',
-        (quote_no, rfq_id, 'draft', markup, valid_days, notes))
+    def fval(key, default=0):
+        try: return float(request.form.get(key, default) or default)
+        except: return default
+    def ival(key, default=0):
+        try: return int(request.form.get(key, default) or default)
+        except: return default
+
+    billing_interval = ival('billing_interval_days', 30)
+    billing_start    = request.form.get('billing_start_date', today)
+    fee_count        = ival('fee_billings_count', 1)
+    exch_fee         = fval('exchange_loan_fee')
+    periodic_amt     = exch_fee  # periodic billing = exchange fee per billing
+    cogs_pct         = fval('cogs_percent')
+    outright         = fval('outright_amount')
+    cogs_amt         = round(outright * cogs_pct / 100, 2) if cogs_pct else fval('cogs_amount')
+
+    conn.execute('''INSERT INTO quotes
+        (quote_number, rfq_id, status, markup_percent, valid_days, notes, currency,
+         exchange_loan_fee, entry_date, overhaul_price_est, core_price, outright_amount,
+         days_core_return, fee_billings_count, billing_start_date, billing_interval_days,
+         deposit_amount, core_due_date, schedule_billing_date, periodic_billing_amt,
+         cogs_percent, cogs_amount)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+        (quote_no, rfq_id, 'draft', markup, valid_days, notes,
+         request.form.get('currency', 'USD'),
+         exch_fee,
+         request.form.get('entry_date', today),
+         fval('overhaul_price_est'),
+         fval('core_price'),
+         outright,
+         ival('days_core_return', 30),
+         fee_count,
+         billing_start,
+         billing_interval,
+         fval('deposit_amount'),
+         request.form.get('core_due_date', ''),
+         request.form.get('schedule_billing_date', billing_start),
+         periodic_amt,
+         cogs_pct,
+         cogs_amt))
     quote_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
     total = 0
