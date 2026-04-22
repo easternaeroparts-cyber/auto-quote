@@ -282,6 +282,7 @@ def init_db():
         "ALTER TABLE rfqs ADD COLUMN customer_ref TEXT",
         "ALTER TABLE rfqs ADD COLUMN address TEXT",
         "ALTER TABLE customer_profiles ADD COLUMN address TEXT",
+        "ALTER TABLE quote_items ADD COLUMN no_quote INTEGER DEFAULT 0",
     ]
     for sql in migrations:
         try:
@@ -1203,15 +1204,17 @@ def quote_view(quote_id):
 def update_quote_item(quote_id):
     data  = request.get_json()
     iid   = data['item_id']
-    price = float(data.get('unit_price', 0))
+    no_quote = 1 if data.get('no_quote') else 0
+    # When No Quote, price and extended are forced to 0
+    price = 0.0 if no_quote else float(data.get('unit_price', 0))
     qty   = int(data.get('quantity_requested', 1))
     notes = data.get('notes', '')
-    ext   = round(price * qty, 2)
+    ext   = 0.0 if no_quote else round(price * qty, 2)
 
     conn = get_db()
     conn.execute('''UPDATE quote_items SET
         unit_price=?, quantity_requested=?, extended_price=?, notes=?,
-        lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?, condition=?
+        lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?, condition=?, no_quote=?
         WHERE id=? AND quote_id=?''',
         (price, qty, ext, notes,
          data.get('lead_time', 'Stock'),
@@ -1221,6 +1224,7 @@ def update_quote_item(quote_id):
          data.get('tag_type', ''),
          data.get('tagged_by', ''),
          data.get('condition', 'SV'),
+         no_quote,
          iid, quote_id))
     total = conn.execute('SELECT COALESCE(SUM(extended_price),0) FROM quote_items WHERE quote_id=?', (quote_id,)).fetchone()[0]
     conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (total, quote_id))
@@ -1228,7 +1232,7 @@ def update_quote_item(quote_id):
     new_qnum = conn.execute('SELECT quote_number FROM quotes WHERE id=?', (quote_id,)).fetchone()['quote_number']
     conn.commit()
     conn.close()
-    return jsonify({'success': True, 'extended': ext, 'total': total, 'quote_number': new_qnum})
+    return jsonify({'success': True, 'extended': ext, 'total': total, 'quote_number': new_qnum, 'no_quote': no_quote})
 
 
 @app.route('/quotes/<int:quote_id>/add-item', methods=['POST'])
