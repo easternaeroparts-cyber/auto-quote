@@ -283,6 +283,18 @@ def init_db():
         "ALTER TABLE rfqs ADD COLUMN address TEXT",
         "ALTER TABLE customer_profiles ADD COLUMN address TEXT",
         "ALTER TABLE quote_items ADD COLUMN no_quote INTEGER DEFAULT 0",
+        """CREATE TABLE IF NOT EXISTS quote_attachments (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            quote_id    INTEGER NOT NULL,
+            filename    TEXT NOT NULL,
+            filepath    TEXT NOT NULL,
+            mimetype    TEXT,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (quote_id) REFERENCES quotes(id)
+        )""",
+        "ALTER TABLE quote_attachments ADD COLUMN part_number TEXT",
+        "ALTER TABLE quote_attachments ADD COLUMN serial_number TEXT",
+        "ALTER TABLE quote_attachments ADD COLUMN verified INTEGER DEFAULT 0",
     ]
     for sql in migrations:
         try:
@@ -1191,12 +1203,14 @@ def quote_list():
 @login_required
 def quote_view(quote_id):
     conn     = get_db()
-    quote    = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
-    rfq      = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
-    items    = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
-    settings = get_settings()
+    quote       = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
+    rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
+    items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
+    attachments = conn.execute('SELECT * FROM quote_attachments WHERE quote_id=? ORDER BY uploaded_at', (quote_id,)).fetchall()
+    settings    = get_settings()
     conn.close()
-    return render_template('quote_view.html', quote=quote, rfq=rfq, items=items, settings=settings)
+    return render_template('quote_view.html', quote=quote, rfq=rfq, items=items,
+                           attachments=attachments, settings=settings)
 
 
 @app.route('/quotes/<int:quote_id>/update-item', methods=['POST'])
@@ -1291,14 +1305,163 @@ def add_quote_item(quote_id):
     })
 
 
+def _compress_file(filepath, ext, mime):
+    """Compress an uploaded file in-place. JPEG/GIF via Pillow, PDF via pypdf."""
+    try:
+        if ext in ('.jpg', '.jpeg'):
+            from PIL import Image
+            img = Image.open(filepath)
+            # Preserve EXIF if present
+            exif = img.info.get('exif', b'')
+            img.save(filepath, format='JPEG', optimize=True, quality=85,
+                     exif=exif if exif else b'')
+        elif ext == '.gif':
+            from PIL import Image
+            img = Image.open(filepath)
+            img.save(filepath, format='GIF', optimize=True)
+        elif ext == '.pdf':
+            from pypdf import PdfReader, PdfWriter
+            reader = PdfReader(filepath)
+            writer = PdfWriter()
+            for page in reader.pages:
+                page.compress_content_streams()
+                writer.add_page(page)
+            # Write to a temp file then replace
+            tmp_path = filepath + '.tmp'
+            with open(tmp_path, 'wb') as f_out:
+                writer.write(f_out)
+            # Only replace if compression actually made it smaller
+            if os.path.getsize(tmp_path) < os.path.getsize(filepath):
+                os.replace(tmp_path, filepath)
+            else:
+                os.remove(tmp_path)
+    except Exception as e:
+        print(f'[Compress] Could not compress {filepath}: {e}')
+
+
+@app.route('/quotes/<int:quote_id>/attach', methods=['POST'])
+@login_required
+def attach_file(quote_id):
+    """Upload a file attachment for a quote, with compression + PN/SN tagging."""
+    import mimetypes
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'success': False, 'error': 'No file provided'})
+
+    ALLOWED_EXTENSIONS = {'.pdf', '.jpg', '.jpeg', '.gif'}
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return jsonify({'success': False, 'error': 'Only PDF, JPEG and GIF files are allowed'})
+
+    # PN and SN from form data
+    part_number   = (request.form.get('part_number') or '').strip().upper()
+    serial_number = (request.form.get('serial_number') or '').strip().upper()
+
+    # Sanitise filename
+    safe_name = re.sub(r'[^\w\.\-]', '_', f.filename)
+    upload_dir = os.path.join(UPLOAD_FOLDER, str(quote_id))
+    os.makedirs(upload_dir, exist_ok=True)
+    filepath = os.path.join(upload_dir, safe_name)
+    f.save(filepath)
+
+    # Compress in-place
+    mime = mimetypes.guess_type(safe_name)[0] or 'application/octet-stream'
+    _compress_file(filepath, ext, mime)
+
+    conn = get_db()
+    conn.execute(
+        '''INSERT INTO quote_attachments
+           (quote_id, filename, filepath, mimetype, part_number, serial_number, verified)
+           VALUES (?,?,?,?,?,?,0)''',
+        (quote_id, safe_name, filepath, mime, part_number or None, serial_number or None))
+    conn.commit()
+    att_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    conn.close()
+
+    # Look for a matching attachment from a previous quote (PN+SN required)
+    suggestion = None
+    if part_number and serial_number:
+        conn2 = get_db()
+        prev = conn2.execute(
+            '''SELECT qa.*, q.quote_number FROM quote_attachments qa
+               JOIN quotes q ON q.id = qa.quote_id
+               WHERE qa.part_number=? AND qa.serial_number=? AND qa.quote_id != ?
+               ORDER BY qa.uploaded_at DESC LIMIT 1''',
+            (part_number, serial_number, quote_id)).fetchone()
+        conn2.close()
+        if prev:
+            suggestion = {
+                'id':           prev['id'],
+                'filename':     prev['filename'],
+                'quote_number': prev['quote_number'],
+            }
+
+    return jsonify({
+        'success':      True,
+        'id':           att_id,
+        'filename':     safe_name,
+        'mime':         mime,
+        'part_number':  part_number,
+        'serial_number':serial_number,
+        'verified':     0,
+        'suggestion':   suggestion,
+    })
+
+
+@app.route('/quotes/<int:quote_id>/attach/<int:att_id>/view')
+@login_required
+def view_attachment(quote_id, att_id):
+    """Serve an attachment file for in-browser viewing."""
+    from flask import send_file
+    conn = get_db()
+    row  = conn.execute(
+        'SELECT * FROM quote_attachments WHERE id=? AND quote_id=?', (att_id, quote_id)).fetchone()
+    conn.close()
+    if not row:
+        return 'Not found', 404
+    return send_file(row['filepath'], mimetype=row['mimetype'],
+                     as_attachment=False, download_name=row['filename'])
+
+
+@app.route('/quotes/<int:quote_id>/attach/<int:att_id>/verify', methods=['POST'])
+@login_required
+def verify_attachment(quote_id, att_id):
+    """Mark an attachment as verified (user opened and closed it)."""
+    conn = get_db()
+    conn.execute(
+        'UPDATE quote_attachments SET verified=1 WHERE id=? AND quote_id=?', (att_id, quote_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True, 'verified': 1})
+
+
+@app.route('/quotes/<int:quote_id>/attach/<int:att_id>/delete', methods=['POST'])
+@login_required
+def delete_attachment(quote_id, att_id):
+    conn = get_db()
+    row  = conn.execute(
+        'SELECT * FROM quote_attachments WHERE id=? AND quote_id=?', (att_id, quote_id)).fetchone()
+    if row:
+        try:
+            os.remove(row['filepath'])
+        except Exception:
+            pass
+        conn.execute('DELETE FROM quote_attachments WHERE id=?', (att_id,))
+        conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
 @app.route('/quotes/<int:quote_id>/send', methods=['POST'])
 @login_required
 def send_quote(quote_id):
-    conn     = get_db()
-    quote    = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
-    rfq      = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
-    items    = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
-    settings = get_settings()
+    conn        = get_db()
+    quote       = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
+    rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
+    items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
+    attachments = conn.execute(
+        'SELECT * FROM quote_attachments WHERE quote_id=? AND verified=1', (quote_id,)).fetchall()
+    settings    = get_settings()
     conn.close()
 
     to_email = rfq['customer_email']
@@ -1321,6 +1484,7 @@ def send_quote(quote_id):
     rfq_d      = dict(rfq)
     items_d    = [dict(i) for i in items]
     settings_d = dict(settings)
+    attachments_d = [dict(a) for a in attachments]
 
     # Mark as sending immediately so the page returns right away
     conn2 = get_db()
@@ -1336,7 +1500,7 @@ def send_quote(quote_id):
 
         # Build email HTML inside the thread so logo fetch doesn't block the request
         try:
-            html = build_quote_email(quote_d, rfq_d, items_d, settings_d)
+            html = build_quote_email(quote_d, rfq_d, items_d, settings_d, attachments_d)
         except Exception as e:
             print(f'[Email] build_quote_email failed: {e}')
             html = f'<p>Quote {quote_d["quote_number"]} — please contact us for details.</p>'
@@ -1355,12 +1519,31 @@ def send_quote(quote_id):
         internal_bcc = 'sales@eastern-aero.com'
         all_recipients = [to_email, internal_bcc]
 
-        msg = MIMEMultipart('alternative')
+        from email.mime.base import MIMEBase
+        from email import encoders as _encoders
+        msg = MIMEMultipart('mixed')
         msg['Subject'] = subject_line
         msg['From']    = from_addr
         msg['To']      = to_email
         msg['Bcc']     = internal_bcc   # hidden copy to sales
-        msg.attach(MIMEText(html, 'html'))
+        # HTML body goes in an alternative sub-part
+        alt = MIMEMultipart('alternative')
+        alt.attach(MIMEText(html, 'html'))
+        msg.attach(alt)
+        # Attach uploaded files
+        for att in attachments_d:
+            try:
+                with open(att['filepath'], 'rb') as fh:
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(fh.read())
+                _encoders.encode_base64(part)
+                part.add_header('Content-Disposition', 'attachment',
+                                filename=att['filename'])
+                if att.get('mimetype'):
+                    part.set_type(att['mimetype'])
+                msg.attach(part)
+            except Exception as e:
+                print(f'[Email] Could not attach {att["filename"]}: {e}')
 
         if resend_key:
             # ── 1. Resend SMTP relay — use non-standard ports (2465/2587)
@@ -1764,18 +1947,15 @@ def _build_to_block(rfq):
     return f'<p style="font-size:13px;margin:4px 0 12px;line-height:1.8;color:#374151">{inner}</p>'
 
 
-def build_quote_email(quote, rfq, items, settings):
+def build_quote_email(quote, rfq, items, settings, attachments_d=None):
+    attachments_d = attachments_d or []
     currency = quote['currency'] if quote['currency'] else 'USD'
     td  = 'padding:9px 12px;border-bottom:1px solid #e5e7eb;'
     thd = f'padding:9px 12px;text-align:left;font-weight:600;color:#374151;border-bottom:2px solid #d1d5db;'
 
     # Use publicly hosted logo URL — Gmail blocks base64 data URIs in email
     # The logo is served as a static file from the Railway deployment
-    railway_url = (os.environ.get('RAILWAY_STATIC_URL') or
-                   os.environ.get('RAILWAY_PUBLIC_DOMAIN') or
-                   'https://web-production-07a7a.up.railway.app')
-    railway_url = railway_url.rstrip('/')
-    logo_src = f"{railway_url}/static/logo.png"
+    logo_src = 'https://quote.eastern-aero.com/static/logo.png'
 
     item_blocks = ''
     for it in items:
@@ -1953,7 +2133,7 @@ def build_quote_email(quote, rfq, items, settings):
     </td>
     <td style="vertical-align:top;width:45%;padding-left:20px">
       <p style="font-weight:700;margin-bottom:6px">Attachments</p>
-      <p style="margin:0;color:#6b7280">No attachments</p>
+      {''.join(f'<p style="margin:2px 0;font-size:13px;color:#374151"><i>📎 {a["filename"]}</i></p>' for a in attachments_d) if attachments_d else '<p style="margin:0;color:#6b7280;font-size:13px">No attachments</p>'}
     </td>
   </tr>
 </table>
