@@ -334,7 +334,7 @@ function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo,
   _pnSugData = null;
   document.getElementById('pnSuggestion').classList.add('d-none');
 
-  new bootstrap.Modal(document.getElementById('editItemModal')).show();
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('editItemModal')).show();
 
   // Fetch last quote for this PN asynchronously
   if (partNumber) {
@@ -419,7 +419,7 @@ async function saveItem() {
       document.getElementById('quoteNumber').textContent = data.quote_number;
       document.title = data.quote_number;
     }
-    bootstrap.Modal.getInstance(document.getElementById('editItemModal')).hide();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('editItemModal')).hide();
   }
 }
 </script>
