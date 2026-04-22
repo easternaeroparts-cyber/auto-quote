@@ -269,6 +269,7 @@ def init_db():
         "ALTER TABLE quote_items ADD COLUMN tag_type TEXT",
         "ALTER TABLE quote_items ADD COLUMN tagged_by TEXT",
         "INSERT OR IGNORE INTO settings VALUES ('resend_api_key','')",
+        "ALTER TABLE rfqs ADD COLUMN website TEXT",
     ]
     for sql in migrations:
         try:
@@ -1229,9 +1230,8 @@ def send_quote(quote_id):
             settings_d.get('resend_api_key', '')
         ).strip()
 
-        company = settings_d.get('company_name', 'Eastern Aero Parts')
-        raw_from = smtp_user or 'sales@eastern-aero.com'
-        from_addr = f"{company} <{raw_from}>"
+        company   = settings_d.get('company_name', 'Eastern Aero Pty Ltd')
+        from_addr = f"{company} <sales@eastern-aero.com>"
         subject_line = f"Quotation {quote_d['quote_number']} — {company}"
 
         msg = MIMEMultipart('alternative')
@@ -1368,6 +1368,103 @@ def _fetch_logo_b64(url):
         return None
 
 
+def _parse_email_signature(body, sender_name=''):
+    """
+    Find the email signature block (after Best Regards / Thanks etc.)
+    and extract company, phone, email, website from labelled lines.
+    Falls back to scanning the whole body if no sign-off is found.
+    """
+    result = {}
+
+    # ── 1. Locate signature block ─────────────────────────────────────────────
+    SIGNOFF = re.compile(
+        r'^\s*(?:best\s+regards?|kind\s+regards?|regards?|sincerely|thanks?(?:\s+and\s+regards?)?'
+        r'|cheers|warm\s+regards?|thank\s+you|yours\s+(?:truly|sincerely|faithfully))[,\.]?\s*$',
+        re.I | re.MULTILINE
+    )
+    m = SIGNOFF.search(body)
+    sig_block = body[m.end():] if m else body
+
+    # Take only first 30 lines of the signature area
+    lines = [l.strip() for l in sig_block.splitlines() if l.strip()][:30]
+
+    # ── 2. Patterns for labelled fields ──────────────────────────────────────
+    PH_LABEL  = re.compile(r'^(?:ph|phone|tel|mobile|cell|direct|office|fax)[:\s\.]+(.+)$', re.I)
+    EM_LABEL  = re.compile(r'^(?:e[\-]?mail|email)[:\s]+(.+)$', re.I)
+    WEB_LABEL = re.compile(r'^(?:web(?:site)?|url|www)[:\s]+(.+)$', re.I)
+    PH_BARE   = re.compile(r'^(\+?[\d][\d\s\-\.\(\)\/]{5,18}\d)$')
+    WEB_BARE  = re.compile(r'^((?:https?://|www\.)\S+)$', re.I)
+    CO_SUFFIX = re.compile(
+        r'\b(?:Pty\.?\s*Ltd\.?|Ltd\.?|LLC\.?|Inc\.?|Corp\.?|GmbH|SAS|BV|PLC|Limited|Incorporated)\b', re.I
+    )
+
+    for line in lines:
+        # Phone
+        if 'phone' not in result:
+            lm = PH_LABEL.match(line)
+            if lm:
+                result['phone'] = lm.group(1).strip()
+            elif PH_BARE.match(line):
+                result['phone'] = line
+
+        # Email
+        if 'email' not in result:
+            em = EM_LABEL.match(line)
+            if em:
+                result['email'] = em.group(1).strip()
+            elif re.match(r'^[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}$', line):
+                result['email'] = line
+
+        # Website
+        if 'website' not in result:
+            wm = WEB_LABEL.match(line)
+            if wm:
+                result['website'] = wm.group(1).strip()
+            elif WEB_BARE.match(line):
+                skip = ['unsubscribe', 'track', 'click', 'pixel']
+                if not any(s in line.lower() for s in skip):
+                    result['website'] = line
+
+        # Company: line that contains a business suffix AND isn't the sender's name
+        if 'company' not in result and CO_SUFFIX.search(line):
+            if line.lower() != (sender_name or '').lower():
+                result['company'] = line
+
+    return result
+
+
+def _build_to_block(rfq):
+    """Build a multi-line HTML 'To:' block from RFQ contact fields."""
+    def v(key): return (rfq.get(key) or rfq[key] if isinstance(rfq, dict) else rfq[key]) if True else ''
+    try:
+        name    = (rfq.get('customer_name')    if isinstance(rfq, dict) else rfq['customer_name'])    or ''
+        company = (rfq.get('company')           if isinstance(rfq, dict) else rfq['company'])          or ''
+        email   = (rfq.get('customer_email')    if isinstance(rfq, dict) else rfq['customer_email'])   or ''
+        phone   = (rfq.get('phone')             if isinstance(rfq, dict) else rfq['phone'])            or ''
+        website = (rfq.get('website', '')       if isinstance(rfq, dict) else '')
+    except Exception:
+        name = company = email = phone = website = ''
+
+    # Remove customer name prefix from company if accidentally captured together
+    if company and name and company.lower().startswith(name.lower()):
+        company = company[len(name):].lstrip(' \t-—').strip()
+
+    lines = []
+    if name:
+        lines.append(f'<strong style="font-size:14px;color:#111827">{name}</strong>')
+    if company and company != name:
+        lines.append(f'<span>{company}</span>')
+    if email:
+        lines.append(f'<a href="mailto:{email}" style="color:#1a3c6e;text-decoration:none">{email}</a>')
+    if phone:
+        lines.append(f'<span>Tel: {phone}</span>')
+    if website:
+        lines.append(f'<a href="{website}" style="color:#1a3c6e;text-decoration:none">{website}</a>')
+
+    inner = '<br>\n  '.join(lines) if lines else '—'
+    return f'<p style="font-size:13px;margin:4px 0 12px;line-height:1.8;color:#374151">{inner}</p>'
+
+
 def build_quote_email(quote, rfq, items, settings):
     currency = quote['currency'] if quote['currency'] else 'USD'
     td  = 'padding:9px 12px;border-bottom:1px solid #e5e7eb;'
@@ -1457,9 +1554,7 @@ def build_quote_email(quote, rfq, items, settings):
 <h1 style="font-size:20px;font-weight:700;margin-bottom:4px">
   Quote from <span style="background:#fef08a;padding:0 4px">Eastern Aero Pty Ltd</span> for RFQ # {rfq['rfq_number']}
 </h1>
-<p style="color:#6b7280;font-size:13px;margin-top:0">
-  To: {rfq['customer_name'] or ''}{(' &mdash; ' + rfq['company']) if rfq.get('company','').strip() else ''}
-</p>
+{_build_to_block(rfq)}
 
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
 
@@ -1696,31 +1791,28 @@ def _fetch_imap(settings):
         # Always treat emails from PartsBase as RFQs
         from_partsbase = 'rfqs@partsbase.com' in from_raw.lower()
 
-        # Import if: from PartsBase, forwarded, (to rfq@ + keywords), or has keywords
-        is_rfq = from_partsbase or is_forwarded or (addressed_to_rfq and has_rfq_keywords) or has_rfq_keywords
+        # Only import if addressed to rfq@eastern-aero.com, from PartsBase, or forwarded
+        # Plain emails that happen to contain keywords but aren't addressed to rfq@ are ignored
+        is_rfq = addressed_to_rfq or from_partsbase or is_forwarded
         parsed = parse_rfq_text(parse_body)
 
         if parsed or is_rfq:
             rfq_no = gen_rfq_number()
             source = 'email-forwarded' if is_forwarded else 'email'
 
-            # Try to extract company name from email body (looks for names ending in Ltd/LLC/Inc etc.)
-            COMPANY_RE = re.compile(
-                r'\b([A-Z][A-Za-z0-9\s&\.\-]{1,50}?)\s+'
-                r'(Pty\.?\s*Ltd\.?|Ltd\.?|LLC\.?|Inc\.?|Corp\.?|GmbH|SAS|BV|PLC|Co\.?|Limited|Incorporated)\b',
-                re.I
-            )
-            cust_company = ''
-            cm = COMPANY_RE.search(parse_body[:3000])
-            if cm:
-                cust_company = (cm.group(1).strip() + ' ' + cm.group(2).strip()).strip()
-                # Sanity: skip if it looks like a generic phrase (less than 3 chars in company part)
-                if len(cm.group(1).strip()) < 3:
-                    cust_company = ''
+            # ── Parse email signature block for contact info ──────────────────
+            sig_info = _parse_email_signature(parse_body, cust_name)
+            cust_company = sig_info.get('company', '')
+            cust_phone   = sig_info.get('phone', '')
+            cust_website = sig_info.get('website', '')
+            # If signature has a better email, prefer sender email but keep sig as backup
+            sig_email = sig_info.get('email', '')
+            if sig_email and not cust_email:
+                cust_email = sig_email
 
             conn.execute(
-                'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,source,notes,raw_email,email_message_id) VALUES (?,?,?,?,?,?,?,?)',
-                (rfq_no, cust_name, cust_email, cust_company, source, subject, body[:6000], message_id))
+                'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,phone,website,source,notes,raw_email,email_message_id) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                (rfq_no, cust_name, cust_email, cust_company, cust_phone, cust_website, source, subject, body[:6000], message_id))
             rfq_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
             for item in parsed:
