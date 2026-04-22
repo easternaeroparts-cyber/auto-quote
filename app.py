@@ -933,14 +933,22 @@ def _fetch_imap(settings):
     mail.login(settings['imap_user'], settings['imap_pass'])
     mail.select(settings.get('imap_folder', 'INBOX'))
 
-    # Search ALL emails (not just unread)
-    _, ids = mail.search(None, 'ALL')
+    # Get all UNSEEN (new incoming) emails
+    _, unseen_ids = mail.search(None, 'UNSEEN')
+    # Get 10 most recent overall (for initial seeding)
+    _, all_recent = mail.search(None, 'ALL')
     conn = get_db()
     count = 0
 
-    all_ids = ids[0].split()
-    # Process newest first, limit to last 50 per run to avoid timeout
-    all_ids = list(reversed(all_ids))[:50]
+    recent_10 = list(reversed(all_recent[0].split()))[:10]
+    unseen_list = unseen_ids[0].split()
+    # Combine and deduplicate, keeping order (newest first)
+    seen_set = set()
+    all_ids = []
+    for mid in (unseen_list + recent_10):
+        if mid not in seen_set:
+            seen_set.add(mid)
+            all_ids.append(mid)
 
     for mid in all_ids:
         try:
