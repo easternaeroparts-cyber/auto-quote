@@ -1926,7 +1926,7 @@ def _fetch_imap(settings):
     for folder, mid in folder_msg_pairs:
         mail.select(folder)
 
-        # Full download — only emails pre-filtered by server-side IMAP SEARCH reach here
+        # Full download
         try:
             _, data = mail.fetch(mid, '(RFC822)')
             if not data or not data[0] or not isinstance(data[0], tuple):
@@ -1935,6 +1935,16 @@ def _fetch_imap(settings):
             msg = email.message_from_bytes(raw_msg)
         except Exception:
             continue
+
+        # Extract Message-ID for deduplication
+        message_id = (msg.get('Message-ID') or '').strip()
+
+        # Skip already-imported messages
+        if message_id:
+            already = conn.execute(
+                'SELECT 1 FROM imported_emails WHERE message_id=?', (message_id,)).fetchone()
+            if already:
+                continue
 
         # Skip emails from blocked senders (previously deleted as non-RFQ)
         sender_check = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]+', msg.get('From', ''))
