@@ -74,6 +74,24 @@
             placeholder="xxxx xxxx xxxx xxxx">
         </div>
         <div id="smtpResult" class="mt-2"></div>
+
+        <hr class="my-3">
+        <div class="mb-1">
+          <strong class="small">Resend API (recommended for Railway)</strong>
+          <div class="text-muted small mb-2">
+            SMTP is blocked on Railway. Use <a href="https://resend.com" target="_blank">Resend</a> instead —
+            free up to 3,000 emails/month. Sign up, verify your domain, and paste the API key below.
+            When set, Resend takes priority over SMTP.
+          </div>
+          <label class="form-label">Resend API Key</label>
+          <input name="resend_api_key" class="form-control font-monospace"
+            value="{{ s.get('resend_api_key','') }}"
+            placeholder="re_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx">
+          <div class="form-text">
+            Get your key at <a href="https://resend.com/api-keys" target="_blank">resend.com/api-keys</a>.
+            You can also set it as a <code>RESEND_API_KEY</code> environment variable in Railway.
+          </div>
+        </div>
       </div>
     </div>
   </div>

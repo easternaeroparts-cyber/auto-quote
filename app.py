@@ -18,6 +18,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from functools import wraps
+import urllib.request
+import json
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'aero-quote-secret-change-in-production')
@@ -217,6 +219,7 @@ def init_db():
         'smtp_port':       '587',
         'smtp_user':       'easternaeroparts@gmail.com',
         'smtp_pass':       '',
+        'resend_api_key':  '',
     }
     for k, v in defaults.items():
         conn.execute('INSERT OR IGNORE INTO settings VALUES (?,?)', (k, v))
@@ -257,6 +260,7 @@ def init_db():
         "ALTER TABLE quote_items ADD COLUMN trace_to TEXT",
         "ALTER TABLE quote_items ADD COLUMN tag_type TEXT",
         "ALTER TABLE quote_items ADD COLUMN tagged_by TEXT",
+        "INSERT OR IGNORE INTO settings VALUES ('resend_api_key','')",
     ]
     for sql in migrations:
         try:
@@ -1172,40 +1176,60 @@ def send_quote(quote_id):
     import threading
 
     def do_send():
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"Quotation {quote['quote_number']} — {settings['company_name']}"
-        msg['From']    = smtp_user
-        msg['To']      = to_email
-        msg.attach(MIMEText(html, 'html'))
-
         sent = False
         last_err = None
 
-        # Try STARTTLS (configured port), then SSL port 465
-        attempts = []
-        if smtp_port == 465:
-            attempts = [('ssl', smtp_host, 465), ('starttls', smtp_host, 587)]
-        else:
-            attempts = [('starttls', smtp_host, smtp_port), ('ssl', smtp_host, 465)]
+        # ── 1. Try Resend HTTP API first (works on Railway, no SMTP ports needed) ──
+        resend_key = (
+            os.environ.get('RESEND_API_KEY') or
+            settings.get('resend_api_key', '')
+        ).strip()
 
-        for mode, host, port in attempts:
+        if resend_key:
             try:
-                if mode == 'ssl':
-                    with smtplib.SMTP_SSL(host, port, timeout=15) as srv:
-                        srv.login(smtp_user, smtp_pass)
-                        srv.send_message(msg)
-                else:
-                    with smtplib.SMTP(host, port, timeout=15) as srv:
-                        srv.ehlo()
-                        srv.starttls()
-                        srv.ehlo()
-                        srv.login(smtp_user, smtp_pass)
-                        srv.send_message(msg)
-                sent = True
-                break
+                from_addr = smtp_user or settings.get('company_email', 'noreply@eastern-aero.com')
+                email_id = send_via_resend(
+                    resend_key, from_addr, to_email,
+                    f"Quotation {quote['quote_number']} — {settings['company_name']}",
+                    html
+                )
+                if email_id:
+                    sent = True
+                    print(f'[Email] Sent via Resend. ID={email_id}')
             except Exception as e:
                 last_err = e
-                continue
+                print(f'[Email] Resend failed: {e}')
+
+        # ── 2. Fall back to SMTP if Resend not configured or failed ─────────────
+        if not sent and smtp_user and smtp_pass:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = f"Quotation {quote['quote_number']} — {settings['company_name']}"
+            msg['From']    = smtp_user
+            msg['To']      = to_email
+            msg.attach(MIMEText(html, 'html'))
+
+            attempts = []
+            if smtp_port == 465:
+                attempts = [('ssl', smtp_host, 465), ('starttls', smtp_host, 587)]
+            else:
+                attempts = [('starttls', smtp_host, smtp_port), ('ssl', smtp_host, 465)]
+
+            for mode, host, port in attempts:
+                try:
+                    if mode == 'ssl':
+                        with smtplib.SMTP_SSL(host, port, timeout=15) as srv:
+                            srv.login(smtp_user, smtp_pass)
+                            srv.send_message(msg)
+                    else:
+                        with smtplib.SMTP(host, port, timeout=15) as srv:
+                            srv.ehlo(); srv.starttls(); srv.ehlo()
+                            srv.login(smtp_user, smtp_pass)
+                            srv.send_message(msg)
+                    sent = True
+                    print(f'[Email] Sent via SMTP {mode}:{port}')
+                    break
+                except Exception as e:
+                    last_err = e
 
         db = get_db()
         if sent:
@@ -1222,6 +1246,32 @@ def send_quote(quote_id):
 
     flash(f'Sending quote to {to_email}… Refresh in a few seconds to confirm it was sent.', 'success')
     return redirect(url_for('quote_view', quote_id=quote_id))
+
+
+def send_via_resend(api_key, from_addr, to_addr, subject, html_body):
+    """
+    Send email via Resend HTTP API.
+    Works on Railway (no SMTP port restrictions).
+    Docs: https://resend.com/docs/api-reference/emails/send-email
+    """
+    payload = json.dumps({
+        'from': from_addr,
+        'to': [to_addr],
+        'subject': subject,
+        'html': html_body,
+    }).encode('utf-8')
+    req = urllib.request.Request(
+        'https://api.resend.com/emails',
+        data=payload,
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        },
+        method='POST'
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        result = json.loads(resp.read())
+        return result.get('id')  # returns email ID if successful
 
 
 def build_quote_email(quote, rfq, items, settings):
@@ -1590,7 +1640,7 @@ def settings_page():
         for key in ['company_name','company_email','company_phone','company_address',
                     'default_markup','quote_valid_days',
                     'imap_host','imap_port','imap_user','imap_pass','imap_folder',
-                    'smtp_host','smtp_port','smtp_user','smtp_pass']:
+                    'smtp_host','smtp_port','smtp_user','smtp_pass','resend_api_key']:
             conn.execute('INSERT OR REPLACE INTO settings VALUES (?,?)', (key, request.form.get(key,'')))
         conn.commit()
         conn.close()
