@@ -270,6 +270,16 @@ def init_db():
         "ALTER TABLE quote_items ADD COLUMN tagged_by TEXT",
         "INSERT OR IGNORE INTO settings VALUES ('resend_api_key','')",
         "ALTER TABLE rfqs ADD COLUMN website TEXT",
+        """CREATE TABLE IF NOT EXISTS customer_profiles (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            email          TEXT UNIQUE NOT NULL,
+            name           TEXT,
+            company        TEXT,
+            phone          TEXT,
+            website        TEXT,
+            updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        "ALTER TABLE rfqs ADD COLUMN customer_ref TEXT",
     ]
     for sql in migrations:
         try:
@@ -1363,6 +1373,38 @@ def _fetch_logo_b64(url):
     return _LOGO_DATA_URI
 
 
+def _extract_customer_ref(subject, body=''):
+    """
+    Try to extract the customer's own RFQ/PO/reference number from the email subject or body.
+    Examples handled:
+      "Fwd: TARA RFQ 036"           → "TARA RFQ 036"
+      "RFQ-2025-1234"               → "RFQ-2025-1234"
+      "Re: PO #4521 Parts Request"  → "PO #4521"
+      "Inquiry Ref: ABC-99"         → "ABC-99"
+    """
+    # Strip common email prefixes (Fwd:, Re:, Fw:, etc.)
+    cleaned = re.sub(r'^(?:(?:fwd?|re)\s*:\s*)+', '', subject, flags=re.I).strip()
+
+    # Patterns to find an explicit ref number — captured group must contain a digit
+    REF_PATTERNS = [
+        r'\b(?:rfq|rq|po|p\.o|ref(?:erence)?|req(?:uest)?|order|enq(?:uiry)?)\s*[#:\-]?\s*([\w\-\/\.]*\d[\w\-\/\.]*)',
+        r'#\s*([\w\-]*\d[\w\-]*)',
+    ]
+    for text in [cleaned, body[:500]]:
+        for pat in REF_PATTERNS:
+            m = re.search(pat, text, re.I)
+            if m:
+                if text is cleaned:
+                    return cleaned  # use full cleaned subject as the ref label
+                else:
+                    return m.group(0).strip()
+
+    # Fallback: use the cleaned subject if it contains a digit (looks like a real ref)
+    if cleaned and len(cleaned) <= 60 and re.search(r'\d', cleaned):
+        return cleaned
+    return ''
+
+
 def _parse_email_signature(body, sender_name=''):
     """
     Find the email signature block (after Best Regards / Thanks etc.)
@@ -1852,9 +1894,25 @@ def _fetch_imap(settings):
             if sig_email and not cust_email:
                 cust_email = sig_email
 
+            # ── Extract customer's own reference number from subject/body ────
+            customer_ref = _extract_customer_ref(subject, parse_body)
+
+            # ── Check customer_profiles for previously saved/corrected info ──
+            if cust_email:
+                profile = conn.execute(
+                    'SELECT * FROM customer_profiles WHERE email=?',
+                    (cust_email.lower(),)
+                ).fetchone()
+                if profile:
+                    # Saved profile takes priority over parsed signature
+                    cust_name    = profile['name']    or cust_name
+                    cust_company = profile['company'] or cust_company
+                    cust_phone   = profile['phone']   or cust_phone
+                    cust_website = profile['website'] or cust_website
+
             conn.execute(
-                'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,phone,website,source,notes,raw_email,email_message_id) VALUES (?,?,?,?,?,?,?,?,?,?)',
-                (rfq_no, cust_name, cust_email, cust_company, cust_phone, cust_website, source, subject, body[:6000], message_id))
+                'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,phone,website,source,notes,raw_email,email_message_id,customer_ref) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+                (rfq_no, cust_name, cust_email, cust_company, cust_phone, cust_website, source, subject, body[:6000], message_id, customer_ref))
             rfq_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
             for item in parsed:
@@ -1919,6 +1977,59 @@ def api_last_quote_for_pn():
         'tag_type':     row['tag_type'] or '',
         'tagged_by':    row['tagged_by'] or '',
     })
+
+
+@app.route('/api/update-customer-ref', methods=['POST'])
+@login_required
+def api_update_customer_ref():
+    data   = request.get_json(force=True)
+    rfq_id = data.get('rfq_id')
+    ref    = (data.get('ref') or '').strip()
+    if not rfq_id:
+        return jsonify({'ok': False, 'error': 'Missing rfq_id'}), 400
+    conn = get_db()
+    conn.execute('UPDATE rfqs SET customer_ref=? WHERE id=?', (ref, rfq_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/update-customer', methods=['POST'])
+@login_required
+def api_update_customer():
+    """Save corrected customer info to the RFQ and to customer_profiles for reuse."""
+    data     = request.get_json(force=True)
+    rfq_id   = data.get('rfq_id')
+    name     = (data.get('name') or '').strip()
+    company  = (data.get('company') or '').strip()
+    email    = (data.get('email') or '').strip().lower()
+    phone    = (data.get('phone') or '').strip()
+    website  = (data.get('website') or '').strip()
+
+    if not rfq_id:
+        return jsonify({'ok': False, 'error': 'Missing rfq_id'}), 400
+
+    conn = get_db()
+    # Update the RFQ record
+    conn.execute(
+        'UPDATE rfqs SET customer_name=?, company=?, customer_email=?, phone=?, website=? WHERE id=?',
+        (name, company, email, phone, website, rfq_id)
+    )
+    # Upsert into customer_profiles so future RFQs from same email get this data
+    if email:
+        conn.execute('''
+            INSERT INTO customer_profiles (email, name, company, phone, website, updated_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(email) DO UPDATE SET
+                name=excluded.name,
+                company=excluded.company,
+                phone=excluded.phone,
+                website=excluded.website,
+                updated_at=CURRENT_TIMESTAMP
+        ''', (email, name, company, phone, website))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True})
 
 
 @app.route('/api/test-imap', methods=['POST'])

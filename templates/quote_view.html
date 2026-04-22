@@ -77,15 +77,67 @@
     <hr>
     <div class="row">
       <div class="col-md-4">
-        <div class="text-muted small fw-semibold mb-1">QUOTE TO</div>
-        <div class="fw-semibold">{{ rfq.customer_name or '—' }}</div>
-        <div>{{ rfq.company or '' }}</div>
-        {% if rfq.customer_email %}<div><a href="mailto:{{ rfq.customer_email }}">{{ rfq.customer_email }}</a></div>{% endif %}
+        <div class="d-flex align-items-center mb-1 gap-2">
+          <span class="text-muted small fw-semibold">QUOTE TO</span>
+          <button class="btn btn-link btn-sm p-0 no-print" style="font-size:.78rem;color:#888" onclick="openCustomerEdit()" title="Edit customer info">
+            <i class="bi bi-pencil"></i> Edit
+          </button>
+          <span id="custSavedBadge" class="badge text-bg-success d-none" style="font-size:.7rem">Saved</span>
+        </div>
+
+        <!-- Display mode -->
+        <div id="custDisplay">
+          <div class="fw-semibold" id="dispName">{{ rfq.customer_name or '—' }}</div>
+          <div id="dispCompany">{{ rfq.company or '' }}</div>
+          {% if rfq.customer_email %}<div><a href="mailto:{{ rfq.customer_email }}" id="dispEmail">{{ rfq.customer_email }}</a></div>{% endif %}
+          {% if rfq.phone %}<div class="text-muted small" id="dispPhone">{{ rfq.phone }}</div>{% endif %}
+        </div>
+
+        <!-- Edit mode (hidden by default) -->
+        <div id="custEdit" class="d-none">
+          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_name"    placeholder="Full name"    value="{{ rfq.customer_name or '' }}"></div>
+          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_company" placeholder="Company"      value="{{ rfq.company or '' }}"></div>
+          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_email"   placeholder="Email"        value="{{ rfq.customer_email or '' }}" type="email"></div>
+          <div class="mb-2"><input class="form-control form-control-sm" id="cedit_phone"   placeholder="Phone"        value="{{ rfq.phone or '' }}"></div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-gold fw-semibold" onclick="saveCustomer()" style="font-size:.8rem">
+              <i class="bi bi-check-lg"></i> Save
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="cancelCustomerEdit()" style="font-size:.8rem">Cancel</button>
+          </div>
+        </div>
       </div>
       <div class="col-md-4">
-        <div class="text-muted small fw-semibold mb-1">REF RFQ</div>
-        <code>{{ rfq.rfq_number }}</code><br>
-        <small class="text-muted">Source: {{ rfq.source }}</small>
+        <div class="d-flex align-items-center mb-1 gap-2">
+          <span class="text-muted small fw-semibold">REF RFQ</span>
+          <button class="btn btn-link btn-sm p-0 no-print" style="font-size:.78rem;color:#888" onclick="openRefEdit()" title="Edit reference">
+            <i class="bi bi-pencil"></i> Edit
+          </button>
+          <span id="refSavedBadge" class="badge text-bg-success d-none" style="font-size:.7rem">Saved</span>
+        </div>
+
+        <!-- Display mode -->
+        <div id="refDisplay">
+          {% if rfq.customer_ref %}
+          <div class="fw-semibold text-danger mb-1" id="dispRef">{{ rfq.customer_ref }}</div>
+          {% else %}
+          <div class="text-muted fst-italic small mb-1" id="dispRef">No customer ref</div>
+          {% endif %}
+          <small class="text-muted">Source: {{ rfq.source }}</small>
+        </div>
+
+        <!-- Edit mode -->
+        <div id="refEdit" class="d-none">
+          <input class="form-control form-control-sm mb-2" id="cedit_ref"
+                 placeholder="e.g. TARA RFQ 036"
+                 value="{{ rfq.customer_ref or '' }}">
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-gold fw-semibold" onclick="saveRef()" style="font-size:.8rem">
+              <i class="bi bi-check-lg"></i> Save
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="cancelRefEdit()" style="font-size:.8rem">Cancel</button>
+          </div>
+        </div>
       </div>
       <div class="col-md-4 text-md-end">
         <div class="text-muted small fw-semibold mb-1">QUOTE TOTAL</div>
@@ -313,6 +365,85 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
 
 {% block scripts %}
 <script>
+// ── Customer inline edit ──────────────────────────────────────────────────────
+function openCustomerEdit() {
+  document.getElementById('custDisplay').classList.add('d-none');
+  document.getElementById('custEdit').classList.remove('d-none');
+  document.getElementById('cedit_name').focus();
+}
+function cancelCustomerEdit() {
+  document.getElementById('custEdit').classList.add('d-none');
+  document.getElementById('custDisplay').classList.remove('d-none');
+}
+async function saveCustomer() {
+  const payload = {
+    rfq_id:  {{ rfq.id }},
+    name:    document.getElementById('cedit_name').value.trim(),
+    company: document.getElementById('cedit_company').value.trim(),
+    email:   document.getElementById('cedit_email').value.trim(),
+    phone:   document.getElementById('cedit_phone').value.trim(),
+    website: ''
+  };
+  const r = await fetch('/api/update-customer', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const data = await r.json();
+  if (data.ok) {
+    // Update display
+    document.getElementById('dispName').textContent    = payload.name    || '—';
+    document.getElementById('dispCompany').textContent = payload.company || '';
+    const ea = document.getElementById('dispEmail');
+    if (ea) { ea.textContent = payload.email; ea.href = 'mailto:' + payload.email; }
+    const ep = document.getElementById('dispPhone');
+    if (ep) ep.textContent = payload.phone;
+    cancelCustomerEdit();
+    const badge = document.getElementById('custSavedBadge');
+    badge.classList.remove('d-none');
+    setTimeout(() => badge.classList.add('d-none'), 3000);
+  } else {
+    alert('Save failed: ' + (data.error || 'unknown error'));
+  }
+}
+
+// ── Customer ref inline edit ──────────────────────────────────────────────────
+function openRefEdit() {
+  document.getElementById('refDisplay').classList.add('d-none');
+  document.getElementById('refEdit').classList.remove('d-none');
+  document.getElementById('cedit_ref').focus();
+}
+function cancelRefEdit() {
+  document.getElementById('refEdit').classList.add('d-none');
+  document.getElementById('refDisplay').classList.remove('d-none');
+}
+async function saveRef() {
+  const ref = document.getElementById('cedit_ref').value.trim();
+  const r = await fetch('/api/update-customer-ref', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ rfq_id: {{ rfq.id }}, ref })
+  });
+  const data = await r.json();
+  if (data.ok) {
+    const el = document.getElementById('dispRef');
+    if (ref) {
+      el.textContent = ref;
+      el.className = 'fw-semibold text-danger mb-1';
+    } else {
+      el.textContent = 'No customer ref';
+      el.className = 'text-muted fst-italic small mb-1';
+    }
+    cancelRefEdit();
+    const badge = document.getElementById('refSavedBadge');
+    badge.classList.remove('d-none');
+    setTimeout(() => badge.classList.add('d-none'), 3000);
+  } else {
+    alert('Save failed');
+  }
+}
+
+// ── Line item edit ────────────────────────────────────────────────────────────
 let _pnSugData = null;  // holds last-quote data for applySuggestion()
 
 function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo, tagType, taggedBy, condition, partNumber) {
