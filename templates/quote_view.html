@@ -9,11 +9,9 @@
 <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
   <i class="bi bi-printer"></i> Print / PDF
 </button>
-{% if quote.status != 'sent' %}
-<button class="btn btn-sm btn-gold fw-semibold no-print" data-bs-toggle="modal" data-bs-target="#sendModal">
-  <i class="bi bi-send"></i> Send to Customer
+<button class="btn btn-sm {% if quote.status == 'sent' %}btn-outline-secondary{% else %}btn-gold fw-semibold{% endif %} no-print" data-bs-toggle="modal" data-bs-target="#sendModal">
+  <i class="bi bi-send"></i> {% if quote.status == 'sent' %}Resend{% else %}Send to Customer{% endif %}
 </button>
-{% endif %}
 {% endblock %}
 
 {% block head %}
