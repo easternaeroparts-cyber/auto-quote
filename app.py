@@ -555,7 +555,50 @@ def parse_rfq_text(text):
         if items:
             return items  # Successfully parsed table — don't fall through
 
-    # ── Step 2: Vertical / one-value-per-line table format ───────────────────
+    # ── Step 2: Bullet-list format: (QTY) DESCRIPTION - PART_NUMBER ─────────
+    # Matches lines like:
+    #   • (20) SNAP VENT - CC3251F
+    #   (10) VISTA VENT - 13-03500
+    #   - (06) BETA SWITCH - C6NE1047-1
+    # The separator between description and PN is " - " (space-dash-space).
+    # The PN itself may contain dashes (e.g. 13-03500, C6NE1047-1).
+    BULLET_LINE = re.compile(
+        r'^[\s\u2022\-\*]*'   # optional bullet / dash / whitespace prefix
+        r'\((\d+)\)'          # (QTY)
+        r'\s+'
+        r'(.+?)'              # description (non-greedy)
+        r'\s+-\s+'            # " - " separator
+        r'([A-Z0-9][A-Z0-9\-/\.]{1,29})'  # part number (may contain dashes)
+        r'\s*$',
+        re.I
+    )
+    bullet_items = []
+    for line in lines:
+        m = BULLET_LINE.match(line.strip())
+        if not m:
+            continue
+        qty_raw, desc_raw, pn_raw = m.group(1), m.group(2), m.group(3)
+        pn = pn_raw.strip().upper()
+        if not is_valid_pn(pn):
+            continue
+        try:
+            qty = int(qty_raw)
+        except ValueError:
+            qty = 1
+        bullet_items.append({'part_number': pn,
+                              'description': desc_raw.strip().title(),
+                              'quantity': qty,
+                              'condition': 'SV'})
+    if bullet_items:
+        # De-duplicate against seen set and return
+        for it in bullet_items:
+            if it['part_number'] not in seen:
+                seen.add(it['part_number'])
+                items.append(it)
+        if items:
+            return items
+
+    # ── Step 3: Vertical / one-value-per-line table format ───────────────────
     # Handles emails where each column header AND each value is on its own line:
     #   S/N.          Description      Part Number    Qty    Unit
     #   1             BRACKET-400      C6E1065-3      3      EA
