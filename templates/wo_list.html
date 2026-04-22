@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Work Orders{% endblock %}
+{% block page_title %}Work Orders{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('wo_new') }}" class="btn btn-sm btn-navy fw-semibold">
+  <i class="bi bi-plus-lg"></i> New Work Order
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header bg-white py-3">
+    <form class="d-flex gap-2 flex-wrap" method="get">
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" placeholder="WO# or customer or aircraft…" style="max-width:260px">
+      <select name="status" class="form-select form-select-sm" style="width:auto">
+        <option value="">All Statuses</option>
+        {% for s in ['open','in_progress','on_hold','completed','closed'] %}
+        <option {% if status==s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-secondary">Filter</button>
+      {% if q or status %}<a href="{{ url_for('wo_list') }}" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
+    </form>
+  </div>
+  <div class="card-body p-0">
+    <table class="table mb-0">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3">WO #</th>
+          <th>Customer</th>
+          <th>Aircraft</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>Open Date</th>
+          <th>Required By</th>
+          <th class="text-end">Labor</th>
+          <th class="text-end">Parts</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for w in wos %}
+      <tr>
+        <td class="ps-3"><a href="{{ url_for('wo_detail', wid=w.id) }}" class="fw-semibold text-decoration-none"><code>{{ w.wo_number }}</code></a></td>
+        <td>{{ w.customer_name or '—' }}</td>
+        <td>{{ w.aircraft_type or '—' }} {{ w.aircraft_reg or '' }}</td>
+        <td>
+          {% if w.priority == 'aog' %}<span class="badge bg-danger">AOG</span>
+          {% elif w.priority == 'high' %}<span class="badge bg-warning text-dark">High</span>
+          {% elif w.priority == 'low' %}<span class="badge text-bg-secondary">Low</span>
+          {% else %}<span class="badge text-bg-light text-muted border">Normal</span>{% endif %}
+        </td>
+        <td><span class="badge badge-{{ w.status }}">{{ w.status }}</span></td>
+        <td><small class="text-muted">{{ w.open_date or '—' }}</small></td>
+        <td><small class="{% if w.required_date and w.required_date < now.strftime('%Y-%m-%d') and w.status not in ('completed','closed') %}text-danger fw-bold{% else %}text-muted{% endif %}">{{ w.required_date or '—' }}</small></td>
+        <td class="text-end">${{ '%.0f'|format(w.total_labor) }}</td>
+        <td class="text-end">${{ '%.0f'|format(w.total_parts) }}</td>
+        <td class="pe-3"><a href="{{ url_for('wo_detail', wid=w.id) }}" class="btn btn-sm btn-outline-primary py-0">View</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="10" class="text-center py-4 text-muted">No work orders yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

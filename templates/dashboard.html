@@ -4,99 +4,132 @@
 
 {% block topbar_actions %}
 <a href="{{ url_for('rfq_new') }}" class="btn btn-sm btn-navy">
-  <i class="bi bi-plus-lg"></i> New RFQ
+  <i class="bi bi-plus-lg me-1"></i> New RFQ
 </a>
 {% endblock %}
 
 {% block content %}
-<!-- Stat cards -->
+
+<!-- ── Alerts: Overdue AP/AR ───────────────────────────── -->
+{% if overdue_ap or overdue_ar %}
+<div class="alert d-flex align-items-center gap-2 mb-4 py-2" style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:8px;">
+  <i class="bi bi-exclamation-triangle-fill"></i>
+  <span>
+    {% if overdue_ap %}
+      <strong>${{ '{:,.0f}'.format(stats.ap_overdue) }}</strong> in overdue payables —
+      <a href="{{ url_for('ap_list', status='open') }}" style="color:#991b1b;font-weight:600;">Review AP</a>
+    {% endif %}
+    {% if overdue_ap and overdue_ar %} &nbsp;·&nbsp; {% endif %}
+    {% if overdue_ar %}
+      <strong>${{ '{:,.0f}'.format(stats.ar_overdue) }}</strong> in overdue receivables —
+      <a href="{{ url_for('ar_list', status='open') }}" style="color:#991b1b;font-weight:600;">Review AR</a>
+    {% endif %}
+  </span>
+</div>
+{% endif %}
+
+<!-- ── Workflow pipeline ───────────────────────────────── -->
+<div class="workflow-strip mb-4">
+  <a href="{{ url_for('rfq_list', status='pending') }}" class="workflow-step {% if stats.pending_rfqs %}active{% endif %}">
+    <div class="step-icon"><i class="bi bi-inbox-fill"></i></div>
+    <div class="step-count">{{ stats.pending_rfqs }}</div>
+    <div class="step-label">Pending RFQs</div>
+  </a>
+  <a href="{{ url_for('quote_list') }}" class="workflow-step {% if stats.draft_quotes %}active{% endif %}">
+    <div class="step-icon"><i class="bi bi-file-earmark-text"></i></div>
+    <div class="step-count">{{ stats.draft_quotes }}</div>
+    <div class="step-label">Draft Quotes</div>
+  </a>
+  <a href="{{ url_for('so_list') }}" class="workflow-step {% if stats.open_sos %}active{% endif %}">
+    <div class="step-icon"><i class="bi bi-cart-check-fill"></i></div>
+    <div class="step-count">{{ stats.open_sos }}</div>
+    <div class="step-label">Open Sales Orders</div>
+  </a>
+  <a href="{{ url_for('po_list') }}" class="workflow-step {% if stats.open_pos %}active{% endif %}">
+    <div class="step-icon"><i class="bi bi-bag-fill"></i></div>
+    <div class="step-count">{{ stats.open_pos }}</div>
+    <div class="step-label">Open Purchase Orders</div>
+  </a>
+  <a href="{{ url_for('ar_list', status='open') }}" class="workflow-step {% if stats.ar_outstanding %}active{% endif %}">
+    <div class="step-icon"><i class="bi bi-credit-card-2-front-fill"></i></div>
+    <div class="step-count" style="font-size:1rem;">${{ '{:,.0f}'.format(stats.ar_outstanding) }}</div>
+    <div class="step-label">AR Outstanding</div>
+  </a>
+  <a href="{{ url_for('ap_list', status='open') }}" class="workflow-step {% if stats.ap_outstanding %}active{% endif %}">
+    <div class="step-icon"><i class="bi bi-credit-card-2-back-fill"></i></div>
+    <div class="step-count" style="font-size:1rem;">${{ '{:,.0f}'.format(stats.ap_outstanding) }}</div>
+    <div class="step-label">AP Outstanding</div>
+  </a>
+</div>
+
+<!-- ── Quick actions ──────────────────────────────────── -->
 <div class="row g-3 mb-4">
-  <div class="col-6 col-md-4 col-xl-2">
-    <div class="stat-card d-flex justify-content-between align-items-center">
-      <div>
-        <div class="val">{{ stats.total_rfqs }}</div>
-        <div class="lbl">Total RFQs</div>
-      </div>
-      <i class="bi bi-inbox icon"></i>
-    </div>
+  <div class="col-6 col-md-3">
+    <a href="{{ url_for('rfq_new') }}" class="qa-card">
+      <div class="qa-icon"><i class="bi bi-inbox-fill"></i></div>
+      <div class="qa-label">New RFQ</div>
+      <div class="qa-desc">Log a customer request</div>
+    </a>
   </div>
-  <div class="col-6 col-md-4 col-xl-2">
-    <div class="stat-card d-flex justify-content-between align-items-center" style="border-left:4px solid #f0b429">
-      <div>
-        <div class="val" style="color:#b45309">{{ stats.pending_rfqs }}</div>
-        <div class="lbl">Pending RFQs</div>
-      </div>
-      <i class="bi bi-hourglass-split icon"></i>
-    </div>
+  <div class="col-6 col-md-3">
+    <a href="{{ url_for('po_new') }}" class="qa-card">
+      <div class="qa-icon"><i class="bi bi-bag-plus-fill"></i></div>
+      <div class="qa-label">New Purchase Order</div>
+      <div class="qa-desc">Order parts from vendor</div>
+    </a>
   </div>
-  <div class="col-6 col-md-4 col-xl-2">
-    <div class="stat-card d-flex justify-content-between align-items-center">
-      <div>
-        <div class="val">{{ stats.total_quotes }}</div>
-        <div class="lbl">Total Quotes</div>
-      </div>
-      <i class="bi bi-file-earmark-text icon"></i>
-    </div>
+  <div class="col-6 col-md-3">
+    <a href="{{ url_for('so_new') }}" class="qa-card">
+      <div class="qa-icon"><i class="bi bi-cart-plus-fill"></i></div>
+      <div class="qa-label">New Sales Order</div>
+      <div class="qa-desc">Record a customer sale</div>
+    </a>
   </div>
-  <div class="col-6 col-md-4 col-xl-2">
-    <div class="stat-card d-flex justify-content-between align-items-center" style="border-left:4px solid #1e7e34">
-      <div>
-        <div class="val" style="color:#1e7e34">{{ stats.sent_quotes }}</div>
-        <div class="lbl">Quotes Sent</div>
-      </div>
-      <i class="bi bi-send-check icon"></i>
-    </div>
-  </div>
-  <div class="col-6 col-md-4 col-xl-2">
-    <div class="stat-card d-flex justify-content-between align-items-center">
-      <div>
-        <div class="val">{{ stats.total_parts }}</div>
-        <div class="lbl">Parts in Stock</div>
-      </div>
-      <i class="bi bi-box-seam icon"></i>
-    </div>
-  </div>
-  <div class="col-6 col-md-4 col-xl-2">
-    <div class="stat-card d-flex justify-content-between align-items-center">
-      <div>
-        <div class="val" style="font-size:1.4rem">${{ '{:,.0f}'.format(stats.inventory_val) }}</div>
-        <div class="lbl">Inventory Value</div>
-      </div>
-      <i class="bi bi-currency-dollar icon"></i>
-    </div>
+  <div class="col-6 col-md-3">
+    <a href="{{ url_for('inventory') }}" class="qa-card">
+      <div class="qa-icon"><i class="bi bi-box-seam-fill"></i></div>
+      <div class="qa-label">Check Inventory</div>
+      <div class="qa-desc">{{ stats.total_parts }} parts · ${{ '{:,.0f}'.format(stats.inventory_val) }} value</div>
+    </a>
   </div>
 </div>
 
+<!-- ── Recent activity grid ───────────────────────────── -->
 <div class="row g-3">
-  <!-- Recent RFQs -->
+
+  <!-- Pending RFQs -->
   <div class="col-lg-6">
     <div class="card">
-      <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-        <strong>Recent RFQs</strong>
-        <a href="{{ url_for('rfq_list') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-inbox me-2 text-navy"></i>Recent RFQs</strong>
+        <a href="{{ url_for('rfq_list') }}" class="btn btn-sm btn-outline-secondary py-0">View all</a>
       </div>
       <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-          <thead class="table-light"><tr>
-            <th class="ps-3">RFQ #</th><th>Customer</th><th>Source</th><th>Parts</th><th>Status</th>
+        {% if recent_rfqs %}
+        <table class="table table-clickable mb-0">
+          <thead><tr>
+            <th class="ps-3">RFQ #</th><th>Customer</th><th>Parts</th><th>Status</th>
           </tr></thead>
           <tbody>
           {% for r in recent_rfqs %}
-          <tr style="cursor:pointer" onclick="location.href='{{ url_for('rfq_detail', rfq_id=r.id) }}'">
-            <td class="ps-3 text-nowrap"><code>{{ r.rfq_number }}</code></td>
+          <tr onclick="location.href='{{ url_for('rfq_detail', rfq_id=r.id) }}'">
+            <td class="ps-3"><code>{{ r.rfq_number }}</code></td>
             <td>
-              <div class="fw-semibold">{{ r.customer_name or '(Unknown)' }}</div>
-              <small class="text-muted">{{ r.company or '' }}</small>
+              <div class="fw-semibold" style="font-size:.85rem">{{ r.customer_name or '(Unknown)' }}</div>
+              <div class="text-muted" style="font-size:.72rem">{{ r.company or r.created_at[:10] }}</div>
             </td>
-            <td><span class="badge text-bg-light">{{ r.source }}</span></td>
-            <td>{{ r.item_count }}</td>
+            <td><span class="badge text-bg-light">{{ r.item_count }}</span></td>
             <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
           </tr>
-          {% else %}
-          <tr><td colspan="5" class="text-center text-muted py-4">No RFQs yet. <a href="{{ url_for('rfq_new') }}">Create one</a></td></tr>
           {% endfor %}
           </tbody>
         </table>
+        {% else %}
+        <div class="empty-state">
+          <i class="bi bi-inbox"></i>
+          <p>No RFQs yet.<br><a href="{{ url_for('rfq_new') }}">Create your first RFQ</a></p>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -104,33 +137,107 @@
   <!-- Recent Quotes -->
   <div class="col-lg-6">
     <div class="card">
-      <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-        <strong>Recent Quotes</strong>
-        <a href="{{ url_for('quote_list') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-file-earmark-text me-2 text-navy"></i>Recent Quotes</strong>
+        <a href="{{ url_for('quote_list') }}" class="btn btn-sm btn-outline-secondary py-0">View all</a>
       </div>
       <div class="card-body p-0">
-        <table class="table table-hover mb-0">
-          <thead class="table-light"><tr>
+        {% if recent_quotes %}
+        <table class="table table-clickable mb-0">
+          <thead><tr>
             <th class="ps-3">Quote #</th><th>Customer</th><th>Total</th><th>Status</th>
           </tr></thead>
           <tbody>
           {% for q in recent_quotes %}
-          <tr style="cursor:pointer" onclick="location.href='{{ url_for('quote_view', quote_id=q.id) }}'">
-            <td class="ps-3 text-nowrap"><code>{{ q.quote_number }}</code></td>
+          <tr onclick="location.href='{{ url_for('quote_view', quote_id=q.id) }}'">
+            <td class="ps-3"><code>{{ q.quote_number }}</code></td>
             <td>
-              <div class="fw-semibold">{{ q.customer_name or '(Unknown)' }}</div>
-              <small class="text-muted">{{ q.company or '' }}</small>
+              <div class="fw-semibold" style="font-size:.85rem">{{ q.customer_name or '(Unknown)' }}</div>
+              <div class="text-muted" style="font-size:.72rem">{{ q.company or '' }}</div>
             </td>
             <td class="fw-semibold">${{ '{:,.2f}'.format(q.total_amount) }}</td>
             <td><span class="badge badge-{{ q.status }}">{{ q.status }}</span></td>
           </tr>
-          {% else %}
-          <tr><td colspan="4" class="text-center text-muted py-4">No quotes yet.</td></tr>
           {% endfor %}
           </tbody>
         </table>
+        {% else %}
+        <div class="empty-state">
+          <i class="bi bi-file-earmark-text"></i>
+          <p>No quotes yet. Generate one from an RFQ.</p>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
+
+  <!-- Recent Sales Orders -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-cart-check-fill me-2 text-navy"></i>Recent Sales Orders</strong>
+        <a href="{{ url_for('so_list') }}" class="btn btn-sm btn-outline-secondary py-0">View all</a>
+      </div>
+      <div class="card-body p-0">
+        {% if recent_sos %}
+        <table class="table table-clickable mb-0">
+          <thead><tr>
+            <th class="ps-3">SO #</th><th>Customer</th><th>Total</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+          {% for s in recent_sos %}
+          <tr onclick="location.href='{{ url_for('so_detail', sid=s.id) }}'">
+            <td class="ps-3"><code>{{ s.so_number }}</code></td>
+            <td style="font-size:.85rem">{{ s.customer_name or '—' }}</td>
+            <td class="fw-semibold">${{ '{:,.2f}'.format(s.total_amount) }}</td>
+            <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <i class="bi bi-cart-check"></i>
+          <p>No sales orders yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Purchase Orders -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-bag-fill me-2 text-navy"></i>Recent Purchase Orders</strong>
+        <a href="{{ url_for('po_list') }}" class="btn btn-sm btn-outline-secondary py-0">View all</a>
+      </div>
+      <div class="card-body p-0">
+        {% if recent_pos %}
+        <table class="table table-clickable mb-0">
+          <thead><tr>
+            <th class="ps-3">PO #</th><th>Vendor</th><th>Total</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+          {% for p in recent_pos %}
+          <tr onclick="location.href='{{ url_for('po_detail', pid=p.id) }}'">
+            <td class="ps-3"><code>{{ p.po_number }}</code></td>
+            <td style="font-size:.85rem">{{ p.vendor_name or '—' }}</td>
+            <td class="fw-semibold">${{ '{:,.2f}'.format(p.total_amount) }}</td>
+            <td><span class="badge badge-{{ p.status }}">{{ p.status }}</span></td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="empty-state">
+          <i class="bi bi-bag"></i>
+          <p>No purchase orders yet.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}

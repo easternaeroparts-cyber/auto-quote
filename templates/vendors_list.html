@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Vendors{% endblock %}
+{% block page_title %}Vendors{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('vendor_new') }}" class="btn btn-sm btn-navy"><i class="bi bi-plus-lg me-1"></i>New Vendor</a>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form class="d-flex gap-2 align-items-center" method="get">
+      <div class="position-relative">
+        <i class="bi bi-search position-absolute" style="left:.6rem;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.8rem;"></i>
+        <input name="q" value="{{ q or '' }}" class="form-control form-control-sm" style="padding-left:1.8rem;min-width:240px;" placeholder="Search name, company, email…">
+      </div>
+      <button class="btn btn-sm btn-outline-secondary">Search</button>
+      {% if q %}<a href="{{ url_for('vendor_list') }}" class="btn btn-sm btn-outline-secondary">✕ Clear</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-clickable mb-0">
+      <thead>
+        <tr>
+          <th class="ps-3">Name</th>
+          <th>Company</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Terms</th>
+          <th class="pe-3 text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for v in vendors %}
+      <tr onclick="location.href='{{ url_for('vendor_detail', vid=v.id) }}'">
+        <td class="ps-3 fw-semibold">{{ v.name }}</td>
+        <td><small class="text-muted">{{ v.company or '—' }}</small></td>
+        <td>
+          {% if v.email %}
+          <a href="mailto:{{ v.email }}" class="text-decoration-none" style="font-size:.82rem" onclick="event.stopPropagation()">{{ v.email }}</a>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td><small class="text-muted">{{ v.phone or '—' }}</small></td>
+        <td><span class="badge text-bg-light">{{ v.payment_terms or 'Net 30' }}</span></td>
+        <td class="pe-3 text-end" onclick="event.stopPropagation()">
+          <a href="{{ url_for('vendor_detail', vid=v.id) }}" class="btn btn-sm btn-outline-secondary py-0 me-1">Edit</a>
+          <a href="{{ url_for('vendor_report', vid=v.id) }}" class="btn btn-sm btn-outline-primary py-0">Report</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">
+        <div class="empty-state py-5">
+          <i class="bi bi-truck"></i>
+          <p class="mb-2">No vendors yet.</p>
+          <a href="{{ url_for('vendor_new') }}" class="btn btn-sm btn-navy">Add your first vendor</a>
+        </div>
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -4,78 +4,90 @@
 
 {% block topbar_actions %}
 <form action="{{ url_for('fetch_email_rfqs') }}" method="post" class="d-inline">
-  <button class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-envelope-arrow-down"></i> Fetch Emails
-  </button>
+  <button class="btn btn-sm btn-outline-secondary"><i class="bi bi-envelope-arrow-down me-1"></i>Fetch Emails</button>
 </form>
-<a href="{{ url_for('rfq_new') }}" class="btn btn-sm btn-navy">
-  <i class="bi bi-plus-lg"></i> New RFQ
-</a>
+<a href="{{ url_for('rfq_new') }}" class="btn btn-sm btn-navy"><i class="bi bi-plus-lg me-1"></i>New RFQ</a>
 {% endblock %}
 
 {% block content %}
-<!-- Status filter tabs -->
-<ul class="nav nav-pills mb-3 gap-1">
-  <li class="nav-item">
-    <a class="nav-link {% if not status_filter %}active{% endif %}" href="{{ url_for('rfq_list') }}">All</a>
-  </li>
-  {% for s in ['pending','quoted'] %}
-  <li class="nav-item">
-    <a class="nav-link {% if status_filter==s %}active{% endif %}"
-       href="{{ url_for('rfq_list', status=s) }}">{{ s.title() }}</a>
-  </li>
-  {% endfor %}
-</ul>
+<!-- Filters bar -->
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+    <form class="d-flex gap-2 flex-wrap align-items-center" method="get">
+      <div class="position-relative">
+        <i class="bi bi-search position-absolute" style="left:.6rem;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.8rem;"></i>
+        <input name="q" class="form-control form-control-sm" style="padding-left:1.8rem;min-width:200px;"
+               placeholder="Search customer, company…" value="{{ request.args.get('q','') }}">
+      </div>
+      <div class="d-flex gap-1">
+        {% for s in ['','pending','quoted'] %}
+        <a href="{{ url_for('rfq_list', status=s) }}"
+           class="btn btn-sm {{ 'btn-navy' if status_filter==s else 'btn-outline-secondary' }}">
+          {{ 'All' if s=='' else s.title() }}
+        </a>
+        {% endfor %}
+      </div>
+      {% if request.args.get('q') %}
+      <a href="{{ url_for('rfq_list') }}" class="btn btn-sm btn-outline-secondary">✕ Clear</a>
+      {% endif %}
+    </form>
+  </div>
+</div>
 
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0">
-      <thead class="table-light">
+    <table class="table table-clickable mb-0">
+      <thead>
         <tr>
           <th class="ps-3">RFQ #</th>
           <th>Customer</th>
-          <th>Company</th>
           <th>Source</th>
           <th>Parts</th>
+          <th>Received</th>
           <th>Status</th>
-          <th>Date</th>
-          <th></th>
+          <th class="pe-3 text-end">Actions</th>
         </tr>
       </thead>
       <tbody>
       {% for r in rfqs %}
-      <tr>
-        <td class="ps-3"><code>{{ r.rfq_number }}</code></td>
-        <td class="fw-semibold">{{ r.customer_name or '(Unknown)' }}</td>
-        <td><small class="text-muted">{{ r.company or '—' }}</small></td>
+      <tr onclick="location.href='{{ url_for('rfq_detail', rfq_id=r.id) }}'">
+        <td class="ps-3"><code class="fw-bold">{{ r.rfq_number }}</code></td>
+        <td>
+          <div class="fw-semibold">{{ r.customer_name or '(Unknown)' }}</div>
+          <div class="text-muted" style="font-size:.75rem">{{ r.company or '—' }}</div>
+        </td>
         <td>
           <span class="badge text-bg-light">
-            {% if r.source == 'email' %}<i class="bi bi-envelope"></i>{% elif r.source == 'ils' %}<i class="bi bi-globe"></i>{% endif %}
+            {% if r.source=='email' %}<i class="bi bi-envelope me-1"></i>{% elif r.source=='ils' %}<i class="bi bi-globe me-1"></i>{% endif %}
             {{ r.source }}
           </span>
         </td>
-        <td>{{ r.item_count }} part{{ 's' if r.item_count != 1 }}</td>
+        <td><span class="badge text-bg-secondary">{{ r.item_count }} part{{ 's' if r.item_count != 1 }}</span></td>
+        <td><small class="text-muted">{{ r.created_at[:10] }}</small></td>
         <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
-        <td><small class="text-muted">{{ r.created_at[:16] }}</small></td>
-        <td class="text-end pe-3 d-flex gap-1 justify-content-end">
-          <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-primary py-0">
-            <i class="bi bi-eye"></i> View
+        <td class="pe-3 text-end" onclick="event.stopPropagation()">
+          <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-primary py-0 me-1">
+            <i class="bi bi-eye"></i> Open
           </a>
-          <form action="{{ url_for('rfq_delete', rfq_id=r.id) }}" method="post"
+          <form action="{{ url_for('rfq_delete', rfq_id=r.id) }}" method="post" class="d-inline"
                 onsubmit="return confirm('Delete this RFQ?')">
-            <button class="btn btn-sm btn-outline-danger py-0">
-              <i class="bi bi-trash"></i>
-            </button>
+            <button class="btn btn-sm btn-outline-danger py-0"><i class="bi bi-trash"></i></button>
           </form>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="text-center py-5 text-muted">
-        No RFQs yet. <a href="{{ url_for('rfq_new') }}">Create one</a> or
-        <form action="{{ url_for('fetch_email_rfqs') }}" method="post" class="d-inline">
-          <button class="btn btn-sm btn-outline-secondary">fetch from email</button>.
-        </form>
-      </td></tr>
+      <tr>
+        <td colspan="7">
+          <div class="empty-state py-5">
+            <i class="bi bi-inbox"></i>
+            <p class="mb-2">No RFQs found.</p>
+            <a href="{{ url_for('rfq_new') }}" class="btn btn-sm btn-navy me-2">Create RFQ manually</a>
+            <form action="{{ url_for('fetch_email_rfqs') }}" method="post" class="d-inline">
+              <button class="btn btn-sm btn-outline-secondary">Fetch from email</button>
+            </form>
+          </div>
+        </td>
+      </tr>
       {% endfor %}
       </tbody>
     </table>

@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Sales Orders{% endblock %}
+{% block page_title %}Sales Orders{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('so_new') }}" class="btn btn-sm btn-navy"><i class="bi bi-plus-lg me-1"></i>New SO</a>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
+    <form class="d-flex gap-2 flex-wrap align-items-center" method="get">
+      <div class="position-relative">
+        <i class="bi bi-search position-absolute" style="left:.6rem;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.8rem;"></i>
+        <input name="q" value="{{ q }}" class="form-control form-control-sm" style="padding-left:1.8rem;min-width:200px;" placeholder="SO# or customer…">
+      </div>
+      <div class="d-flex gap-1 flex-wrap">
+        {% for s in [('','All'),('draft','Draft'),('confirmed','Confirmed'),('shipped','Shipped'),('invoiced','Invoiced'),('closed','Closed')] %}
+        <a href="{{ url_for('so_list', status=s[0], q=q) }}"
+           class="btn btn-sm {{ 'btn-navy' if status==s[0] else 'btn-outline-secondary' }}">{{ s[1] }}</a>
+        {% endfor %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-clickable mb-0">
+      <thead>
+        <tr>
+          <th class="ps-3">SO #</th>
+          <th>Customer</th>
+          <th>Status</th>
+          <th>Order Date</th>
+          <th>Ship Date</th>
+          <th class="text-end">Total</th>
+          <th class="pe-3 text-end">AR</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for s in sos %}
+      <tr onclick="location.href='{{ url_for('so_detail', sid=s.id) }}'">
+        <td class="ps-3"><code class="fw-bold">{{ s.so_number }}</code></td>
+        <td>{{ s.customer_name or s.customer_company or '—' }}</td>
+        <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
+        <td><small class="text-muted">{{ s.order_date or '—' }}</small></td>
+        <td><small class="text-muted">{{ s.ship_date or '—' }}</small></td>
+        <td class="text-end fw-bold">${{ '{:,.2f}'.format(s.total_amount) }}</td>
+        <td class="pe-3 text-end">
+          {% if s.status == 'invoiced' %}
+          <span class="badge badge-sent"><i class="bi bi-check-circle me-1"></i>AR Created</span>
+          {% else %}
+          <span class="text-muted" style="font-size:.75rem">On invoice</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">
+        <div class="empty-state py-5">
+          <i class="bi bi-cart-check"></i>
+          <p class="mb-2">No sales orders yet.</p>
+          <a href="{{ url_for('so_new') }}" class="btn btn-sm btn-navy">Create your first SO</a>
+        </div>
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

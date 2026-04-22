@@ -1,0 +1,361 @@
+{% extends "base.html" %}
+{% block title %}{{ wo.wo_number if wo else 'New Work Order' }}{% endblock %}
+{% block page_title %}{{ wo.wo_number if wo else 'New Work Order' }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('wo_list') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <!-- Left: WO header -->
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-tools me-1"></i> {{ 'Work Order' if wo else 'New Work Order' }}</strong>
+        {% if wo %}<span class="badge badge-{{ wo.status }} float-end">{{ wo.status }}</span>{% endif %}
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('wo_detail', wid=wo.id) if wo else url_for('wo_new') }}">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Customer</label>
+            <select name="customer_id" class="form-select">
+              <option value="">— No Customer —</option>
+              {% for c in customers %}
+              <option value="{{ c.id }}" {% if wo and wo.customer_id==c.id %}selected{% endif %}>
+                {{ c.name }}{% if c.company %} ({{ c.company }}){% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-7">
+              <label class="form-label">Aircraft Type</label>
+              <input name="aircraft_type" class="form-control" value="{{ wo.aircraft_type if wo else '' }}" placeholder="e.g. B737-800">
+            </div>
+            <div class="col-5">
+              <label class="form-label">Registration</label>
+              <input name="aircraft_reg" class="form-control" value="{{ wo.aircraft_reg if wo else '' }}" placeholder="e.g. 9N-ABA">
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Priority</label>
+              <select name="priority" class="form-select">
+                {% for p in ['low','normal','high','aog'] %}
+                <option {% if wo and wo.priority==p %}selected{% endif %}>{{ p }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">Status</label>
+              <select name="status" class="form-select">
+                {% for s in ['open','in_progress','on_hold','completed','closed'] %}
+                <option {% if wo and wo.status==s %}selected{% endif %}>{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Open Date</label>
+              <input type="date" name="open_date" class="form-control" value="{{ wo.open_date if wo else '' }}">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Required By</label>
+              <input type="date" name="required_date" class="form-control" value="{{ wo.required_date if wo else '' }}">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Description</label>
+            <textarea name="description" class="form-control" rows="2">{{ wo.description if wo else '' }}</textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea name="notes" class="form-control" rows="2">{{ wo.notes if wo else '' }}</textarea>
+          </div>
+          <button class="btn btn-navy w-100 fw-semibold">
+            <i class="bi bi-check-lg me-1"></i> {{ 'Save' if wo else 'Create Work Order' }}
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {% if wo %}
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between mb-1">
+          <span class="text-muted small">Labor</span>
+          <span class="fw-bold">${{ '%.2f'|format(wo.total_labor) }}</span>
+        </div>
+        <div class="d-flex justify-content-between mb-1">
+          <span class="text-muted small">Parts</span>
+          <span class="fw-bold">${{ '%.2f'|format(wo.total_parts) }}</span>
+        </div>
+        <hr class="my-2">
+        <div class="d-flex justify-content-between">
+          <span class="fw-semibold">Total</span>
+          <span class="fw-bold fs-5 text-navy">${{ '%.2f'|format((wo.total_labor or 0) + (wo.total_parts or 0)) }}</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if wo %}
+  <div class="col-lg-8">
+    <!-- Tasks -->
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-check2-square me-1"></i> Tasks / Labor ({{ tasks|length }})</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Description</th>
+              <th>Assigned To</th>
+              <th>Status</th>
+              <th class="text-end">Est. Hrs</th>
+              <th class="text-end">Rate</th>
+              <th class="text-end">Labor Cost</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for t in tasks %}
+          <tr>
+            <td class="ps-3">{{ t.description }}</td>
+            <td><small class="text-muted">{{ t.assigned_to or '—' }}</small></td>
+            <td>
+              {% if t.status == 'completed' %}<span class="badge bg-success">Done</span>
+              {% elif t.status == 'in_progress' %}<span class="badge bg-warning text-dark">In Progress</span>
+              {% else %}<span class="badge text-bg-secondary">Pending</span>{% endif %}
+            </td>
+            <td class="text-end">{{ t.estimated_hours }}</td>
+            <td class="text-end">${{ '%.2f'|format(t.labor_rate) }}</td>
+            <td class="text-end fw-bold">${{ '%.2f'|format(t.labor_cost) }}</td>
+            <td class="pe-2">
+              <form method="post" action="{{ url_for('wo_delete_task', wid=wo.id, tid=t.id) }}"
+                    onsubmit="return confirm('Remove task?')">
+                <button class="btn btn-sm btn-outline-danger py-0">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center py-3 text-muted">No tasks yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <!-- Add task -->
+      <div class="card-footer bg-white">
+        <form method="post" action="{{ url_for('wo_add_task', wid=wo.id) }}">
+          <div class="row g-2 align-items-end">
+            <div class="col-md-4">
+              <input name="description" class="form-control form-control-sm" placeholder="Task description *" required>
+            </div>
+            <div class="col-md-2">
+              <input name="assigned_to" class="form-control form-control-sm" placeholder="Assigned to">
+            </div>
+            <div class="col-md-2">
+              <input name="estimated_hours" type="number" class="form-control form-control-sm" value="0" step="0.5" placeholder="Est. Hours">
+            </div>
+            <div class="col-md-2">
+              <input name="labor_rate" type="number" class="form-control form-control-sm" value="0" step="0.01" placeholder="Rate/hr">
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-sm btn-navy w-100">+ Add Task</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Parts used -->
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-box-seam me-1"></i> Parts Used ({{ parts|length }})</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Part #</th>
+              <th>Description</th>
+              <th>S/N</th>
+              <th>CC</th>
+              <th>Qty</th>
+              <th class="text-end">Unit Cost</th>
+              <th class="text-end">Ext. Cost</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for p in parts %}
+          <tr {% if p.inventory_id and not p.returned %}style="background:#fff8e1"{% endif %}>
+            <td class="ps-3">
+              <code class="fw-bold">{{ p.part_number }}</code>
+              {% if p.inventory_id %}<i class="bi bi-database-fill text-warning ms-1" title="From inventory"></i>{% endif %}
+            </td>
+            <td>{{ p.description or '—' }}</td>
+            <td><code class="small">{{ p.serial_number or '—' }}</code></td>
+            <td><span class="badge text-bg-secondary">{{ p.condition }}</span></td>
+            <td>{{ p.quantity }}</td>
+            <td class="text-end">${{ '%.2f'|format(p.unit_cost) }}</td>
+            <td class="text-end fw-bold">${{ '%.2f'|format(p.extended_cost) }}</td>
+            <td>
+              {% if p.inventory_id %}
+                {% if p.returned %}
+                  <span class="badge bg-success"><i class="bi bi-check-circle-fill me-1"></i>Returned {{ p.returned_at[:10] if p.returned_at else '' }}</span>
+                {% else %}
+                  <span class="badge bg-warning text-dark"><i class="bi bi-lock-fill me-1"></i>Out for Repair</span>
+                {% endif %}
+              {% else %}
+                <span class="badge text-bg-light text-muted border">Manual</span>
+              {% endif %}
+            </td>
+            <td class="pe-2 text-end" style="white-space:nowrap">
+              {% if p.inventory_id and not p.returned %}
+              <form method="post" action="{{ url_for('wo_return_part', wid=wo.id, pid=p.id) }}" class="d-inline"
+                    onsubmit="return confirm('Mark this part as returned and release the inventory lock?')">
+                <button class="btn btn-sm btn-success py-0 me-1" title="Mark Returned">
+                  <i class="bi bi-arrow-return-left"></i> Return
+                </button>
+              </form>
+              {% endif %}
+              <form method="post" action="{{ url_for('wo_delete_part', wid=wo.id, pid=p.id) }}" class="d-inline"
+                    onsubmit="return confirm('Remove part? This will also release any inventory lock.')">
+                <button class="btn btn-sm btn-outline-danger py-0">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center py-3 text-muted">No parts logged yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Add part with inventory search -->
+      <div class="card-footer bg-white">
+        <form method="post" action="{{ url_for('wo_add_part', wid=wo.id) }}" id="addPartForm">
+          <input type="hidden" name="inventory_id" id="inv_id_field">
+
+          <!-- Inventory search row -->
+          <div class="row g-2 mb-2">
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold mb-1"><i class="bi bi-search me-1"></i>Search Inventory (PN or S/N)</label>
+              <input type="text" id="invSearch" class="form-control form-control-sm"
+                     placeholder="Type part number or serial number…" autocomplete="off">
+            </div>
+            <div class="col-md-8 d-flex align-items-end">
+              <div id="invResults" class="w-100"></div>
+            </div>
+          </div>
+
+          <div class="row g-2 align-items-end">
+            <div class="col-md-2">
+              <label class="form-label small mb-1">Part Number *</label>
+              <input name="part_number" id="wp_pn" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small mb-1">Description</label>
+              <input name="description" id="wp_desc" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label small mb-1">Serial Number</label>
+              <input name="serial_number" id="wp_sn" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-1">
+              <label class="form-label small mb-1">CC</label>
+              <select name="condition" id="wp_cc" class="form-select form-select-sm">
+                {% for cc in ['SV','NE','FN','NS','OH','RP','AR'] %}<option>{{ cc }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-md-1">
+              <label class="form-label small mb-1">Qty</label>
+              <input name="quantity" id="wp_qty" type="number" class="form-control form-control-sm" value="1" min="1">
+            </div>
+            <div class="col-md-1">
+              <label class="form-label small mb-1">Unit Cost</label>
+              <input name="unit_cost" id="wp_cost" type="number" class="form-control form-control-sm" value="0" step="0.01">
+            </div>
+            <div class="col-md-2">
+              <button class="btn btn-sm btn-navy w-100 mt-3">
+                <i class="bi bi-plus-lg"></i> Add Part
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if wo %}
+<script>
+var invSearchTimer = null;
+
+document.getElementById('invSearch').addEventListener('input', function() {
+  clearTimeout(invSearchTimer);
+  var q = this.value.trim();
+  if (q.length < 2) { document.getElementById('invResults').innerHTML = ''; return; }
+  invSearchTimer = setTimeout(function() { searchInventory(q); }, 300);
+});
+
+async function searchInventory(q) {
+  var res = await fetch('/api/inventory/search-for-ro?q=' + encodeURIComponent(q) + '&sn=' + encodeURIComponent(q));
+  var data = await res.json();
+  var html = '';
+  if (!data.length) {
+    html = '<small class="text-muted">No inventory matches found — you can still add manually below.</small>';
+  } else {
+    html = '<div class="d-flex flex-wrap gap-1">';
+    data.forEach(function(item) {
+      var locked = item.repair_status === 'out_for_repair';
+      var badge = locked
+        ? '<span class="badge bg-danger ms-1">LOCKED – ' + (item.repair_wo_number || 'Under Repair') + '</span>'
+        : '<span class="badge bg-success ms-1">Available</span>';
+      var sn = item.serial_number ? ' S/N: ' + item.serial_number : '';
+      var btn = locked
+        ? '<button type="button" class="btn btn-sm btn-outline-danger disabled py-0">Locked</button>'
+        : '<button type="button" class="btn btn-sm btn-warning py-0" onclick=\'pullFromInventory(' + JSON.stringify(item) + ')\'>Pull</button>';
+      html += '<div class="border rounded p-2 small" style="min-width:260px;background:#fafafa">'
+            + '<div class="fw-bold">' + item.part_number + badge + '</div>'
+            + '<div class="text-muted">' + (item.description || '') + '</div>'
+            + '<div class="text-muted">' + item.condition + sn + ' | Qty: ' + item.quantity + ' | $' + (item.unit_cost || 0).toFixed(2) + '</div>'
+            + '<div class="mt-1">' + btn + '</div>'
+            + '</div>';
+    });
+    html += '</div>';
+  }
+  document.getElementById('invResults').innerHTML = html;
+}
+
+function pullFromInventory(item) {
+  document.getElementById('inv_id_field').value  = item.id;
+  document.getElementById('wp_pn').value          = item.part_number;
+  document.getElementById('wp_desc').value        = item.description || '';
+  document.getElementById('wp_sn').value          = item.serial_number || '';
+  document.getElementById('wp_cost').value        = item.unit_cost || 0;
+  // Set condition dropdown
+  var cc = document.getElementById('wp_cc');
+  for (var i = 0; i < cc.options.length; i++) {
+    if (cc.options[i].value === item.condition) { cc.selectedIndex = i; break; }
+  }
+  document.getElementById('invResults').innerHTML =
+    '<div class="alert alert-warning py-1 small mb-0"><i class="bi bi-lock-fill me-1"></i>'
+    + 'Pulling <strong>' + item.part_number + (item.serial_number ? ' S/N ' + item.serial_number : '') + '</strong> from inventory. '
+    + 'It will be <strong>locked</strong> until marked as returned.</div>';
+  document.getElementById('invSearch').value = '';
+}
+</script>
+{% endif %}
+{% endblock %}

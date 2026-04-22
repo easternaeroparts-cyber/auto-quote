@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% block title %}{{ so.so_number if so else 'New Sales Order' }}{% endblock %}
+{% block page_title %}{{ so.so_number if so else 'New Sales Order' }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('so_list') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-cart-check me-1"></i> {{ 'SO Details' if so else 'New Sales Order' }}</strong>
+        {% if so %}<span class="badge badge-{{ so.status }} float-end">{{ so.status }}</span>{% endif %}
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('so_detail', sid=so.id) if so else url_for('so_new') }}">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Customer</label>
+            <select name="customer_id" class="form-select">
+              <option value="">— No Customer —</option>
+              {% for c in customers %}
+              <option value="{{ c.id }}" {% if so and so.customer_id==c.id %}selected{% endif %}>
+                {{ c.name }}{% if c.company %} ({{ c.company }}){% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+          {% if not so and quotes %}
+          <div class="mb-3">
+            <label class="form-label">Import from Quote <small class="text-muted">(auto-fills line items)</small></label>
+            <select name="quote_id" class="form-select">
+              <option value="">— Manual entry —</option>
+              {% for q in quotes %}
+              <option value="{{ q.id }}">{{ q.quote_number }} (${{ '%.2f'|format(q.total_amount) }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% elif so and so.quote_number %}
+          <div class="mb-3">
+            <label class="form-label">Linked Quote</label>
+            <p class="form-control-plaintext fw-semibold"><code>{{ so.quote_number }}</code></p>
+          </div>
+          {% endif %}
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label">Order Date</label>
+              <input type="date" name="order_date" class="form-control" value="{{ so.order_date if so else '' }}">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Ship Date</label>
+              <input type="date" name="ship_date" class="form-control" value="{{ so.ship_date if so else '' }}">
+            </div>
+          </div>
+          {% if so %}
+          <div class="mb-3">
+            <label class="form-label">Status</label>
+            <select name="status" class="form-select">
+              {% for s in ['draft','confirmed','shipped','invoiced','closed','cancelled'] %}
+              <option {% if so.status==s %}selected{% endif %}>{{ s }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% endif %}
+          <div class="mb-3">
+            <label class="form-label">Payment Terms</label>
+            <select name="payment_terms" class="form-select">
+              {% for t in ['Net 30','Net 15','Net 60','COD','Prepaid'] %}
+              <option {% if so and so.payment_terms==t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Delivery Address</label>
+            <textarea name="delivery_address" class="form-control" rows="2">{{ so.delivery_address if so else '' }}</textarea>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Currency</label>
+            <select name="currency" class="form-select">
+              {% for c in ['USD','EUR','GBP','AUD','CAD'] %}
+              <option {% if so and so.currency==c %}selected{% endif %}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes</label>
+            <textarea name="notes" class="form-control" rows="2">{{ so.notes if so else '' }}</textarea>
+          </div>
+          <button class="btn btn-navy w-100 fw-semibold">
+            <i class="bi bi-check-lg me-1"></i> {{ 'Save' if so else 'Create Sales Order' }}
+          </button>
+        </form>
+      </div>
+    </div>
+
+    {% if so %}
+    <div class="card mb-3">
+      <div class="card-body text-center">
+        <p class="text-muted small mb-1">Order Total</p>
+        <p class="fw-bold fs-4 text-navy mb-0">${{ '%.2f'|format(so.total_amount) }}</p>
+        <p class="text-muted small">{{ so.currency or 'USD' }}</p>
+      </div>
+    </div>
+
+    {% if ar_entry %}
+    <!-- AR status banner -->
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-credit-card-2-front me-1"></i> Accounts Receivable</strong>
+        <a href="{{ url_for('ar_list') }}" class="float-end btn btn-sm btn-outline-secondary py-0">View AR</a>
+      </div>
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <code class="fw-bold">{{ ar_entry.ar_number }}</code>
+            <span class="badge badge-{{ ar_entry.status }} ms-2">{{ ar_entry.status }}</span>
+          </div>
+          <div class="text-end">
+            <div class="fw-bold text-navy">${{ '%.2f'|format(ar_entry.amount - (ar_entry.paid_amount or 0)) }} due</div>
+            <small class="text-muted">Due {{ ar_entry.due_date or '—' }}</small>
+          </div>
+        </div>
+        {% if ar_entry.paid_amount %}
+        <div class="text-success small mt-1"><i class="bi bi-check-circle me-1"></i>${{ '%.2f'|format(ar_entry.paid_amount) }} collected via {{ ar_entry.payment_method or '—' }}</div>
+        {% endif %}
+        {% if ar_entry.status != 'paid' %}
+        <div class="mt-2">
+          <a href="{{ url_for('ar_list') }}" class="btn btn-sm btn-outline-success w-100">
+            <i class="bi bi-cash-coin me-1"></i> Record Payment
+          </a>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% elif so.status not in ['invoiced','closed','cancelled'] %}
+    <div class="card mb-3">
+      <div class="card-body text-center py-2">
+        <small class="text-muted">AR entry will be created automatically when this SO is marked <strong>Invoiced</strong>.</small>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Linked PO (back-to-back) -->
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-link-45deg me-1"></i> Linked Purchase Order</strong>
+      </div>
+      <div class="card-body">
+        {% if linked_po %}
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <a href="{{ url_for('po_detail', pid=linked_po.id) }}" class="fw-bold text-decoration-none">
+              <code>{{ linked_po.po_number }}</code>
+            </a>
+            <div class="text-muted small">{{ linked_po.vendor_name or '—' }}</div>
+            <span class="badge badge-{{ linked_po.status }}">{{ linked_po.status }}</span>
+          </div>
+          <div class="text-end">
+            <div class="fw-bold text-danger">${{ '%.2f'|format(linked_po.total_amount) }}</div>
+            <small class="text-muted">Landed Cost</small>
+          </div>
+        </div>
+        {% if so.total_amount %}
+        {% set margin = so.total_amount - linked_po.total_amount %}
+        {% set mpct   = (margin / so.total_amount * 100) if so.total_amount else 0 %}
+        <div class="border rounded p-2 bg-light">
+          <div class="d-flex justify-content-between small">
+            <span class="text-muted">SO Revenue</span><span class="fw-bold">${{ '%.2f'|format(so.total_amount) }}</span>
+          </div>
+          <div class="d-flex justify-content-between small">
+            <span class="text-muted">PO Landed Cost</span><span class="text-danger">${{ '%.2f'|format(linked_po.total_amount) }}</span>
+          </div>
+          <hr class="my-1">
+          <div class="d-flex justify-content-between small fw-bold">
+            <span>Gross Margin</span>
+            <span class="{{ 'text-success' if margin >= 0 else 'text-danger' }}">${{ '%.2f'|format(margin) }} ({{ '%.1f'|format(mpct) }}%)</span>
+          </div>
+        </div>
+        {% endif %}
+        {% else %}
+        <form method="post" action="{{ url_for('so_detail', sid=so.id) }}">
+          <input type="hidden" name="customer_id" value="{{ so.customer_id or '' }}">
+          <input type="hidden" name="status" value="{{ so.status }}">
+          <input type="hidden" name="order_date" value="{{ so.order_date or '' }}">
+          <input type="hidden" name="ship_date" value="{{ so.ship_date or '' }}">
+          <input type="hidden" name="delivery_address" value="{{ so.delivery_address or '' }}">
+          <input type="hidden" name="payment_terms" value="{{ so.payment_terms or 'Net 30' }}">
+          <input type="hidden" name="notes" value="{{ so.notes or '' }}">
+          <input type="hidden" name="currency" value="{{ so.currency or 'USD' }}">
+          <div class="mb-2">
+            <select name="linked_po_id" class="form-select form-select-sm">
+              <option value="">— Select Purchase Order —</option>
+              {% for p in open_pos %}
+              <option value="{{ p.id }}">{{ p.po_number }} (${{ '%.2f'|format(p.total_amount) }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit" class="btn btn-sm btn-outline-primary w-100">
+            <i class="bi bi-link-45deg me-1"></i> Link PO
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  {% if so %}
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-list-ul me-1"></i> Line Items ({{ items|length }})</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Part #</th>
+              <th>Description</th>
+              <th>Qty</th>
+              <th>CC</th>
+              <th>S/N</th>
+              <th class="text-end">Unit Price</th>
+              <th class="text-end">Line Total</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for it in items %}
+          <tr>
+            <td class="ps-3"><code class="fw-bold">{{ it.part_number }}</code></td>
+            <td>{{ it.description or '—' }}</td>
+            <td>{{ it.quantity }}</td>
+            <td><span class="badge text-bg-secondary">{{ it.condition }}</span></td>
+            <td><small class="text-muted">{{ it.serial_number or '—' }}</small></td>
+            <td class="text-end">${{ '%.2f'|format(it.unit_price) }}</td>
+            <td class="text-end fw-bold">${{ '%.2f'|format(it.extended_price) }}</td>
+            <td class="pe-2">
+              <form method="post" action="{{ url_for('so_delete_item', sid=so.id, iid=it.id) }}"
+                    onsubmit="return confirm('Remove this item?')">
+                <button class="btn btn-sm btn-outline-danger py-0">✕</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center py-4 text-muted">No items yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-plus-circle me-1"></i> Add Line Item</strong>
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('so_add_item', sid=so.id) }}">
+          <div class="row g-2">
+            <div class="col-md-3">
+              <label class="form-label">Part Number *</label>
+              <input name="part_number" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Description</label>
+              <input name="description" class="form-control">
+            </div>
+            <div class="col-md-1">
+              <label class="form-label">Qty</label>
+              <input name="quantity" type="number" class="form-control" value="1" min="1">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Unit Price</label>
+              <input name="unit_price" type="number" class="form-control" value="0" step="0.01">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label">Condition</label>
+              <select name="condition" class="form-select">
+                {% for cc in ['SV','NE','FN','NS','OH','RP','AR'] %}
+                <option>{{ cc }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Serial Number</label>
+              <input name="serial_number" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Trace To</label>
+              <input name="trace_to" class="form-control" placeholder="Cert/Tag ref">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Notes</label>
+              <input name="notes" class="form-control">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+              <button class="btn btn-navy w-100"><i class="bi bi-plus-lg"></i> Add</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

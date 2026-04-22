@@ -302,9 +302,216 @@ def init_db():
         "ALTER TABLE rfqs ADD COLUMN pb_rfq_id TEXT",
         "ALTER TABLE rfqs ADD COLUMN pb_sent_at TEXT",
         "INSERT OR IGNORE INTO settings VALUES ('pb_client_id','EAAEAPI')",
+        # ── PO Shipping ─────────────────────────────────────────────────────
+        "ALTER TABLE purchase_orders ADD COLUMN shipping_service TEXT",
+        "ALTER TABLE purchase_orders ADD COLUMN shipping_provider TEXT",
+        "ALTER TABLE purchase_orders ADD COLUMN awb_number TEXT",
+        "ALTER TABLE purchase_orders ADD COLUMN shipping_cost REAL DEFAULT 0",
         "INSERT OR IGNORE INTO settings VALUES ('pb_client_secret','6F6A2E82-EF6C-4FBE-9F4A-882466FE5138')",
         "INSERT OR IGNORE INTO settings VALUES ('pb_username','easternaero')",
         "INSERT OR IGNORE INTO settings VALUES ('pb_password','')",
+        # ── ERP: Customers ──────────────────────────────────────────────────
+        """CREATE TABLE IF NOT EXISTS customers (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT NOT NULL,
+            company      TEXT,
+            email        TEXT,
+            phone        TEXT,
+            address      TEXT,
+            city         TEXT,
+            country      TEXT,
+            credit_terms TEXT DEFAULT 'Net 30',
+            currency     TEXT DEFAULT 'USD',
+            notes        TEXT,
+            created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        # ── ERP: Vendors ────────────────────────────────────────────────────
+        """CREATE TABLE IF NOT EXISTS vendors (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            name          TEXT NOT NULL,
+            company       TEXT,
+            email         TEXT,
+            phone         TEXT,
+            address       TEXT,
+            city          TEXT,
+            country       TEXT,
+            payment_terms TEXT DEFAULT 'Net 30',
+            currency      TEXT DEFAULT 'USD',
+            vendor_code   TEXT,
+            notes         TEXT,
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""",
+        # ── ERP: Purchase Orders ────────────────────────────────────────────
+        """CREATE TABLE IF NOT EXISTS purchase_orders (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            po_number        TEXT UNIQUE NOT NULL,
+            vendor_id        INTEGER,
+            rfq_id           INTEGER,
+            status           TEXT DEFAULT 'draft',
+            order_date       TEXT,
+            expected_date    TEXT,
+            received_date    TEXT,
+            shipping_address TEXT,
+            notes            TEXT,
+            total_amount     REAL DEFAULT 0,
+            currency         TEXT DEFAULT 'USD',
+            created_by       INTEGER,
+            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (vendor_id) REFERENCES vendors(id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS purchase_order_items (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            po_id             INTEGER NOT NULL,
+            part_number       TEXT NOT NULL,
+            description       TEXT,
+            quantity          INTEGER DEFAULT 1,
+            quantity_received INTEGER DEFAULT 0,
+            unit_cost         REAL DEFAULT 0,
+            extended_cost     REAL DEFAULT 0,
+            condition         TEXT DEFAULT 'SV',
+            lead_time         TEXT DEFAULT 'Stock',
+            notes             TEXT,
+            FOREIGN KEY (po_id) REFERENCES purchase_orders(id)
+        )""",
+        # ── ERP: Sales Orders ───────────────────────────────────────────────
+        """CREATE TABLE IF NOT EXISTS sales_orders (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            so_number        TEXT UNIQUE NOT NULL,
+            customer_id      INTEGER,
+            quote_id         INTEGER,
+            rfq_id           INTEGER,
+            status           TEXT DEFAULT 'draft',
+            order_date       TEXT,
+            ship_date        TEXT,
+            delivery_address TEXT,
+            payment_terms    TEXT DEFAULT 'Net 30',
+            notes            TEXT,
+            total_amount     REAL DEFAULT 0,
+            currency         TEXT DEFAULT 'USD',
+            created_by       INTEGER,
+            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id),
+            FOREIGN KEY (quote_id)    REFERENCES quotes(id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS sales_order_items (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            so_id          INTEGER NOT NULL,
+            part_number    TEXT NOT NULL,
+            description    TEXT,
+            quantity       INTEGER DEFAULT 1,
+            unit_price     REAL DEFAULT 0,
+            extended_price REAL DEFAULT 0,
+            condition      TEXT DEFAULT 'SV',
+            serial_number  TEXT,
+            trace_to       TEXT,
+            notes          TEXT,
+            FOREIGN KEY (so_id) REFERENCES sales_orders(id)
+        )""",
+        # ── ERP: Work Orders ────────────────────────────────────────────────
+        """CREATE TABLE IF NOT EXISTS work_orders (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            wo_number     TEXT UNIQUE NOT NULL,
+            customer_id   INTEGER,
+            so_id         INTEGER,
+            aircraft_type TEXT,
+            aircraft_reg  TEXT,
+            status        TEXT DEFAULT 'open',
+            priority      TEXT DEFAULT 'normal',
+            description   TEXT,
+            notes         TEXT,
+            open_date     TEXT,
+            required_date TEXT,
+            closed_date   TEXT,
+            total_labor   REAL DEFAULT 0,
+            total_parts   REAL DEFAULT 0,
+            created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS work_order_tasks (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            wo_id           INTEGER NOT NULL,
+            description     TEXT NOT NULL,
+            status          TEXT DEFAULT 'pending',
+            estimated_hours REAL DEFAULT 0,
+            actual_hours    REAL DEFAULT 0,
+            labor_rate      REAL DEFAULT 0,
+            labor_cost      REAL DEFAULT 0,
+            assigned_to     TEXT,
+            notes           TEXT,
+            FOREIGN KEY (wo_id) REFERENCES work_orders(id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS work_order_parts (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            wo_id         INTEGER NOT NULL,
+            part_number   TEXT NOT NULL,
+            description   TEXT,
+            quantity      INTEGER DEFAULT 1,
+            unit_cost     REAL DEFAULT 0,
+            extended_cost REAL DEFAULT 0,
+            condition     TEXT DEFAULT 'SV',
+            serial_number TEXT,
+            inventory_id  INTEGER,
+            returned      INTEGER DEFAULT 0,
+            returned_at   TEXT,
+            FOREIGN KEY (wo_id) REFERENCES work_orders(id)
+        )""",
+        # ── Inventory: repair lock columns ──────────────────────────────────
+        "ALTER TABLE inventory ADD COLUMN serial_number TEXT",
+        "ALTER TABLE inventory ADD COLUMN repair_status TEXT",
+        "ALTER TABLE inventory ADD COLUMN repair_wo_id INTEGER",
+        "ALTER TABLE inventory ADD COLUMN repair_wo_number TEXT",
+        # ── Work order parts: repair tracking columns (for existing tables) ─
+        "ALTER TABLE work_order_parts ADD COLUMN inventory_id INTEGER",
+        "ALTER TABLE work_order_parts ADD COLUMN returned INTEGER DEFAULT 0",
+        "ALTER TABLE work_order_parts ADD COLUMN returned_at TEXT",
+        # ── PO Shipping columns ──────────────────────────────────────────────
+        "ALTER TABLE purchase_orders ADD COLUMN shipping_service TEXT",
+        "ALTER TABLE purchase_orders ADD COLUMN shipping_provider TEXT",
+        "ALTER TABLE purchase_orders ADD COLUMN awb_number TEXT",
+        "ALTER TABLE purchase_orders ADD COLUMN shipping_cost REAL DEFAULT 0",
+        # ── SO ↔ PO back-to-back link ────────────────────────────────────────
+        "ALTER TABLE purchase_orders ADD COLUMN linked_so_id INTEGER",
+        "ALTER TABLE sales_orders ADD COLUMN linked_po_id INTEGER",
+        # ── Per-line landed cost on PO items ────────────────────────────────
+        "ALTER TABLE purchase_order_items ADD COLUMN freight_charge REAL DEFAULT 0",
+        "ALTER TABLE purchase_order_items ADD COLUMN other_charges REAL DEFAULT 0",
+        "ALTER TABLE purchase_order_items ADD COLUMN total_landed_cost REAL DEFAULT 0",
+        # ── Accounts Payable ─────────────────────────────────────────────────
+        """CREATE TABLE IF NOT EXISTS accounts_payable (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ap_number       TEXT UNIQUE NOT NULL,
+            po_id           INTEGER NOT NULL,
+            vendor_id       INTEGER,
+            amount          REAL DEFAULT 0,
+            paid_amount     REAL DEFAULT 0,
+            due_date        TEXT,
+            status          TEXT DEFAULT 'open',
+            payment_method  TEXT,
+            payment_ref     TEXT,
+            paid_date       TEXT,
+            notes           TEXT,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (po_id)     REFERENCES purchase_orders(id),
+            FOREIGN KEY (vendor_id) REFERENCES vendors(id)
+        )""",
+        # ── Accounts Receivable ──────────────────────────────────────────────
+        """CREATE TABLE IF NOT EXISTS accounts_receivable (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            ar_number       TEXT UNIQUE NOT NULL,
+            so_id           INTEGER NOT NULL,
+            customer_id     INTEGER,
+            amount          REAL DEFAULT 0,
+            paid_amount     REAL DEFAULT 0,
+            due_date        TEXT,
+            status          TEXT DEFAULT 'open',
+            payment_method  TEXT,
+            payment_ref     TEXT,
+            paid_date       TEXT,
+            notes           TEXT,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (so_id)      REFERENCES sales_orders(id),
+            FOREIGN KEY (customer_id) REFERENCES customers(id)
+        )""",
     ]
     for sql in migrations:
         try:
@@ -875,27 +1082,56 @@ def account():
 @login_required
 def dashboard():
     conn = get_db()
+    today = datetime.utcnow().strftime('%Y-%m-%d')
     stats = {
-        'total_rfqs':    conn.execute("SELECT COUNT(*) FROM rfqs").fetchone()[0],
-        'pending_rfqs':  conn.execute("SELECT COUNT(*) FROM rfqs WHERE status='pending'").fetchone()[0],
-        'total_quotes':  conn.execute("SELECT COUNT(*) FROM quotes").fetchone()[0],
-        'sent_quotes':   conn.execute("SELECT COUNT(*) FROM quotes WHERE status='sent'").fetchone()[0],
-        'total_parts':   conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0],
-        'inventory_val': conn.execute("SELECT COALESCE(SUM(unit_price*quantity),0) FROM inventory").fetchone()[0],
+        'pending_rfqs':   conn.execute("SELECT COUNT(*) FROM rfqs WHERE status='pending'").fetchone()[0],
+        'draft_quotes':   conn.execute("SELECT COUNT(*) FROM quotes WHERE status='draft'").fetchone()[0],
+        'open_pos':       conn.execute("SELECT COUNT(*) FROM purchase_orders WHERE status NOT IN ('received','closed','cancelled')").fetchone()[0],
+        'open_sos':       conn.execute("SELECT COUNT(*) FROM sales_orders WHERE status NOT IN ('closed','cancelled')").fetchone()[0],
+        'ar_outstanding': conn.execute("SELECT COALESCE(SUM(amount-paid_amount),0) FROM accounts_receivable WHERE status!='paid'").fetchone()[0],
+        'ap_outstanding': conn.execute("SELECT COALESCE(SUM(amount-paid_amount),0) FROM accounts_payable WHERE status!='paid'").fetchone()[0],
+        'ar_overdue':     conn.execute(f"SELECT COALESCE(SUM(amount-paid_amount),0) FROM accounts_receivable WHERE status!='paid' AND due_date<'{today}'").fetchone()[0],
+        'ap_overdue':     conn.execute(f"SELECT COALESCE(SUM(amount-paid_amount),0) FROM accounts_payable WHERE status!='paid' AND due_date<'{today}'").fetchone()[0],
+        'inventory_val':  conn.execute("SELECT COALESCE(SUM(unit_price*quantity),0) FROM inventory").fetchone()[0],
+        'total_parts':    conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0],
     }
     recent_rfqs = conn.execute("""
         SELECT r.*, COUNT(i.id) item_count
         FROM rfqs r LEFT JOIN rfq_items i ON r.id=i.rfq_id
-        GROUP BY r.id ORDER BY r.created_at DESC LIMIT 8
+        GROUP BY r.id ORDER BY r.created_at DESC LIMIT 6
     """).fetchall()
     recent_quotes = conn.execute("""
         SELECT q.*, r.customer_name, r.company
         FROM quotes q LEFT JOIN rfqs r ON q.rfq_id=r.id
-        ORDER BY q.created_at DESC LIMIT 8
+        ORDER BY q.created_at DESC LIMIT 5
+    """).fetchall()
+    recent_pos = conn.execute("""
+        SELECT po.*, v.name as vendor_name FROM purchase_orders po
+        LEFT JOIN vendors v ON v.id=po.vendor_id
+        ORDER BY po.created_at DESC LIMIT 5
+    """).fetchall()
+    recent_sos = conn.execute("""
+        SELECT so.*, c.name as customer_name FROM sales_orders so
+        LEFT JOIN customers c ON c.id=so.customer_id
+        ORDER BY so.created_at DESC LIMIT 5
+    """).fetchall()
+    overdue_ap = conn.execute(f"""
+        SELECT ap.*, v.name as vendor_name, po.po_number FROM accounts_payable ap
+        LEFT JOIN vendors v ON v.id=ap.vendor_id
+        LEFT JOIN purchase_orders po ON po.id=ap.po_id
+        WHERE ap.status!='paid' AND ap.due_date<'{today}' ORDER BY ap.due_date LIMIT 5
+    """).fetchall()
+    overdue_ar = conn.execute(f"""
+        SELECT ar.*, c.name as customer_name, so.so_number FROM accounts_receivable ar
+        LEFT JOIN customers c ON c.id=ar.customer_id
+        LEFT JOIN sales_orders so ON so.id=ar.so_id
+        WHERE ar.status!='paid' AND ar.due_date<'{today}' ORDER BY ar.due_date LIMIT 5
     """).fetchall()
     conn.close()
     return render_template('dashboard.html', stats=stats,
-                           recent_rfqs=recent_rfqs, recent_quotes=recent_quotes)
+                           recent_rfqs=recent_rfqs, recent_quotes=recent_quotes,
+                           recent_pos=recent_pos, recent_sos=recent_sos,
+                           overdue_ap=overdue_ap, overdue_ar=overdue_ar)
 
 
 # ─── Routes: Inventory ───────────────────────────────────────────────────────
@@ -1135,12 +1371,15 @@ def rfq_detail(rfq_id):
             ORDER BY q.created_at DESC LIMIT 1
         ''', (rfq['customer_email'], rfq_id)).fetchone()
 
+    vendors = conn.execute('SELECT id, name, company FROM vendors ORDER BY name').fetchall()
+    po_exists = conn.execute('SELECT id FROM purchase_orders WHERE rfq_id=? LIMIT 1', (rfq_id,)).fetchone()
     conn.close()
     if not rfq:
         flash('RFQ not found.', 'error')
         return redirect(url_for('rfq_list'))
     return render_template('rfq_detail.html', rfq=rfq, items=items, quotes=quotes,
-                           settings=settings, prev_quote=prev_quote)
+                           settings=settings, prev_quote=prev_quote,
+                           vendors=vendors, po_exists=po_exists)
 
 
 @app.route('/rfqs/<int:rfq_id>/quote', methods=['POST'])
@@ -1260,10 +1499,11 @@ def quote_view(quote_id):
     rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
     items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
     attachments = conn.execute('SELECT * FROM quote_attachments WHERE quote_id=? ORDER BY uploaded_at', (quote_id,)).fetchall()
+    so_exists   = conn.execute('SELECT id, so_number FROM sales_orders WHERE quote_id=? LIMIT 1', (quote_id,)).fetchone()
     settings    = get_settings()
     conn.close()
     return render_template('quote_view.html', quote=quote, rfq=rfq, items=items,
-                           attachments=attachments, settings=settings)
+                           attachments=attachments, settings=settings, so_exists=so_exists)
 
 
 @app.route('/quotes/<int:quote_id>/update-item', methods=['POST'])
@@ -1321,12 +1561,25 @@ def add_quote_item(quote_id):
 
     conn = get_db()
 
+    # Block if the specific SN is locked for repair
+    sn_check = (data.get('serial_number') or '').strip()
+    if sn_check:
+        locked = conn.execute(
+            "SELECT repair_wo_number FROM inventory WHERE UPPER(part_number)=? AND UPPER(COALESCE(serial_number,''))=? AND repair_status='out_for_repair'",
+            (pn, sn_check.upper())).fetchone()
+        if locked:
+            conn.close()
+            return jsonify({'success': False,
+                            'error': f'Part {pn} S/N {sn_check} is locked — currently out for repair under {locked["repair_wo_number"]}. It cannot be sold until returned.'})
+
     # Check inventory for a match
     inv = conn.execute(
         'SELECT * FROM inventory WHERE UPPER(part_number)=? LIMIT 1', (pn,)
     ).fetchone()
     matched   = inv is not None
     qty_avail = inv['quantity'] if matched else 0
+    # Warn if the matched item is out for repair (no SN provided but PN matches a locked item)
+    repair_lock = (inv['repair_status'] == 'out_for_repair') if matched else False
     if matched and not description:
         description = inv['description'] or ''
 
@@ -1355,6 +1608,8 @@ def add_quote_item(quote_id):
         'total': total,
         'matched': matched,
         'qty_avail': qty_avail,
+        'repair_lock': repair_lock,
+        'repair_wo': inv['repair_wo_number'] if (matched and repair_lock) else None,
     })
 
 
@@ -2585,9 +2840,16 @@ def _pb_api(method, path, payload=None):
                                     })
     try:
         with urllib.request.urlopen(req, timeout=20) as resp:
-            return json.loads(resp.read())
+            raw = resp.read()
+            try:
+                return json.loads(raw)
+            except Exception:
+                return {'_raw': raw.decode(errors='replace')}
     except urllib.error.HTTPError as e:
-        raise ValueError(f'Partsbase API error ({e.code}): {e.read().decode()[:300]}')
+        body_text = e.read().decode(errors='replace')[:500]
+        raise ValueError(f'Partsbase API {e.code} on {method.upper()} {path}: {body_text}')
+    except urllib.error.URLError as e:
+        raise ValueError(f'Partsbase connection error: {e.reason}')
 
 
 @app.route('/rfqs/<int:rfq_id>/send-partsbase', methods=['POST'])
@@ -2623,16 +2885,17 @@ def rfq_send_partsbase(rfq_id):
 
     try:
         result = _pb_api('POST', '/api/rfqs', payload)
-        pb_id  = result.get('id') or result.get('rfqId') or result.get('rfq_id') or str(result)
+        pb_id  = (result.get('id') or result.get('rfqId') or result.get('rfq_id')
+                  or result.get('RfqId') or result.get('_raw') or str(result))
         sent_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
         conn.execute('UPDATE rfqs SET pb_rfq_id=?, pb_sent_at=? WHERE id=?',
                      (str(pb_id), sent_at, rfq_id))
         conn.commit()
         conn.close()
         return jsonify({'success': True, 'pb_rfq_id': str(pb_id), 'sent_at': sent_at})
-    except ValueError as e:
+    except Exception as e:
         conn.close()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/api/partsbase/test')
@@ -2648,6 +2911,31 @@ def api_partsbase_test():
 
 
 # ─── Routes: API / Settings ──────────────────────────────────────────────────
+
+@app.route('/api/inventory/search-for-ro')
+@login_required
+def api_inventory_search_ro():
+    """Search available (unlocked) inventory items by PN or SN for WO part picker."""
+    q  = request.args.get('q', '').strip().upper()
+    sn = request.args.get('sn', '').strip().upper()
+    if not q and not sn:
+        return jsonify([])
+    conn = get_db()
+    where, params = [], []
+    if q:
+        where.append("UPPER(REPLACE(REPLACE(part_number,' ',''),'-','')) LIKE ?")
+        params.append(f'%{q.replace("-","").replace(" ","")}%')
+    if sn:
+        where.append("UPPER(COALESCE(serial_number,'')) LIKE ?")
+        params.append(f'%{sn}%')
+    sql = f"""SELECT id, part_number, description, serial_number, condition, quantity,
+                     unit_cost, unit_price, location, repair_status, repair_wo_number
+              FROM inventory
+              WHERE {' AND '.join(where)}
+              ORDER BY part_number LIMIT 20"""
+    rows = conn.execute(sql, params).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
 
 
 @app.route('/api/parse-text', methods=['POST'])
@@ -2791,6 +3079,987 @@ def settings_page():
         flash('Settings saved.', 'success')
         return redirect(url_for('settings_page'))
     return render_template('settings.html', s=get_settings())
+
+
+# ─── ERP: Conversions ────────────────────────────────────────────────────────
+
+@app.route('/rfqs/<int:rfq_id>/create-po', methods=['POST'])
+@login_required
+def rfq_create_po(rfq_id):
+    """Convert an RFQ into a Purchase Order, pre-populating all line items."""
+    conn   = get_db()
+    rfq    = conn.execute('SELECT * FROM rfqs WHERE id=?', (rfq_id,)).fetchone()
+    if not rfq:
+        conn.close(); flash('RFQ not found.', 'error'); return redirect(url_for('rfq_list'))
+    items  = conn.execute('SELECT * FROM rfq_items WHERE rfq_id=?', (rfq_id,)).fetchall()
+    po_num = _next_erp_number('PO', 'purchase_orders', 'po_number')
+    vendor_id = request.form.get('vendor_id') or None
+    conn.execute('''INSERT INTO purchase_orders
+                    (po_number,vendor_id,rfq_id,status,order_date,notes,currency,created_by)
+                    VALUES (?,?,?,?,?,?,?,?)''',
+                 (po_num, vendor_id, rfq_id, 'draft',
+                  datetime.utcnow().strftime('%Y-%m-%d'),
+                  f'Converted from RFQ {rfq["rfq_number"]}', 'USD', current_user.id))
+    conn.commit()
+    pid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    for it in items:
+        qty = int(it['quantity'] or 1)
+        conn.execute('''INSERT INTO purchase_order_items
+                        (po_id,part_number,description,quantity,unit_cost,extended_cost,condition)
+                        VALUES (?,?,?,?,0,0,?)''',
+                     (pid, it['part_number'], it['description'] or '', qty, it['condition'] or 'SV'))
+    conn.commit()
+    conn.close()
+    flash(f'Purchase Order {po_num} created from RFQ {rfq["rfq_number"]}.', 'success')
+    return redirect(url_for('po_detail', pid=pid))
+
+
+@app.route('/quotes/<int:quote_id>/create-so', methods=['POST'])
+@login_required
+def quote_create_so(quote_id):
+    """Convert a Quote into a Sales Order, pre-populating all priced line items."""
+    conn  = get_db()
+    quote = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
+    if not quote:
+        conn.close(); flash('Quote not found.', 'error'); return redirect(url_for('quote_list'))
+    items = conn.execute('SELECT * FROM quote_items WHERE quote_id=? AND no_quote=0', (quote_id,)).fetchall()
+    rfq   = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
+
+    # Try to find a matching customer record by email
+    customer_id = None
+    if rfq and rfq['customer_email']:
+        row = conn.execute('SELECT id FROM customers WHERE email=?', (rfq['customer_email'],)).fetchone()
+        if row:
+            customer_id = row['id']
+
+    so_num = _next_erp_number('SO', 'sales_orders', 'so_number')
+    conn.execute('''INSERT INTO sales_orders
+                    (so_number,customer_id,quote_id,rfq_id,status,order_date,payment_terms,notes,total_amount,currency,created_by)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                 (so_num, customer_id, quote_id, quote['rfq_id'], 'confirmed',
+                  datetime.utcnow().strftime('%Y-%m-%d'), 'Net 30',
+                  f'Converted from Quote {quote["quote_number"]}',
+                  quote['total_amount'] or 0, quote['currency'] or 'USD', current_user.id))
+    conn.commit()
+    sid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    for it in items:
+        qty   = int(it['quantity_requested'] or 1)
+        price = float(it['unit_price'] or 0)
+        conn.execute('''INSERT INTO sales_order_items
+                        (so_id,part_number,description,quantity,unit_price,extended_price,condition,trace_to)
+                        VALUES (?,?,?,?,?,?,?,?)''',
+                     (sid, it['part_number'], it['description'] or '', qty, price,
+                      round(qty * price, 2), it['condition'] or 'SV', it.get('trace_to', '') or ''))
+    conn.commit()
+    conn.close()
+    flash(f'Sales Order {so_num} created from Quote {quote["quote_number"]}.', 'success')
+    return redirect(url_for('so_detail', sid=sid))
+
+
+# ─── ERP: Customers ──────────────────────────────────────────────────────────
+
+def _next_erp_number(prefix, table, col):
+    conn = get_db()
+    today = datetime.utcnow().strftime('%Y%m%d')
+    like  = f'{prefix}-{today}-%'
+    row   = conn.execute(f"SELECT {col} FROM {table} WHERE {col} LIKE ? ORDER BY {col} DESC LIMIT 1", (like,)).fetchone()
+    conn.close()
+    seq = 1
+    if row:
+        try: seq = int(row[0].rsplit('-', 1)[-1]) + 1
+        except: pass
+    return f'{prefix}-{today}-{seq:04d}'
+
+
+@app.route('/customers')
+@login_required
+def customer_list():
+    conn = get_db()
+    q    = request.args.get('q', '').strip()
+    if q:
+        rows = conn.execute(
+            "SELECT * FROM customers WHERE name LIKE ? OR company LIKE ? OR email LIKE ? ORDER BY name",
+            (f'%{q}%', f'%{q}%', f'%{q}%')).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM customers ORDER BY name").fetchall()
+    conn.close()
+    return render_template('customers_list.html', customers=rows, q=q)
+
+
+@app.route('/customers/new', methods=['GET', 'POST'])
+@login_required
+def customer_new():
+    if request.method == 'POST':
+        f = request.form
+        conn = get_db()
+        conn.execute('''INSERT INTO customers (name,company,email,phone,address,city,country,credit_terms,currency,notes)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)''',
+                     (f.get('name',''), f.get('company',''), f.get('email',''), f.get('phone',''),
+                      f.get('address',''), f.get('city',''), f.get('country',''),
+                      f.get('credit_terms','Net 30'), f.get('currency','USD'), f.get('notes','')))
+        conn.commit()
+        cid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.close()
+        flash('Customer created.', 'success')
+        return redirect(url_for('customer_detail', cid=cid))
+    return render_template('customer_detail.html', customer=None, rfqs=[], sos=[])
+
+
+@app.route('/customers/<int:cid>', methods=['GET', 'POST'])
+@login_required
+def customer_detail(cid):
+    conn = get_db()
+    if request.method == 'POST':
+        f = request.form
+        conn.execute('''UPDATE customers SET name=?,company=?,email=?,phone=?,address=?,city=?,country=?,
+                        credit_terms=?,currency=?,notes=? WHERE id=?''',
+                     (f.get('name',''), f.get('company',''), f.get('email',''), f.get('phone',''),
+                      f.get('address',''), f.get('city',''), f.get('country',''),
+                      f.get('credit_terms','Net 30'), f.get('currency','USD'), f.get('notes',''), cid))
+        conn.commit()
+        flash('Customer updated.', 'success')
+    customer = conn.execute('SELECT * FROM customers WHERE id=?', (cid,)).fetchone()
+    if not customer:
+        conn.close(); flash('Customer not found.', 'error'); return redirect(url_for('customer_list'))
+    rfqs = conn.execute('SELECT * FROM rfqs WHERE customer_email=? ORDER BY created_at DESC LIMIT 20',
+                        (customer['email'] or '',)).fetchall()
+    quotes = conn.execute('''SELECT q.*, r.rfq_number FROM quotes q
+                             JOIN rfqs r ON r.id=q.rfq_id
+                             WHERE r.customer_email=?
+                             ORDER BY q.created_at DESC LIMIT 20''',
+                          (customer['email'] or '',)).fetchall()
+    sos  = conn.execute('''SELECT so.*, q.quote_number FROM sales_orders so
+                           LEFT JOIN quotes q ON q.id=so.quote_id
+                           WHERE so.customer_id=? ORDER BY so.created_at DESC LIMIT 20''', (cid,)).fetchall()
+    conn.close()
+    return render_template('customer_detail.html', customer=customer, rfqs=rfqs, quotes=quotes, sos=sos)
+
+
+@app.route('/customers/<int:cid>/delete', methods=['POST'])
+@login_required
+def customer_delete(cid):
+    conn = get_db()
+    conn.execute('DELETE FROM customers WHERE id=?', (cid,))
+    conn.commit(); conn.close()
+    flash('Customer deleted.', 'success')
+    return redirect(url_for('customer_list'))
+
+
+# ─── ERP: Vendors ─────────────────────────────────────────────────────────────
+
+@app.route('/vendors')
+@login_required
+def vendor_list():
+    conn = get_db()
+    q    = request.args.get('q', '').strip()
+    if q:
+        rows = conn.execute(
+            "SELECT * FROM vendors WHERE name LIKE ? OR company LIKE ? OR email LIKE ? ORDER BY name",
+            (f'%{q}%', f'%{q}%', f'%{q}%')).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM vendors ORDER BY name").fetchall()
+    conn.close()
+    return render_template('vendors_list.html', vendors=rows, q=q)
+
+
+@app.route('/vendors/new', methods=['GET', 'POST'])
+@login_required
+def vendor_new():
+    if request.method == 'POST':
+        f = request.form
+        conn = get_db()
+        conn.execute('''INSERT INTO vendors (name,company,email,phone,address,city,country,payment_terms,currency,vendor_code,notes)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                     (f.get('name',''), f.get('company',''), f.get('email',''), f.get('phone',''),
+                      f.get('address',''), f.get('city',''), f.get('country',''),
+                      f.get('payment_terms','Net 30'), f.get('currency','USD'),
+                      f.get('vendor_code',''), f.get('notes','')))
+        conn.commit()
+        vid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.close()
+        flash('Vendor created.', 'success')
+        return redirect(url_for('vendor_detail', vid=vid))
+    return render_template('vendor_detail.html', vendor=None, pos=[])
+
+
+@app.route('/vendors/<int:vid>', methods=['GET', 'POST'])
+@login_required
+def vendor_detail(vid):
+    conn = get_db()
+    if request.method == 'POST':
+        f = request.form
+        conn.execute('''UPDATE vendors SET name=?,company=?,email=?,phone=?,address=?,city=?,country=?,
+                        payment_terms=?,currency=?,vendor_code=?,notes=? WHERE id=?''',
+                     (f.get('name',''), f.get('company',''), f.get('email',''), f.get('phone',''),
+                      f.get('address',''), f.get('city',''), f.get('country',''),
+                      f.get('payment_terms','Net 30'), f.get('currency','USD'),
+                      f.get('vendor_code',''), f.get('notes',''), vid))
+        conn.commit()
+        flash('Vendor updated.', 'success')
+    vendor = conn.execute('SELECT * FROM vendors WHERE id=?', (vid,)).fetchone()
+    if not vendor:
+        conn.close(); flash('Vendor not found.', 'error'); return redirect(url_for('vendor_list'))
+    pos  = conn.execute('SELECT * FROM purchase_orders WHERE vendor_id=? ORDER BY created_at DESC LIMIT 20', (vid,)).fetchall()
+    rfqs = conn.execute("SELECT * FROM rfqs WHERE status='pending' ORDER BY created_at DESC LIMIT 30").fetchall()
+    conn.close()
+    return render_template('vendor_detail.html', vendor=vendor, pos=pos, rfqs=rfqs)
+
+
+@app.route('/vendors/<int:vid>/delete', methods=['POST'])
+@login_required
+def vendor_delete(vid):
+    conn = get_db()
+    conn.execute('DELETE FROM vendors WHERE id=?', (vid,))
+    conn.commit(); conn.close()
+    flash('Vendor deleted.', 'success')
+    return redirect(url_for('vendor_list'))
+
+
+# ─── ERP: Purchase Orders ─────────────────────────────────────────────────────
+
+@app.route('/purchase-orders')
+@login_required
+def po_list():
+    conn   = get_db()
+    status = request.args.get('status', '')
+    q      = request.args.get('q', '').strip()
+    sql    = '''SELECT po.*, v.name as vendor_name FROM purchase_orders po
+                LEFT JOIN vendors v ON v.id=po.vendor_id'''
+    params = []
+    where  = []
+    if status: where.append('po.status=?'); params.append(status)
+    if q:      where.append('(po.po_number LIKE ? OR v.name LIKE ?)'); params += [f'%{q}%', f'%{q}%']
+    if where:  sql += ' WHERE ' + ' AND '.join(where)
+    sql   += ' ORDER BY po.created_at DESC'
+    rows   = conn.execute(sql, params).fetchall()
+    conn.close()
+    return render_template('po_list.html', pos=rows, status=status, q=q)
+
+
+@app.route('/purchase-orders/new', methods=['GET', 'POST'])
+@login_required
+def po_new():
+    conn = get_db()
+    vendors = conn.execute('SELECT id, name, company FROM vendors ORDER BY name').fetchall()
+    if request.method == 'POST':
+        f      = request.form
+        po_num = _next_erp_number('PO', 'purchase_orders', 'po_number')
+        conn.execute('''INSERT INTO purchase_orders
+                        (po_number,vendor_id,status,order_date,expected_date,shipping_address,notes,currency,created_by)
+                        VALUES (?,?,?,?,?,?,?,?,?)''',
+                     (po_num, f.get('vendor_id') or None, 'draft',
+                      f.get('order_date', datetime.utcnow().strftime('%Y-%m-%d')),
+                      f.get('expected_date',''), f.get('shipping_address',''),
+                      f.get('notes',''), f.get('currency','USD'), current_user.id))
+        conn.commit()
+        pid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.close()
+        flash(f'Purchase Order {po_num} created.', 'success')
+        return redirect(url_for('po_detail', pid=pid))
+    conn.close()
+    return render_template('po_detail.html', po=None, items=[], vendors=vendors, vendor=None)
+
+
+@app.route('/purchase-orders/<int:pid>', methods=['GET', 'POST'])
+@login_required
+def po_detail(pid):
+    conn    = get_db()
+    vendors = conn.execute('SELECT id, name, company FROM vendors ORDER BY name').fetchall()
+    if request.method == 'POST':
+        f = request.form
+        ship_cost = float(f.get('shipping_cost') or 0)
+        linked_so_id = f.get('linked_so_id') or None
+        conn.execute('''UPDATE purchase_orders SET vendor_id=?,status=?,order_date=?,expected_date=?,
+                        shipping_address=?,notes=?,currency=?,
+                        shipping_service=?,shipping_provider=?,awb_number=?,shipping_cost=?,linked_so_id=?
+                        WHERE id=?''',
+                     (f.get('vendor_id') or None, f.get('status','draft'),
+                      f.get('order_date',''), f.get('expected_date',''),
+                      f.get('shipping_address',''), f.get('notes',''),
+                      f.get('currency','USD'),
+                      f.get('shipping_service',''), f.get('shipping_provider',''),
+                      f.get('awb_number',''), ship_cost, linked_so_id, pid))
+        _recalc_po_total(conn, pid)
+        conn.commit()
+        flash('Purchase Order updated.', 'success')
+    po     = conn.execute('SELECT po.*, v.name as vendor_name, v.email as vendor_email FROM purchase_orders po LEFT JOIN vendors v ON v.id=po.vendor_id WHERE po.id=?', (pid,)).fetchone()
+    if not po:
+        conn.close(); flash('PO not found.', 'error'); return redirect(url_for('po_list'))
+    items    = conn.execute('SELECT * FROM purchase_order_items WHERE po_id=? ORDER BY id', (pid,)).fetchall()
+    vendor   = conn.execute('SELECT * FROM vendors WHERE id=?', (po['vendor_id'],)).fetchone() if po['vendor_id'] else None
+    ap_entry = conn.execute('SELECT * FROM accounts_payable WHERE po_id=?', (pid,)).fetchone()
+    # Back-to-back: linked SO
+    linked_so    = conn.execute('''SELECT so.*, c.name as customer_name
+                                   FROM sales_orders so LEFT JOIN customers c ON c.id=so.customer_id
+                                   WHERE so.id=?''', (po['linked_so_id'],)).fetchone() if po['linked_so_id'] else None
+    linked_so_items = conn.execute('SELECT * FROM sales_order_items WHERE so_id=?', (po['linked_so_id'],)).fetchall() if po['linked_so_id'] else []
+    # All open SOs for the link dropdown
+    open_sos = conn.execute("SELECT id, so_number, total_amount FROM sales_orders WHERE status NOT IN ('closed','cancelled') ORDER BY created_at DESC").fetchall()
+    # Margin summary
+    so_revenue  = linked_so['total_amount'] if linked_so else 0
+    po_landed   = po['total_amount'] or 0
+    gross_margin = round(so_revenue - po_landed, 2)
+    margin_pct   = round((gross_margin / so_revenue * 100) if so_revenue else 0, 1)
+    conn.close()
+    return render_template('po_detail.html', po=po, items=items, vendors=vendors, vendor=vendor,
+                           ap_entry=ap_entry, linked_so=linked_so, linked_so_items=linked_so_items,
+                           open_sos=open_sos, gross_margin=gross_margin, margin_pct=margin_pct)
+
+
+@app.route('/purchase-orders/<int:pid>/add-item', methods=['POST'])
+@login_required
+def po_add_item(pid):
+    f              = request.form
+    qty            = int(f.get('quantity', 1) or 1)
+    cost           = float(f.get('unit_cost', 0) or 0)
+    freight        = float(f.get('freight_charge', 0) or 0)
+    other          = float(f.get('other_charges', 0) or 0)
+    extended       = round(qty * cost, 2)
+    total_landed   = round(extended + freight + other, 2)
+    conn = get_db()
+    conn.execute('''INSERT INTO purchase_order_items
+                    (po_id,part_number,description,quantity,unit_cost,extended_cost,
+                     freight_charge,other_charges,total_landed_cost,condition,lead_time,notes)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)''',
+                 (pid, f.get('part_number',''), f.get('description',''), qty, cost,
+                  extended, freight, other, total_landed,
+                  f.get('condition','SV'), f.get('lead_time','Stock'), f.get('notes','')))
+    _recalc_po_total(conn, pid)
+    conn.commit(); conn.close()
+    flash('Item added.', 'success')
+    return redirect(url_for('po_detail', pid=pid))
+
+
+@app.route('/purchase-orders/<int:pid>/items/<int:iid>/delete', methods=['POST'])
+@login_required
+def po_delete_item(pid, iid):
+    conn = get_db()
+    conn.execute('DELETE FROM purchase_order_items WHERE id=? AND po_id=?', (iid, pid))
+    _recalc_po_total(conn, pid)
+    conn.commit(); conn.close()
+    return redirect(url_for('po_detail', pid=pid))
+
+
+@app.route('/purchase-orders/<int:pid>/status', methods=['POST'])
+@login_required
+def _recalc_po_total(conn, pid):
+    """Recalculate PO total_amount = SUM(total_landed_cost per line) + shipping_cost."""
+    landed = conn.execute(
+        'SELECT COALESCE(SUM(total_landed_cost),0) FROM purchase_order_items WHERE po_id=?', (pid,)).fetchone()[0]
+    ship   = conn.execute(
+        'SELECT COALESCE(shipping_cost,0) FROM purchase_orders WHERE id=?', (pid,)).fetchone()[0]
+    conn.execute('UPDATE purchase_orders SET total_amount=? WHERE id=?', (round(landed + ship, 2), pid))
+
+
+def _payment_terms_days(terms):
+    """Extract net days from a payment_terms string like 'Net 30' → 30."""
+    if not terms:
+        return 30
+    import re as _re
+    m = _re.search(r'\d+', str(terms))
+    return int(m.group()) if m else 30
+
+def _add_days(date_str, days):
+    from datetime import timedelta
+    try:
+        d = datetime.strptime(date_str, '%Y-%m-%d') + timedelta(days=days)
+        return d.strftime('%Y-%m-%d')
+    except Exception:
+        return date_str
+
+def po_status(pid):
+    new_status = request.form.get('status')
+    conn = get_db()
+    update = 'UPDATE purchase_orders SET status=?'
+    params = [new_status]
+    if new_status == 'received':
+        today = datetime.utcnow().strftime('%Y-%m-%d')
+        update += ', received_date=?'; params.append(today)
+        # Auto-add all PO line items to inventory
+        po_items = conn.execute('SELECT * FROM purchase_order_items WHERE po_id=?', (pid,)).fetchall()
+        po_row   = conn.execute('SELECT * FROM purchase_orders WHERE id=?', (pid,)).fetchone()
+        for it in po_items:
+            conn.execute('''INSERT INTO inventory
+                            (part_number, description, quantity, condition, unit_cost, location)
+                            VALUES (?,?,?,?,?,?)''',
+                         (it['part_number'], it['description'] or '', it['quantity'],
+                          it['condition'] or 'SV', it['unit_cost'] or 0,
+                          f'Received from PO {po_row["po_number"] if po_row else pid}'))
+        if po_items:
+            flash(f'{len(po_items)} item(s) added to inventory from this PO.', 'success')
+        # Create AP entry if one doesn't exist yet
+        if po_row and not conn.execute('SELECT id FROM accounts_payable WHERE po_id=?', (pid,)).fetchone():
+            ap_num  = _next_erp_number('AP', 'accounts_payable', 'ap_number')
+            vendor  = conn.execute('SELECT payment_terms FROM vendors WHERE id=?', (po_row['vendor_id'],)).fetchone() if po_row['vendor_id'] else None
+            net_days = _payment_terms_days(vendor['payment_terms'] if vendor else None)
+            due_date = _add_days(today, net_days)
+            conn.execute('''INSERT INTO accounts_payable
+                            (ap_number,po_id,vendor_id,amount,due_date,status)
+                            VALUES (?,?,?,?,?,?)''',
+                         (ap_num, pid, po_row['vendor_id'], po_row['total_amount'], due_date, 'open'))
+            flash(f'AP entry {ap_num} created — due {due_date}.', 'success')
+    params.append(pid)
+    conn.execute(update + ' WHERE id=?', params)
+    conn.commit(); conn.close()
+    flash(f'Status updated to {new_status}.', 'success')
+    return redirect(url_for('po_detail', pid=pid))
+
+
+# ─── ERP: Sales Orders ────────────────────────────────────────────────────────
+
+@app.route('/sales-orders')
+@login_required
+def so_list():
+    conn   = get_db()
+    status = request.args.get('status', '')
+    q      = request.args.get('q', '').strip()
+    sql    = '''SELECT so.*, c.name as customer_name, c.company as customer_company
+                FROM sales_orders so LEFT JOIN customers c ON c.id=so.customer_id'''
+    params = []
+    where  = []
+    if status: where.append('so.status=?'); params.append(status)
+    if q:      where.append('(so.so_number LIKE ? OR c.name LIKE ? OR c.company LIKE ?)'); params += [f'%{q}%', f'%{q}%', f'%{q}%']
+    if where:  sql += ' WHERE ' + ' AND '.join(where)
+    sql   += ' ORDER BY so.created_at DESC'
+    rows   = conn.execute(sql, params).fetchall()
+    conn.close()
+    return render_template('so_list.html', sos=rows, status=status, q=q)
+
+
+@app.route('/sales-orders/new', methods=['GET', 'POST'])
+@login_required
+def so_new():
+    conn      = get_db()
+    customers = conn.execute('SELECT id, name, company FROM customers ORDER BY name').fetchall()
+    quotes    = conn.execute("SELECT id, quote_number, total_amount FROM quotes WHERE status NOT IN ('cancelled') ORDER BY created_at DESC LIMIT 100").fetchall()
+    if request.method == 'POST':
+        f      = request.form
+        so_num = _next_erp_number('SO', 'sales_orders', 'so_number')
+        conn.execute('''INSERT INTO sales_orders
+                        (so_number,customer_id,quote_id,status,order_date,ship_date,delivery_address,payment_terms,notes,currency,created_by)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+                     (so_num, f.get('customer_id') or None, f.get('quote_id') or None,
+                      'draft', f.get('order_date', datetime.utcnow().strftime('%Y-%m-%d')),
+                      f.get('ship_date',''), f.get('delivery_address',''),
+                      f.get('payment_terms','Net 30'), f.get('notes',''), f.get('currency','USD'), current_user.id))
+        conn.commit()
+        sid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        # Auto-populate items from quote if selected
+        quote_id = f.get('quote_id')
+        if quote_id:
+            q_items = conn.execute('SELECT * FROM quote_items WHERE quote_id=? AND no_quote=0', (quote_id,)).fetchall()
+            for qi in q_items:
+                ext = round((qi['unit_price'] or 0) * (qi['quantity_requested'] or 1), 2)
+                conn.execute('''INSERT INTO sales_order_items (so_id,part_number,description,quantity,unit_price,extended_price,condition)
+                                VALUES (?,?,?,?,?,?,?)''',
+                             (sid, qi['part_number'], qi['description'] or '', qi['quantity_requested'] or 1,
+                              qi['unit_price'] or 0, ext, qi['condition'] or 'SV'))
+            total = conn.execute('SELECT COALESCE(SUM(extended_price),0) FROM sales_order_items WHERE so_id=?', (sid,)).fetchone()[0]
+            conn.execute('UPDATE sales_orders SET total_amount=? WHERE id=?', (round(total, 2), sid))
+            conn.commit()
+        conn.close()
+        flash(f'Sales Order {so_num} created.', 'success')
+        return redirect(url_for('so_detail', sid=sid))
+    conn.close()
+    return render_template('so_detail.html', so=None, items=[], customers=customers, quotes=quotes)
+
+
+@app.route('/sales-orders/<int:sid>', methods=['GET', 'POST'])
+@login_required
+def so_detail(sid):
+    conn      = get_db()
+    customers = conn.execute('SELECT id, name, company FROM customers ORDER BY name').fetchall()
+    if request.method == 'POST':
+        f = request.form
+        linked_po_id = f.get('linked_po_id') or None
+        conn.execute('''UPDATE sales_orders SET customer_id=?,status=?,order_date=?,ship_date=?,
+                        delivery_address=?,payment_terms=?,notes=?,currency=?,linked_po_id=? WHERE id=?''',
+                     (f.get('customer_id') or None, f.get('status','draft'),
+                      f.get('order_date',''), f.get('ship_date',''),
+                      f.get('delivery_address',''), f.get('payment_terms','Net 30'),
+                      f.get('notes',''), f.get('currency','USD'), linked_po_id, sid))
+        conn.commit()
+        flash('Sales Order updated.', 'success')
+    so = conn.execute('''SELECT so.*, c.name as customer_name, c.company as customer_company,
+                                c.email as customer_email, q.quote_number
+                         FROM sales_orders so
+                         LEFT JOIN customers c ON c.id=so.customer_id
+                         LEFT JOIN quotes q ON q.id=so.quote_id
+                         WHERE so.id=?''', (sid,)).fetchone()
+    if not so:
+        conn.close(); flash('Sales Order not found.', 'error'); return redirect(url_for('so_list'))
+    items    = conn.execute('SELECT * FROM sales_order_items WHERE so_id=? ORDER BY id', (sid,)).fetchall()
+    ar_entry = conn.execute('SELECT * FROM accounts_receivable WHERE so_id=?', (sid,)).fetchone()
+    # Back-to-back: linked PO
+    linked_po = conn.execute('''SELECT po.*, v.name as vendor_name FROM purchase_orders po
+                                LEFT JOIN vendors v ON v.id=po.vendor_id
+                                WHERE po.id=?''', (so['linked_po_id'],)).fetchone() if so['linked_po_id'] else None
+    linked_po_items = conn.execute('SELECT * FROM purchase_order_items WHERE po_id=?', (so['linked_po_id'],)).fetchall() if so['linked_po_id'] else []
+    open_pos = conn.execute("SELECT id, po_number, total_amount FROM purchase_orders WHERE status NOT IN ('closed','cancelled') ORDER BY created_at DESC").fetchall()
+    conn.close()
+    return render_template('so_detail.html', so=so, items=items, customers=customers, quotes=[],
+                           ar_entry=ar_entry, linked_po=linked_po, linked_po_items=linked_po_items,
+                           open_pos=open_pos)
+
+
+@app.route('/sales-orders/<int:sid>/add-item', methods=['POST'])
+@login_required
+def so_add_item(sid):
+    f     = request.form
+    qty   = int(f.get('quantity', 1) or 1)
+    price = float(f.get('unit_price', 0) or 0)
+    pn    = (f.get('part_number') or '').strip().upper()
+    sn    = (f.get('serial_number') or '').strip()
+    conn  = get_db()
+    # Block if PN+SN is locked for repair
+    if sn:
+        locked = conn.execute(
+            "SELECT repair_wo_number FROM inventory WHERE UPPER(part_number)=? AND UPPER(COALESCE(serial_number,''))=? AND repair_status='out_for_repair'",
+            (pn, sn.upper())).fetchone()
+        if locked:
+            conn.close()
+            flash(f'Cannot add {pn} S/N {sn} — currently out for repair under {locked["repair_wo_number"]}. Must be returned first.', 'error')
+            return redirect(url_for('so_detail', sid=sid))
+    conn.execute('''INSERT INTO sales_order_items (so_id,part_number,description,quantity,unit_price,extended_price,condition,serial_number,trace_to,notes)
+                    VALUES (?,?,?,?,?,?,?,?,?,?)''',
+                 (sid, f.get('part_number',''), f.get('description',''), qty, price,
+                  round(qty * price, 2), f.get('condition','SV'),
+                  f.get('serial_number',''), f.get('trace_to',''), f.get('notes','')))
+    total = conn.execute('SELECT COALESCE(SUM(extended_price),0) FROM sales_order_items WHERE so_id=?', (sid,)).fetchone()[0]
+    conn.execute('UPDATE sales_orders SET total_amount=? WHERE id=?', (round(total, 2), sid))
+    conn.commit(); conn.close()
+    flash('Item added.', 'success')
+    return redirect(url_for('so_detail', sid=sid))
+
+
+@app.route('/sales-orders/<int:sid>/items/<int:iid>/delete', methods=['POST'])
+@login_required
+def so_delete_item(sid, iid):
+    conn = get_db()
+    conn.execute('DELETE FROM sales_order_items WHERE id=? AND so_id=?', (iid, sid))
+    total = conn.execute('SELECT COALESCE(SUM(extended_price),0) FROM sales_order_items WHERE so_id=?', (sid,)).fetchone()[0]
+    conn.execute('UPDATE sales_orders SET total_amount=? WHERE id=?', (round(total, 2), sid))
+    conn.commit(); conn.close()
+    return redirect(url_for('so_detail', sid=sid))
+
+
+@app.route('/sales-orders/<int:sid>/status', methods=['POST'])
+@login_required
+def so_status(sid):
+    new_status = request.form.get('status')
+    conn = get_db()
+    conn.execute('UPDATE sales_orders SET status=? WHERE id=?', (new_status, sid))
+    # Auto-create AR entry when invoiced
+    if new_status == 'invoiced':
+        so_row = conn.execute('SELECT * FROM sales_orders WHERE id=?', (sid,)).fetchone()
+        if so_row and not conn.execute('SELECT id FROM accounts_receivable WHERE so_id=?', (sid,)).fetchone():
+            today    = datetime.utcnow().strftime('%Y-%m-%d')
+            ar_num   = _next_erp_number('AR', 'accounts_receivable', 'ar_number')
+            net_days = _payment_terms_days(so_row['payment_terms'] if so_row else None)
+            due_date = _add_days(today, net_days)
+            conn.execute('''INSERT INTO accounts_receivable
+                            (ar_number,so_id,customer_id,amount,due_date,status)
+                            VALUES (?,?,?,?,?,?)''',
+                         (ar_num, sid, so_row['customer_id'], so_row['total_amount'], due_date, 'open'))
+            flash(f'AR entry {ar_num} created — due {due_date}.', 'success')
+    conn.commit(); conn.close()
+    flash('Status updated.', 'success')
+    return redirect(url_for('so_detail', sid=sid))
+
+
+# ─── ERP: Work Orders ─────────────────────────────────────────────────────────
+
+@app.route('/work-orders')
+@login_required
+def wo_list():
+    conn   = get_db()
+    status = request.args.get('status', '')
+    q      = request.args.get('q', '').strip()
+    sql    = '''SELECT wo.*, c.name as customer_name FROM work_orders wo
+                LEFT JOIN customers c ON c.id=wo.customer_id'''
+    params = []
+    where  = []
+    if status: where.append('wo.status=?'); params.append(status)
+    if q:      where.append('(wo.wo_number LIKE ? OR c.name LIKE ? OR wo.aircraft_type LIKE ?)'); params += [f'%{q}%', f'%{q}%', f'%{q}%']
+    if where:  sql += ' WHERE ' + ' AND '.join(where)
+    sql   += ' ORDER BY wo.created_at DESC'
+    rows   = conn.execute(sql, params).fetchall()
+    conn.close()
+    return render_template('wo_list.html', wos=rows, status=status, q=q)
+
+
+@app.route('/work-orders/new', methods=['GET', 'POST'])
+@login_required
+def wo_new():
+    conn      = get_db()
+    customers = conn.execute('SELECT id, name, company FROM customers ORDER BY name').fetchall()
+    if request.method == 'POST':
+        f      = request.form
+        wo_num = _next_erp_number('WO', 'work_orders', 'wo_number')
+        conn.execute('''INSERT INTO work_orders
+                        (wo_number,customer_id,aircraft_type,aircraft_reg,status,priority,description,notes,open_date,required_date)
+                        VALUES (?,?,?,?,?,?,?,?,?,?)''',
+                     (wo_num, f.get('customer_id') or None, f.get('aircraft_type',''),
+                      f.get('aircraft_reg',''), f.get('status','open'), f.get('priority','normal'),
+                      f.get('description',''), f.get('notes',''),
+                      f.get('open_date', datetime.utcnow().strftime('%Y-%m-%d')),
+                      f.get('required_date','')))
+        conn.commit()
+        wid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.close()
+        flash(f'Work Order {wo_num} created.', 'success')
+        return redirect(url_for('wo_detail', wid=wid))
+    conn.close()
+    return render_template('wo_detail.html', wo=None, tasks=[], parts=[], customers=customers)
+
+
+@app.route('/work-orders/<int:wid>', methods=['GET', 'POST'])
+@login_required
+def wo_detail(wid):
+    conn      = get_db()
+    customers = conn.execute('SELECT id, name, company FROM customers ORDER BY name').fetchall()
+    if request.method == 'POST':
+        f = request.form
+        conn.execute('''UPDATE work_orders SET customer_id=?,aircraft_type=?,aircraft_reg=?,status=?,
+                        priority=?,description=?,notes=?,open_date=?,required_date=? WHERE id=?''',
+                     (f.get('customer_id') or None, f.get('aircraft_type',''), f.get('aircraft_reg',''),
+                      f.get('status','open'), f.get('priority','normal'), f.get('description',''),
+                      f.get('notes',''), f.get('open_date',''), f.get('required_date',''), wid))
+        conn.commit()
+        flash('Work Order updated.', 'success')
+    wo    = conn.execute('''SELECT wo.*, c.name as customer_name FROM work_orders wo
+                            LEFT JOIN customers c ON c.id=wo.customer_id WHERE wo.id=?''', (wid,)).fetchone()
+    if not wo:
+        conn.close(); flash('Work Order not found.', 'error'); return redirect(url_for('wo_list'))
+    tasks = conn.execute('SELECT * FROM work_order_tasks WHERE wo_id=? ORDER BY id', (wid,)).fetchall()
+    parts = conn.execute('SELECT * FROM work_order_parts WHERE wo_id=? ORDER BY id', (wid,)).fetchall()
+    conn.close()
+    return render_template('wo_detail.html', wo=wo, tasks=tasks, parts=parts, customers=customers)
+
+
+@app.route('/work-orders/<int:wid>/add-task', methods=['POST'])
+@login_required
+def wo_add_task(wid):
+    f    = request.form
+    hrs  = float(f.get('estimated_hours', 0) or 0)
+    rate = float(f.get('labor_rate', 0) or 0)
+    conn = get_db()
+    conn.execute('''INSERT INTO work_order_tasks (wo_id,description,status,estimated_hours,labor_rate,labor_cost,assigned_to,notes)
+                    VALUES (?,?,?,?,?,?,?,?)''',
+                 (wid, f.get('description',''), 'pending', hrs, rate,
+                  round(hrs * rate, 2), f.get('assigned_to',''), f.get('notes','')))
+    total_labor = conn.execute('SELECT COALESCE(SUM(labor_cost),0) FROM work_order_tasks WHERE wo_id=?', (wid,)).fetchone()[0]
+    conn.execute('UPDATE work_orders SET total_labor=? WHERE id=?', (round(total_labor, 2), wid))
+    conn.commit(); conn.close()
+    flash('Task added.', 'success')
+    return redirect(url_for('wo_detail', wid=wid))
+
+
+@app.route('/work-orders/<int:wid>/tasks/<int:tid>/delete', methods=['POST'])
+@login_required
+def wo_delete_task(wid, tid):
+    conn = get_db()
+    conn.execute('DELETE FROM work_order_tasks WHERE id=? AND wo_id=?', (tid, wid))
+    total_labor = conn.execute('SELECT COALESCE(SUM(labor_cost),0) FROM work_order_tasks WHERE wo_id=?', (wid,)).fetchone()[0]
+    conn.execute('UPDATE work_orders SET total_labor=? WHERE id=?', (round(total_labor, 2), wid))
+    conn.commit(); conn.close()
+    return redirect(url_for('wo_detail', wid=wid))
+
+
+@app.route('/work-orders/<int:wid>/add-part', methods=['POST'])
+@login_required
+def wo_add_part(wid):
+    f            = request.form
+    qty          = int(f.get('quantity', 1) or 1)
+    cost         = float(f.get('unit_cost', 0) or 0)
+    inventory_id = f.get('inventory_id') or None
+    conn         = get_db()
+
+    # If sourced from inventory, verify item is available and lock it
+    if inventory_id:
+        inv = conn.execute('SELECT * FROM inventory WHERE id=?', (inventory_id,)).fetchone()
+        if not inv:
+            conn.close(); flash('Inventory item not found.', 'error')
+            return redirect(url_for('wo_detail', wid=wid))
+        if inv['repair_status'] == 'out_for_repair':
+            conn.close()
+            flash(f'Part {inv["part_number"]} S/N {inv["serial_number"]} is already out for repair under {inv["repair_wo_number"]}.', 'error')
+            return redirect(url_for('wo_detail', wid=wid))
+        wo = conn.execute('SELECT wo_number FROM work_orders WHERE id=?', (wid,)).fetchone()
+        # Lock the inventory item
+        conn.execute('''UPDATE inventory SET repair_status="out_for_repair", repair_wo_id=?, repair_wo_number=?
+                        WHERE id=?''', (wid, wo['wo_number'] if wo else '', inventory_id))
+        # Use inventory values if not overridden
+        if not cost: cost = float(inv['unit_cost'] or 0)
+
+    conn.execute('''INSERT INTO work_order_parts
+                    (wo_id,part_number,description,quantity,unit_cost,extended_cost,condition,serial_number,inventory_id)
+                    VALUES (?,?,?,?,?,?,?,?,?)''',
+                 (wid, f.get('part_number',''), f.get('description',''), qty, cost,
+                  round(qty * cost, 2), f.get('condition','SV'),
+                  f.get('serial_number',''), inventory_id))
+    total_parts = conn.execute('SELECT COALESCE(SUM(extended_cost),0) FROM work_order_parts WHERE wo_id=?', (wid,)).fetchone()[0]
+    conn.execute('UPDATE work_orders SET total_parts=? WHERE id=?', (round(total_parts, 2), wid))
+    conn.commit(); conn.close()
+    flash('Part added and locked in inventory until returned.', 'success') if inventory_id else flash('Part added.', 'success')
+    return redirect(url_for('wo_detail', wid=wid))
+
+
+@app.route('/work-orders/<int:wid>/parts/<int:pid>/return', methods=['POST'])
+@login_required
+def wo_return_part(wid, pid):
+    """Mark a part as returned from repair and release the inventory lock."""
+    conn = get_db()
+    part = conn.execute('SELECT * FROM work_order_parts WHERE id=? AND wo_id=?', (pid, wid)).fetchone()
+    if not part:
+        conn.close(); flash('Part not found.', 'error'); return redirect(url_for('wo_detail', wid=wid))
+    returned_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    conn.execute('UPDATE work_order_parts SET returned=1, returned_at=? WHERE id=?', (returned_at, pid))
+    # Release inventory lock if linked to an inventory item
+    if part['inventory_id']:
+        conn.execute('''UPDATE inventory SET repair_status=NULL, repair_wo_id=NULL, repair_wo_number=NULL
+                        WHERE id=?''', (part['inventory_id'],))
+    conn.commit(); conn.close()
+    flash('Part marked as returned. Inventory lock released.', 'success')
+    return redirect(url_for('wo_detail', wid=wid))
+
+
+@app.route('/work-orders/<int:wid>/parts/<int:pid>/delete', methods=['POST'])
+@login_required
+def wo_delete_part(wid, pid):
+    conn = get_db()
+    part = conn.execute('SELECT inventory_id FROM work_order_parts WHERE id=? AND wo_id=?', (pid, wid)).fetchone()
+    # Release inventory lock if item was from inventory
+    if part and part['inventory_id']:
+        conn.execute('UPDATE inventory SET repair_status=NULL, repair_wo_id=NULL, repair_wo_number=NULL WHERE id=?',
+                     (part['inventory_id'],))
+    conn.execute('DELETE FROM work_order_parts WHERE id=? AND wo_id=?', (pid, wid))
+    total_parts = conn.execute('SELECT COALESCE(SUM(extended_cost),0) FROM work_order_parts WHERE wo_id=?', (wid,)).fetchone()[0]
+    conn.execute('UPDATE work_orders SET total_parts=? WHERE id=?', (round(total_parts, 2), wid))
+    conn.commit(); conn.close()
+    return redirect(url_for('wo_detail', wid=wid))
+
+
+@app.route('/work-orders/<int:wid>/status', methods=['POST'])
+@login_required
+def wo_status(wid):
+    new_status = request.form.get('status')
+    conn = get_db()
+    update = 'UPDATE work_orders SET status=?'
+    params = [new_status]
+    if new_status == 'completed':
+        update += ', closed_date=?'; params.append(datetime.utcnow().strftime('%Y-%m-%d'))
+    params.append(wid)
+    conn.execute(update + ' WHERE id=?', params)
+    conn.commit(); conn.close()
+    flash(f'Status updated to {new_status}.', 'success')
+    return redirect(url_for('wo_detail', wid=wid))
+
+
+# ─── Accounts Payable ─────────────────────────────────────────────────────────
+
+@app.route('/accounts-payable')
+@login_required
+def ap_list():
+    conn   = get_db()
+    status = request.args.get('status', '')
+    q      = request.args.get('q', '').strip()
+    sql    = '''SELECT ap.*, v.name as vendor_name, po.po_number
+                FROM accounts_payable ap
+                LEFT JOIN vendors v       ON v.id  = ap.vendor_id
+                LEFT JOIN purchase_orders po ON po.id = ap.po_id'''
+    params, where = [], []
+    if status: where.append('ap.status=?');                        params.append(status)
+    if q:      where.append('(ap.ap_number LIKE ? OR v.name LIKE ?)'); params += [f'%{q}%', f'%{q}%']
+    if where:  sql += ' WHERE ' + ' AND '.join(where)
+    sql   += ' ORDER BY ap.due_date ASC, ap.created_at DESC'
+    rows   = conn.execute(sql, params).fetchall()
+    totals = conn.execute('''SELECT
+                COALESCE(SUM(CASE WHEN status!="paid" THEN amount-paid_amount ELSE 0 END),0) as outstanding,
+                COALESCE(SUM(amount),0) as total,
+                COALESCE(SUM(paid_amount),0) as paid
+             FROM accounts_payable''').fetchone()
+    conn.close()
+    return render_template('ap_list.html', entries=rows, status=status, q=q, totals=totals)
+
+
+@app.route('/accounts-payable/<int:apid>/pay', methods=['POST'])
+@login_required
+def ap_pay(apid):
+    f          = request.form
+    pay_amount = float(f.get('pay_amount') or 0)
+    conn       = get_db()
+    ap         = conn.execute('SELECT * FROM accounts_payable WHERE id=?', (apid,)).fetchone()
+    if not ap:
+        conn.close(); flash('AP entry not found.', 'error'); return redirect(url_for('ap_list'))
+    new_paid = round((ap['paid_amount'] or 0) + pay_amount, 2)
+    new_status = 'paid' if new_paid >= ap['amount'] else ('partial' if new_paid > 0 else 'open')
+    conn.execute('''UPDATE accounts_payable
+                    SET paid_amount=?, status=?, payment_method=?, payment_ref=?, paid_date=?, notes=?
+                    WHERE id=?''',
+                 (new_paid, new_status, f.get('payment_method',''), f.get('payment_ref',''),
+                  datetime.utcnow().strftime('%Y-%m-%d') if new_paid > 0 else '',
+                  f.get('notes',''), apid))
+    conn.commit(); conn.close()
+    flash(f'Payment of ${pay_amount:,.2f} recorded — AP status: {new_status}.', 'success')
+    return redirect(url_for('ap_list'))
+
+
+# ─── Accounts Receivable ───────────────────────────────────────────────────────
+
+@app.route('/accounts-receivable')
+@login_required
+def ar_list():
+    conn   = get_db()
+    status = request.args.get('status', '')
+    q      = request.args.get('q', '').strip()
+    sql    = '''SELECT ar.*, c.name as customer_name, so.so_number
+                FROM accounts_receivable ar
+                LEFT JOIN customers c    ON c.id  = ar.customer_id
+                LEFT JOIN sales_orders so ON so.id = ar.so_id'''
+    params, where = [], []
+    if status: where.append('ar.status=?');                              params.append(status)
+    if q:      where.append('(ar.ar_number LIKE ? OR c.name LIKE ?)'); params += [f'%{q}%', f'%{q}%']
+    if where:  sql += ' WHERE ' + ' AND '.join(where)
+    sql   += ' ORDER BY ar.due_date ASC, ar.created_at DESC'
+    rows   = conn.execute(sql, params).fetchall()
+    totals = conn.execute('''SELECT
+                COALESCE(SUM(CASE WHEN status!="paid" THEN amount-paid_amount ELSE 0 END),0) as outstanding,
+                COALESCE(SUM(amount),0) as total,
+                COALESCE(SUM(paid_amount),0) as paid
+             FROM accounts_receivable''').fetchone()
+    conn.close()
+    return render_template('ar_list.html', entries=rows, status=status, q=q, totals=totals)
+
+
+@app.route('/accounts-receivable/<int:arid>/pay', methods=['POST'])
+@login_required
+def ar_pay(arid):
+    f          = request.form
+    pay_amount = float(f.get('pay_amount') or 0)
+    conn       = get_db()
+    ar         = conn.execute('SELECT * FROM accounts_receivable WHERE id=?', (arid,)).fetchone()
+    if not ar:
+        conn.close(); flash('AR entry not found.', 'error'); return redirect(url_for('ar_list'))
+    new_paid   = round((ar['paid_amount'] or 0) + pay_amount, 2)
+    new_status = 'paid' if new_paid >= ar['amount'] else ('partial' if new_paid > 0 else 'open')
+    conn.execute('''UPDATE accounts_receivable
+                    SET paid_amount=?, status=?, payment_method=?, payment_ref=?, paid_date=?, notes=?
+                    WHERE id=?''',
+                 (new_paid, new_status, f.get('payment_method',''), f.get('payment_ref',''),
+                  datetime.utcnow().strftime('%Y-%m-%d') if new_paid > 0 else '',
+                  f.get('notes',''), arid))
+    conn.commit(); conn.close()
+    flash(f'Payment of ${pay_amount:,.2f} recorded — AR status: {new_status}.', 'success')
+    return redirect(url_for('ar_list'))
+
+
+# ─── Reports ───────────────────────────────────────────────────────────────────
+
+@app.route('/reports')
+@login_required
+def reports():
+    conn = get_db()
+    # AP/AR summary
+    ap_summary = conn.execute('''SELECT
+        COALESCE(SUM(amount),0) as total_ap,
+        COALESCE(SUM(paid_amount),0) as paid_ap,
+        COALESCE(SUM(CASE WHEN status!="paid" THEN amount-paid_amount ELSE 0 END),0) as outstanding_ap,
+        COALESCE(SUM(CASE WHEN status!="paid" AND due_date < date("now") THEN amount-paid_amount ELSE 0 END),0) as overdue_ap
+    FROM accounts_payable''').fetchone()
+    ar_summary = conn.execute('''SELECT
+        COALESCE(SUM(amount),0) as total_ar,
+        COALESCE(SUM(paid_amount),0) as paid_ar,
+        COALESCE(SUM(CASE WHEN status!="paid" THEN amount-paid_amount ELSE 0 END),0) as outstanding_ar,
+        COALESCE(SUM(CASE WHEN status!="paid" AND due_date < date("now") THEN amount-paid_amount ELSE 0 END),0) as overdue_ar
+    FROM accounts_receivable''').fetchone()
+    # Top vendors by spend
+    top_vendors = conn.execute('''SELECT v.id, v.name, v.company,
+        COUNT(po.id) as po_count,
+        COALESCE(SUM(po.total_amount),0) as total_spend,
+        COALESCE(SUM(CASE WHEN ap.status!="paid" THEN ap.amount-ap.paid_amount ELSE 0 END),0) as ap_balance
+        FROM vendors v
+        LEFT JOIN purchase_orders po ON po.vendor_id=v.id
+        LEFT JOIN accounts_payable ap ON ap.vendor_id=v.id
+        GROUP BY v.id ORDER BY total_spend DESC LIMIT 10''').fetchall()
+    # Top customers by revenue
+    top_customers = conn.execute('''SELECT c.id, c.name, c.company,
+        COUNT(so.id) as so_count,
+        COALESCE(SUM(so.total_amount),0) as total_revenue,
+        COALESCE(SUM(CASE WHEN ar.status!="paid" THEN ar.amount-ar.paid_amount ELSE 0 END),0) as ar_balance
+        FROM customers c
+        LEFT JOIN sales_orders so ON so.customer_id=c.id
+        LEFT JOIN accounts_receivable ar ON ar.customer_id=c.id
+        GROUP BY c.id ORDER BY total_revenue DESC LIMIT 10''').fetchall()
+    # Recent overdue AP
+    overdue_ap = conn.execute('''SELECT ap.*, v.name as vendor_name, po.po_number
+        FROM accounts_payable ap
+        LEFT JOIN vendors v ON v.id=ap.vendor_id
+        LEFT JOIN purchase_orders po ON po.id=ap.po_id
+        WHERE ap.status!="paid" AND ap.due_date < date("now")
+        ORDER BY ap.due_date ASC LIMIT 10''').fetchall()
+    # Recent overdue AR
+    overdue_ar = conn.execute('''SELECT ar.*, c.name as customer_name, so.so_number
+        FROM accounts_receivable ar
+        LEFT JOIN customers c ON c.id=ar.customer_id
+        LEFT JOIN sales_orders so ON so.id=ar.so_id
+        WHERE ar.status!="paid" AND ar.due_date < date("now")
+        ORDER BY ar.due_date ASC LIMIT 10''').fetchall()
+    conn.close()
+    return render_template('reports.html',
+        ap_summary=ap_summary, ar_summary=ar_summary,
+        top_vendors=top_vendors, top_customers=top_customers,
+        overdue_ap=overdue_ap, overdue_ar=overdue_ar)
+
+
+@app.route('/reports/vendor/<int:vid>')
+@login_required
+def vendor_report(vid):
+    conn   = get_db()
+    vendor = conn.execute('SELECT * FROM vendors WHERE id=?', (vid,)).fetchone()
+    if not vendor:
+        conn.close(); flash('Vendor not found.', 'error'); return redirect(url_for('reports'))
+    pos    = conn.execute('''SELECT * FROM purchase_orders WHERE vendor_id=?
+                             ORDER BY created_at DESC''', (vid,)).fetchall()
+    ap_entries = conn.execute('''SELECT ap.*, po.po_number FROM accounts_payable ap
+                                 LEFT JOIN purchase_orders po ON po.id=ap.po_id
+                                 WHERE ap.vendor_id=? ORDER BY ap.due_date DESC''', (vid,)).fetchall()
+    summary = conn.execute('''SELECT
+        COALESCE(SUM(po.total_amount),0) as total_spend,
+        COUNT(po.id) as po_count,
+        COALESCE(SUM(CASE WHEN ap.status!="paid" THEN ap.amount-ap.paid_amount ELSE 0 END),0) as ap_balance,
+        COALESCE(SUM(ap.paid_amount),0) as total_paid
+        FROM purchase_orders po
+        LEFT JOIN accounts_payable ap ON ap.po_id=po.id
+        WHERE po.vendor_id=?''', (vid,)).fetchone()
+    conn.close()
+    return render_template('vendor_report.html',
+        vendor=vendor, pos=pos, ap_entries=ap_entries, summary=summary)
+
+
+@app.route('/reports/customer/<int:cid>')
+@login_required
+def customer_report(cid):
+    conn     = get_db()
+    customer = conn.execute('SELECT * FROM customers WHERE id=?', (cid,)).fetchone()
+    if not customer:
+        conn.close(); flash('Customer not found.', 'error'); return redirect(url_for('reports'))
+    sos      = conn.execute('''SELECT * FROM sales_orders WHERE customer_id=?
+                               ORDER BY created_at DESC''', (cid,)).fetchall()
+    ar_entries = conn.execute('''SELECT ar.*, so.so_number FROM accounts_receivable ar
+                                 LEFT JOIN sales_orders so ON so.id=ar.so_id
+                                 WHERE ar.customer_id=? ORDER BY ar.due_date DESC''', (cid,)).fetchall()
+    summary  = conn.execute('''SELECT
+        COALESCE(SUM(so.total_amount),0) as total_revenue,
+        COUNT(so.id) as so_count,
+        COALESCE(SUM(CASE WHEN ar.status!="paid" THEN ar.amount-ar.paid_amount ELSE 0 END),0) as ar_balance,
+        COALESCE(SUM(ar.paid_amount),0) as total_paid
+        FROM sales_orders so
+        LEFT JOIN accounts_receivable ar ON ar.so_id=so.id
+        WHERE so.customer_id=?''', (cid,)).fetchone()
+    conn.close()
+    return render_template('customer_report.html',
+        customer=customer, sos=sos, ar_entries=ar_entries, summary=summary)
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────

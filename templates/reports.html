@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block page_title %}Financial Reports{% endblock %}
+
+{% block content %}
+
+<!-- AP / AR Overview -->
+<div class="row g-3 mb-4">
+  <!-- AP card -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-credit-card-2-back me-1"></i> Accounts Payable</strong>
+        <a href="{{ url_for('ap_list') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+      </div>
+      <div class="card-body">
+        <div class="row g-2 text-center">
+          <div class="col-4">
+            <div class="fw-bold fs-5 text-danger">${{ '%.0f'|format(ap_summary.outstanding_ap) }}</div>
+            <div class="text-muted small">Outstanding</div>
+          </div>
+          <div class="col-4">
+            <div class="fw-bold fs-5 text-warning">${{ '%.0f'|format(ap_summary.overdue_ap) }}</div>
+            <div class="text-muted small">Overdue</div>
+          </div>
+          <div class="col-4">
+            <div class="fw-bold fs-5 text-success">${{ '%.0f'|format(ap_summary.paid_ap) }}</div>
+            <div class="text-muted small">Paid</div>
+          </div>
+        </div>
+        <hr class="my-2">
+        <div class="text-muted small text-center">Total AP issued: <strong>${{ '%.2f'|format(ap_summary.total_ap) }}</strong></div>
+        {% if overdue_ap %}
+        <div class="mt-2">
+          <div class="text-danger fw-semibold small mb-1"><i class="bi bi-exclamation-triangle me-1"></i> Overdue Payables</div>
+          {% for ap in overdue_ap %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+            <div>
+              <a href="{{ url_for('po_detail', pid=ap.po_id) }}" class="text-decoration-none">
+                <code class="small">{{ ap.po_number }}</code>
+              </a>
+              <small class="text-muted ms-2">{{ ap.vendor_name or '—' }}</small>
+            </div>
+            <div class="text-end">
+              <div class="fw-bold text-danger small">${{ '%.2f'|format(ap.amount-(ap.paid_amount or 0)) }}</div>
+              <div class="text-muted" style="font-size:.7rem">Due {{ ap.due_date }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- AR card -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-credit-card-2-front me-1"></i> Accounts Receivable</strong>
+        <a href="{{ url_for('ar_list') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+      </div>
+      <div class="card-body">
+        <div class="row g-2 text-center">
+          <div class="col-4">
+            <div class="fw-bold fs-5 text-navy">${{ '%.0f'|format(ar_summary.outstanding_ar) }}</div>
+            <div class="text-muted small">Outstanding</div>
+          </div>
+          <div class="col-4">
+            <div class="fw-bold fs-5 text-warning">${{ '%.0f'|format(ar_summary.overdue_ar) }}</div>
+            <div class="text-muted small">Overdue</div>
+          </div>
+          <div class="col-4">
+            <div class="fw-bold fs-5 text-success">${{ '%.0f'|format(ar_summary.paid_ar) }}</div>
+            <div class="text-muted small">Collected</div>
+          </div>
+        </div>
+        <hr class="my-2">
+        <div class="text-muted small text-center">Total AR issued: <strong>${{ '%.2f'|format(ar_summary.total_ar) }}</strong></div>
+        {% if overdue_ar %}
+        <div class="mt-2">
+          <div class="text-danger fw-semibold small mb-1"><i class="bi bi-exclamation-triangle me-1"></i> Overdue Receivables</div>
+          {% for ar in overdue_ar %}
+          <div class="d-flex justify-content-between align-items-center py-1 border-bottom">
+            <div>
+              <a href="{{ url_for('so_detail', sid=ar.so_id) }}" class="text-decoration-none">
+                <code class="small">{{ ar.so_number }}</code>
+              </a>
+              <small class="text-muted ms-2">{{ ar.customer_name or '—' }}</small>
+            </div>
+            <div class="text-end">
+              <div class="fw-bold text-danger small">${{ '%.2f'|format(ar.amount-(ar.paid_amount or 0)) }}</div>
+              <div class="text-muted" style="font-size:.7rem">Due {{ ar.due_date }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Top Vendors -->
+<div class="row g-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-truck me-1"></i> Top Vendors by Spend</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Vendor</th>
+              <th class="text-center">POs</th>
+              <th class="text-end">Total Spend</th>
+              <th class="text-end">AP Balance</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for v in top_vendors %}
+          <tr>
+            <td class="ps-3">
+              <div class="fw-semibold">{{ v.name }}</div>
+              {% if v.company %}<small class="text-muted">{{ v.company }}</small>{% endif %}
+            </td>
+            <td class="text-center"><span class="badge text-bg-secondary">{{ v.po_count }}</span></td>
+            <td class="text-end fw-semibold">${{ '%.2f'|format(v.total_spend) }}</td>
+            <td class="text-end {{ 'text-danger fw-bold' if v.ap_balance > 0 else 'text-muted' }}">${{ '%.2f'|format(v.ap_balance) }}</td>
+            <td class="pe-2">
+              <a href="{{ url_for('vendor_report', vid=v.id) }}" class="btn btn-sm btn-outline-secondary py-0">Report</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-3">No vendor data yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Customers -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-people me-1"></i> Top Customers by Revenue</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Customer</th>
+              <th class="text-center">SOs</th>
+              <th class="text-end">Revenue</th>
+              <th class="text-end">AR Balance</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for c in top_customers %}
+          <tr>
+            <td class="ps-3">
+              <div class="fw-semibold">{{ c.name }}</div>
+              {% if c.company %}<small class="text-muted">{{ c.company }}</small>{% endif %}
+            </td>
+            <td class="text-center"><span class="badge text-bg-secondary">{{ c.so_count }}</span></td>
+            <td class="text-end fw-semibold">${{ '%.2f'|format(c.total_revenue) }}</td>
+            <td class="text-end {{ 'text-danger fw-bold' if c.ar_balance > 0 else 'text-muted' }}">${{ '%.2f'|format(c.ar_balance) }}</td>
+            <td class="pe-2">
+              <a href="{{ url_for('customer_report', cid=c.id) }}" class="btn btn-sm btn-outline-secondary py-0">Report</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-3">No customer data yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block page_title %}Customers{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('customer_new') }}" class="btn btn-sm btn-navy"><i class="bi bi-plus-lg me-1"></i>New Customer</a>
+{% endblock %}
+
+{% block content %}
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form class="d-flex gap-2 align-items-center" method="get">
+      <div class="position-relative">
+        <i class="bi bi-search position-absolute" style="left:.6rem;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.8rem;"></i>
+        <input name="q" value="{{ q or '' }}" class="form-control form-control-sm" style="padding-left:1.8rem;min-width:240px;" placeholder="Search name, company, email…">
+      </div>
+      <button class="btn btn-sm btn-outline-secondary">Search</button>
+      {% if q %}<a href="{{ url_for('customer_list') }}" class="btn btn-sm btn-outline-secondary">✕ Clear</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-clickable mb-0">
+      <thead>
+        <tr>
+          <th class="ps-3">Name</th>
+          <th>Company</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Terms</th>
+          <th class="pe-3 text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for c in customers %}
+      <tr onclick="location.href='{{ url_for('customer_detail', cid=c.id) }}'">
+        <td class="ps-3 fw-semibold">{{ c.name }}</td>
+        <td><small class="text-muted">{{ c.company or '—' }}</small></td>
+        <td>
+          {% if c.email %}
+          <a href="mailto:{{ c.email }}" class="text-decoration-none" style="font-size:.82rem" onclick="event.stopPropagation()">{{ c.email }}</a>
+          {% else %}<span class="text-muted">—</span>{% endif %}
+        </td>
+        <td><small class="text-muted">{{ c.phone or '—' }}</small></td>
+        <td><span class="badge text-bg-light">{{ c.credit_terms or 'Net 30' }}</span></td>
+        <td class="pe-3 text-end" onclick="event.stopPropagation()">
+          <a href="{{ url_for('customer_detail', cid=c.id) }}" class="btn btn-sm btn-outline-secondary py-0 me-1">Edit</a>
+          <a href="{{ url_for('customer_report', cid=c.id) }}" class="btn btn-sm btn-outline-primary py-0">Report</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">
+        <div class="empty-state py-5">
+          <i class="bi bi-people"></i>
+          <p class="mb-2">No customers yet.</p>
+          <a href="{{ url_for('customer_new') }}" class="btn btn-sm btn-navy">Add your first customer</a>
+        </div>
+      </td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

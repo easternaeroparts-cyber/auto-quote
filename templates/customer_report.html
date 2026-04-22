@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% block title %}Customer Report — {{ customer.name }}{% endblock %}
+{% block page_title %}Customer Report — {{ customer.name }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('reports') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Reports
+</a>
+<a href="{{ url_for('customer_detail', cid=customer.id) }}" class="btn btn-sm btn-outline-primary">
+  <i class="bi bi-pencil"></i> Edit Customer
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+  <!-- Customer info -->
+  <div class="col-lg-3">
+    <div class="card mb-3">
+      <div class="card-body">
+        <p class="fw-bold fs-5 mb-1">{{ customer.name }}</p>
+        {% if customer.company %}<p class="text-muted mb-1">{{ customer.company }}</p>{% endif %}
+        {% if customer.email %}<p class="mb-1 small"><i class="bi bi-envelope text-muted me-1"></i>{{ customer.email }}</p>{% endif %}
+        {% if customer.phone %}<p class="mb-1 small"><i class="bi bi-telephone text-muted me-1"></i>{{ customer.phone }}</p>{% endif %}
+        {% if customer.credit_terms %}<p class="mb-0 small text-muted">Terms: <strong>{{ customer.credit_terms }}</strong></p>{% endif %}
+      </div>
+    </div>
+
+    <!-- Summary stats -->
+    <div class="card">
+      <div class="card-header bg-white py-3"><strong>Summary</strong></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr>
+              <td class="ps-3 text-muted">Total SOs</td>
+              <td class="text-end pe-3 fw-semibold">{{ summary.so_count }}</td>
+            </tr>
+            <tr>
+              <td class="ps-3 text-muted">Total Revenue</td>
+              <td class="text-end pe-3 fw-bold text-navy">${{ '%.2f'|format(summary.total_revenue) }}</td>
+            </tr>
+            <tr>
+              <td class="ps-3 text-muted">Collected</td>
+              <td class="text-end pe-3 text-success fw-semibold">${{ '%.2f'|format(summary.total_paid) }}</td>
+            </tr>
+            <tr class="{{ 'table-danger' if summary.ar_balance > 0 else '' }}">
+              <td class="ps-3 fw-bold">AR Balance</td>
+              <td class="text-end pe-3 fw-bold {{ 'text-danger' if summary.ar_balance > 0 else 'text-success' }}">${{ '%.2f'|format(summary.ar_balance) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-9">
+    <!-- AR Entries -->
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-credit-card-2-front me-1"></i> Accounts Receivable</strong>
+        <a href="{{ url_for('ar_list') }}" class="btn btn-sm btn-outline-secondary">View All AR</a>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">AR #</th>
+              <th>SO #</th>
+              <th class="text-end">Amount</th>
+              <th class="text-end">Collected</th>
+              <th class="text-end">Balance</th>
+              <th>Due Date</th>
+              <th>Status</th>
+              <th>Method</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for ar in ar_entries %}
+          {% set balance = ar.amount - (ar.paid_amount or 0) %}
+          {% set overdue = ar.status != 'paid' and ar.due_date and ar.due_date < now.strftime('%Y-%m-%d') %}
+          <tr class="{{ 'table-danger' if overdue else '' }}">
+            <td class="ps-3"><code>{{ ar.ar_number }}</code></td>
+            <td><a href="{{ url_for('so_detail', sid=ar.so_id) }}" class="text-decoration-none"><code>{{ ar.so_number or '—' }}</code></a></td>
+            <td class="text-end">${{ '%.2f'|format(ar.amount) }}</td>
+            <td class="text-end text-success">${{ '%.2f'|format(ar.paid_amount or 0) }}</td>
+            <td class="text-end fw-bold {{ 'text-danger' if balance > 0 else 'text-muted' }}">${{ '%.2f'|format(balance) }}</td>
+            <td><small class="{{ 'text-danger fw-bold' if overdue else 'text-muted' }}">{{ ar.due_date or '—' }}</small></td>
+            <td><span class="badge badge-{{ 'overdue' if overdue else ar.status }}">{{ 'overdue' if overdue else ar.status }}</span></td>
+            <td><small class="text-muted">{{ ar.payment_method or '—' }}</small></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-muted py-3">No AR entries yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Sales Orders -->
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-cart-check me-1"></i> Sales Orders ({{ sos|length }})</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">SO #</th>
+              <th>Order Date</th>
+              <th>Ship Date</th>
+              <th class="text-end">Total</th>
+              <th>Status</th>
+              <th>Payment Terms</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for so in sos %}
+          <tr>
+            <td class="ps-3"><code class="fw-bold">{{ so.so_number }}</code></td>
+            <td><small class="text-muted">{{ so.order_date or '—' }}</small></td>
+            <td><small class="text-muted">{{ so.ship_date or '—' }}</small></td>
+            <td class="text-end fw-semibold">${{ '%.2f'|format(so.total_amount) }}</td>
+            <td><span class="badge badge-{{ so.status }}">{{ so.status }}</span></td>
+            <td><small class="text-muted">{{ so.payment_terms or '—' }}</small></td>
+            <td class="pe-2">
+              <a href="{{ url_for('so_detail', sid=so.id) }}" class="btn btn-sm btn-outline-secondary py-0">View</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-3">No sales orders.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

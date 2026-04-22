@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}{{ vendor.name if vendor else 'New Vendor' }}{% endblock %}
+{% block page_title %}{{ vendor.name if vendor else 'New Vendor' }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('vendor_list') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back
+</a>
+{% if vendor %}
+<form method="post" action="{{ url_for('vendor_delete', vid=vendor.id) }}"
+      onsubmit="return confirm('Delete this vendor?')">
+  <button class="btn btn-sm btn-outline-danger">Delete</button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-truck me-1"></i> {{ 'Edit Vendor' if vendor else 'New Vendor' }}</strong>
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('vendor_detail', vid=vendor.id) if vendor else url_for('vendor_new') }}">
+          <div class="row g-3">
+            <div class="col-md-8">
+              <label class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
+              <input name="name" class="form-control" value="{{ vendor.name if vendor else '' }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Vendor Code</label>
+              <input name="vendor_code" class="form-control font-monospace" value="{{ vendor.vendor_code if vendor else '' }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Company</label>
+              <input name="company" class="form-control" value="{{ vendor.company if vendor else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Email</label>
+              <input name="email" type="email" class="form-control" value="{{ vendor.email if vendor else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Phone</label>
+              <input name="phone" class="form-control" value="{{ vendor.phone if vendor else '' }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Address</label>
+              <input name="address" class="form-control" value="{{ vendor.address if vendor else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">City</label>
+              <input name="city" class="form-control" value="{{ vendor.city if vendor else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Country</label>
+              <input name="country" class="form-control" value="{{ vendor.country if vendor else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Payment Terms</label>
+              <select name="payment_terms" class="form-select">
+                {% for t in ['Net 30','Net 15','Net 60','COD','Prepaid'] %}
+                <option {% if vendor and vendor.payment_terms==t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Currency</label>
+              <select name="currency" class="form-select">
+                {% for c in ['USD','EUR','GBP','AUD','CAD'] %}
+                <option {% if vendor and vendor.currency==c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Notes</label>
+              <textarea name="notes" class="form-control" rows="3">{{ vendor.notes if vendor else '' }}</textarea>
+            </div>
+            <div class="col-12">
+              <button class="btn btn-navy fw-semibold w-100">
+                <i class="bi bi-check-lg me-1"></i> {{ 'Save Changes' if vendor else 'Create Vendor' }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {% if vendor %}
+  <div class="col-lg-7">
+    <!-- Purchase Orders -->
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-bag me-1"></i> Purchase Orders</strong>
+        <a href="{{ url_for('po_new') }}" class="btn btn-sm btn-outline-primary">+ New PO</a>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr><th class="ps-3">PO #</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr>
+          </thead>
+          <tbody>
+          {% for p in pos %}
+          <tr>
+            <td class="ps-3"><code>{{ p.po_number }}</code></td>
+            <td class="fw-bold">${{ '%.2f'|format(p.total_amount) }}</td>
+            <td><span class="badge badge-{{ p.status }}">{{ p.status }}</span></td>
+            <td><small class="text-muted">{{ p.created_at[:10] }}</small></td>
+            <td><a href="{{ url_for('po_detail', pid=p.id) }}" class="btn btn-sm btn-outline-secondary py-0">View</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-3">No purchase orders yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Open RFQs for sourcing -->
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-inbox me-1"></i> Open RFQs — Sourcing Opportunities</strong>
+        <small class="text-muted ms-2">Pending customer requests you can source from this vendor</small>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr><th class="ps-3">RFQ #</th><th>Customer</th><th>Parts</th><th>Received</th><th></th></tr>
+          </thead>
+          <tbody>
+          {% for r in rfqs %}
+          <tr>
+            <td class="ps-3"><code>{{ r.rfq_number }}</code></td>
+            <td>{{ r.customer_name or r.company or '—' }}</td>
+            <td><small class="text-muted">{{ r.notes or '—' }}</small></td>
+            <td><small class="text-muted">{{ r.created_at[:10] }}</small></td>
+            <td>
+              <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-secondary py-0">View</a>
+              <a href="{{ url_for('po_new') }}" class="btn btn-sm btn-outline-primary py-0 ms-1">+ PO</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-3">No open RFQs.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

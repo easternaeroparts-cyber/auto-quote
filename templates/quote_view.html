@@ -12,6 +12,18 @@
 <button class="btn btn-sm {% if quote.status == 'sent' %}btn-outline-secondary{% else %}btn-gold fw-semibold{% endif %} no-print" data-bs-toggle="modal" data-bs-target="#sendModal">
   <i class="bi bi-send"></i> {% if quote.status == 'sent' %}Resend{% else %}Send to Customer{% endif %}
 </button>
+{% if so_exists %}
+  <a href="{{ url_for('so_detail', sid=so_exists.id) }}" class="btn btn-sm btn-outline-success no-print">
+    <i class="bi bi-cart-check"></i> View SO {{ so_exists.so_number }}
+  </a>
+{% else %}
+  <form method="post" action="{{ url_for('quote_create_so', quote_id=quote.id) }}" class="no-print">
+    <button type="submit" class="btn btn-sm btn-outline-success fw-semibold"
+            onclick="return confirm('Convert this quote to a Sales Order?')">
+      <i class="bi bi-cart-plus"></i> Convert to SO
+    </button>
+  </form>
+{% endif %}
 {% endblock %}
 
 {% block head %}
@@ -901,7 +913,12 @@ async function saveAddItem() {
     body: JSON.stringify(payload)
   });
   const data = await res.json();
-  if (!data.success) { alert('Failed to add item: ' + (data.error || 'unknown')); return; }
+  if (!data.success) { alert('Cannot add item:\n\n' + (data.error || 'Unknown error')); return; }
+
+  // Warn if the part is under repair in inventory (soft warning — item was still added)
+  if (data.repair_lock) {
+    alert('Warning: ' + payload.part_number + ' is currently marked as OUT FOR REPAIR under Work Order ' + data.repair_wo + '.\nVerify before quoting.');
+  }
 
   // Inject new row into the line items table without full page reload
   const extended = payload.unit_price * payload.quantity;

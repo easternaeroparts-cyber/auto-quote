@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}{{ customer.name if customer else 'New Customer' }}{% endblock %}
+{% block page_title %}{{ customer.name if customer else 'New Customer' }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('customer_list') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back
+</a>
+{% if customer %}
+<form method="post" action="{{ url_for('customer_delete', cid=customer.id) }}"
+      onsubmit="return confirm('Delete this customer?')">
+  <button class="btn btn-sm btn-outline-danger">Delete</button>
+</form>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-person me-1"></i> {{ 'Edit Customer' if customer else 'New Customer' }}</strong>
+      </div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('customer_detail', cid=customer.id) if customer else url_for('customer_new') }}">
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label fw-semibold">Name <span class="text-danger">*</span></label>
+              <input name="name" class="form-control" value="{{ customer.name if customer else '' }}" required>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Company</label>
+              <input name="company" class="form-control" value="{{ customer.company if customer else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Email</label>
+              <input name="email" type="email" class="form-control" value="{{ customer.email if customer else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Phone</label>
+              <input name="phone" class="form-control" value="{{ customer.phone if customer else '' }}">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Address</label>
+              <input name="address" class="form-control" value="{{ customer.address if customer else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">City</label>
+              <input name="city" class="form-control" value="{{ customer.city if customer else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Country</label>
+              <input name="country" class="form-control" value="{{ customer.country if customer else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Credit Terms</label>
+              <select name="credit_terms" class="form-select">
+                {% for t in ['Net 30','Net 15','Net 60','COD','Prepaid'] %}
+                <option {% if customer and customer.credit_terms==t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Currency</label>
+              <select name="currency" class="form-select">
+                {% for c in ['USD','EUR','GBP','AUD','CAD'] %}
+                <option {% if customer and customer.currency==c %}selected{% endif %}>{{ c }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Notes</label>
+              <textarea name="notes" class="form-control" rows="3">{{ customer.notes if customer else '' }}</textarea>
+            </div>
+            <div class="col-12">
+              <button class="btn btn-navy fw-semibold w-100">
+                <i class="bi bi-check-lg me-1"></i> {{ 'Save Changes' if customer else 'Create Customer' }}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {% if customer %}
+  <div class="col-lg-7">
+    <!-- Recent RFQs -->
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-inbox me-1"></i> Recent RFQs</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr><th class="ps-3">RFQ #</th><th>Status</th><th>Received</th><th></th></tr>
+          </thead>
+          <tbody>
+          {% for r in rfqs %}
+          <tr>
+            <td class="ps-3"><code>{{ r.rfq_number }}</code></td>
+            <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+            <td><small class="text-muted">{{ r.created_at[:10] }}</small></td>
+            <td><a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-secondary py-0">View</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-3">No RFQs found.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Quotes -->
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-file-earmark-text me-1"></i> Quotes</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr><th class="ps-3">Quote #</th><th>RFQ #</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr>
+          </thead>
+          <tbody>
+          {% for q in quotes %}
+          <tr>
+            <td class="ps-3"><code class="fw-bold">{{ q.quote_number }}</code></td>
+            <td><small class="text-muted">{{ q.rfq_number }}</small></td>
+            <td class="fw-bold">${{ '%.2f'|format(q.total_amount) }}</td>
+            <td><span class="badge badge-{{ q.status }}">{{ q.status }}</span></td>
+            <td><small class="text-muted">{{ q.created_at[:10] }}</small></td>
+            <td><a href="{{ url_for('quote_view', quote_id=q.id) }}" class="btn btn-sm btn-outline-secondary py-0">View</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-3">No quotes found.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Sales Orders -->
+    <div class="card">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-cart-check me-1"></i> Sales Orders</strong>
+        <a href="{{ url_for('so_new') }}" class="btn btn-sm btn-outline-primary">+ New SO</a>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr><th class="ps-3">SO #</th><th>Total</th><th>Status</th><th>Date</th><th></th></tr>
+          </thead>
+          <tbody>
+          {% for s in sos %}
+          <tr>
+            <td class="ps-3"><code>{{ s.so_number }}</code></td>
+            <td class="fw-bold">${{ '%.2f'|format(s.total_amount) }}</td>
+            <td><span class="badge badge-{{ s.status }}">{{ s.status }}</span></td>
+            <td><small class="text-muted">{{ s.created_at[:10] }}</small></td>
+            <td><a href="{{ url_for('so_detail', sid=s.id) }}" class="btn btn-sm btn-outline-secondary py-0">View</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-3">No sales orders.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
