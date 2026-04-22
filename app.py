@@ -1831,7 +1831,11 @@ def fetch_email_rfqs():
 
 
 def _fetch_from_folder(mail, folder):
-    """Fetch UNSEEN + 10 most recent message IDs from a given IMAP folder."""
+    """
+    Fetch UNSEEN emails from the folder.
+    Since rfq@eastern-aero.com is a dedicated RFQ inbox, we fetch all unseen
+    messages. Filtering (PartsBase / forwarded / keyword) happens after download.
+    """
     try:
         status, _ = mail.select(folder)
         if status != 'OK':
@@ -1839,19 +1843,11 @@ def _fetch_from_folder(mail, folder):
     except Exception:
         return []
     try:
-        _, unseen_ids = mail.search(None, 'UNSEEN')
-        _, all_recent = mail.search(None, 'ALL')
+        _, data = mail.search(None, 'UNSEEN')
+        ids = data[0].split() if data and data[0] else []
     except Exception:
         return []
-    recent_10 = list(reversed(all_recent[0].split()))[:10]
-    unseen_list = unseen_ids[0].split()
-    seen = set()
-    result = []
-    for mid in (unseen_list + recent_10):
-        if mid not in seen:
-            seen.add(mid)
-            result.append((folder, mid))
-    return result
+    return [(folder, mid) for mid in ids]
 
 
 def _fetch_imap(settings):
@@ -1878,6 +1874,8 @@ def _fetch_imap(settings):
 
     for folder, mid in folder_msg_pairs:
         mail.select(folder)
+
+        # Full download — only emails pre-filtered by server-side IMAP SEARCH reach here
         try:
             _, data = mail.fetch(mid, '(RFC822)')
             if not data or not data[0] or not isinstance(data[0], tuple):
@@ -1885,19 +1883,6 @@ def _fetch_imap(settings):
             raw_msg = data[0][1]
             msg = email.message_from_bytes(raw_msg)
         except Exception:
-            continue
-
-        # Get unique message ID to avoid duplicates
-        message_id = msg.get('Message-ID', '') or msg.get('Message-Id', '')
-        if not message_id:
-            # Fallback: use date + from as unique key
-            message_id = f"{msg.get('Date','')}-{msg.get('From','')}"
-        message_id = message_id.strip()
-
-        # Skip already imported emails
-        already = conn.execute(
-            'SELECT 1 FROM imported_emails WHERE message_id=?', (message_id,)).fetchone()
-        if already:
             continue
 
         # Skip emails from blocked senders (previously deleted as non-RFQ)
@@ -1978,8 +1963,35 @@ def _fetch_imap(settings):
         # Always treat emails from PartsBase as RFQs
         from_partsbase = 'rfqs@partsbase.com' in from_raw.lower()
 
-        # Only import if addressed to rfq@eastern-aero.com, from PartsBase, or forwarded
-        is_rfq = addressed_to_rfq or from_partsbase or is_forwarded
+        # ── Sender blocklist: known non-RFQ automated senders ────────────────
+        BLOCKED_DOMAINS = [
+            'google.com', 'gmail.com', 'googlemail.com',
+            'accounts.google.com', 'notifications.google.com',
+            'mailer-daemon', 'postmaster', 'noreply', 'no-reply',
+            'donotreply', 'do-not-reply', 'bounce', 'maildaemon',
+            'microsoft.com', 'linkedin.com', 'facebook.com',
+            'twitter.com', 'instagram.com', 'amazon.com',
+        ]
+        sender_blocked = any(b in cust_email.lower() for b in BLOCKED_DOMAINS)
+
+        # ── RFQ keyword check ─────────────────────────────────────────────────
+        rfq_keywords = [
+            'rfq', 'request for quote', 'request for quotation',
+            'quote', 'quotation', 'part no', 'part number', 'part #',
+            'p/n', 'pn:', 'p/n:', 'description', 'quantity', 'qty',
+            'parts needed', 'availability', 'aircraft part', 'aviation part',
+            'aog', 'nsn', 'pricing', 'price request', 'stock', 'lead time',
+            'need parts', 'looking for', 'do you have']
+        has_rfq_keywords = any(kw in combined for kw in rfq_keywords)
+
+        # ── Final RFQ determination ───────────────────────────────────────────
+        # PartsBase and forwarded emails always qualify.
+        # Direct emails to rfq@ must have RFQ keywords AND not be from a blocked sender.
+        is_rfq = (
+            from_partsbase
+            or is_forwarded
+            or (addressed_to_rfq and has_rfq_keywords and not sender_blocked)
+        )
         parsed = parse_rfq_text(parse_body)
 
         if parsed or is_rfq:
