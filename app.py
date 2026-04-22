@@ -999,11 +999,34 @@ def rfq_detail(rfq_id):
     items = conn.execute('SELECT * FROM rfq_items WHERE rfq_id=?', (rfq_id,)).fetchall()
     quotes= conn.execute('SELECT * FROM quotes WHERE rfq_id=? ORDER BY created_at DESC', (rfq_id,)).fetchall()
     settings = get_settings()
+
+    # Pre-fill: priority 1 — most recent quote that shares a part number with this RFQ
+    prev_quote = None
+    if items:
+        part_numbers = [it['part_number'] for it in items]
+        placeholders = ','.join('?' * len(part_numbers))
+        prev_quote = conn.execute(f'''
+            SELECT q.* FROM quotes q
+            JOIN quote_items qi ON qi.quote_id = q.id
+            WHERE qi.part_number IN ({placeholders}) AND q.rfq_id != ?
+            ORDER BY q.created_at DESC LIMIT 1
+        ''', (*part_numbers, rfq_id)).fetchone()
+
+    # Pre-fill: priority 2 (fallback) — most recent quote for the same customer email
+    if not prev_quote and rfq and rfq['customer_email']:
+        prev_quote = conn.execute('''
+            SELECT q.* FROM quotes q
+            JOIN rfqs r ON q.rfq_id = r.id
+            WHERE r.customer_email = ? AND q.rfq_id != ?
+            ORDER BY q.created_at DESC LIMIT 1
+        ''', (rfq['customer_email'], rfq_id)).fetchone()
+
     conn.close()
     if not rfq:
         flash('RFQ not found.', 'error')
         return redirect(url_for('rfq_list'))
-    return render_template('rfq_detail.html', rfq=rfq, items=items, quotes=quotes, settings=settings)
+    return render_template('rfq_detail.html', rfq=rfq, items=items, quotes=quotes,
+                           settings=settings, prev_quote=prev_quote)
 
 
 @app.route('/rfqs/<int:rfq_id>/quote', methods=['POST'])
@@ -1130,7 +1153,7 @@ def update_quote_item(quote_id):
     conn = get_db()
     conn.execute('''UPDATE quote_items SET
         unit_price=?, quantity_requested=?, extended_price=?, notes=?,
-        lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?
+        lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?, condition=?
         WHERE id=? AND quote_id=?''',
         (price, qty, ext, notes,
          data.get('lead_time', 'Stock'),
@@ -1139,6 +1162,7 @@ def update_quote_item(quote_id):
          data.get('trace_to', ''),
          data.get('tag_type', ''),
          data.get('tagged_by', ''),
+         data.get('condition', 'SV'),
          iid, quote_id))
     total = conn.execute('SELECT COALESCE(SUM(extended_price),0) FROM quote_items WHERE quote_id=?', (quote_id,)).fetchone()[0]
     conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (total, quote_id))
