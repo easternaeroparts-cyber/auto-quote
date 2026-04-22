@@ -1759,11 +1759,17 @@ def build_quote_email(quote, rfq, items, settings):
     td  = 'padding:9px 12px;border-bottom:1px solid #e5e7eb;'
     thd = f'padding:9px 12px;text-align:left;font-weight:600;color:#374151;border-bottom:2px solid #d1d5db;'
 
-    # Embed logo as base64 so it always displays regardless of email client blocking
-    logo_src = _LOGO_DATA_URI  # hardcoded base64 — always displays in email clients
+    # Use publicly hosted logo URL — Gmail blocks base64 data URIs in email
+    # The logo is served as a static file from the Railway deployment
+    railway_url = (os.environ.get('RAILWAY_STATIC_URL') or
+                   os.environ.get('RAILWAY_PUBLIC_DOMAIN') or
+                   'https://web-production-07a7a.up.railway.app')
+    railway_url = railway_url.rstrip('/')
+    logo_src = f"{railway_url}/static/logo.png"
 
     item_blocks = ''
     for it in items:
+        no_quote = bool(it.get('no_quote'))
         qty_str  = f"{it['quantity_requested']} EA"
         lead     = it['lead_time'] or 'Stock'
         ptype    = it['price_type'] or 'Outright'
@@ -1771,14 +1777,49 @@ def build_quote_email(quote, rfq, items, settings):
         trace    = it['trace_to'] or it['description'] or '—'
         tag_type = it['tag_type'] or '—'
         tagged   = it['tagged_by'] or '—'
-        unit_p   = f"${it['unit_price']:,.2f}"
-        line_t   = f"${it['extended_price']:,.2f}"
 
-        # Clean description: strip trailing "Quantity: X" bleed-through from parser
+        # Clean description
         desc_raw   = (it['description'] or '—')
         desc_clean = re.sub(r'\s*\bQuantity[\s:]+\d+\b.*$', '', desc_raw, flags=re.I).strip() or '—'
         desc_short = desc_clean[:60]
-        item_blocks += f"""
+
+        if no_quote:
+            # No Quote row — greyed out with clear "NO QUOTE" label
+            nq_row_style = 'background:#f3f4f6;opacity:0.85'
+            nq_td = f'padding:9px 12px;border-bottom:1px solid #e5e7eb;color:#9ca3af'
+            item_blocks += f"""
+<table width="100%" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px;font-size:14px;{nq_row_style}">
+  <thead>
+    <tr style="background:#f3f4f6">
+      <th style="{thd}color:#9ca3af">Part</th>
+      <th style="{thd}color:#9ca3af">Description</th>
+      <th style="{thd}color:#9ca3af">Qty</th>
+      <th style="{thd}color:#9ca3af">CC</th>
+      <th style="{thd}color:#9ca3af">Lead Time</th>
+      <th style="{thd}text-align:right;color:#9ca3af" colspan="2">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="{nq_td};font-weight:600;text-decoration:line-through">{it['part_number']}</td>
+      <td style="{nq_td}">{desc_short}</td>
+      <td style="{nq_td}">{qty_str}</td>
+      <td style="{nq_td}">{it['condition'] or 'SV'}</td>
+      <td style="{nq_td}">—</td>
+      <td colspan="2" style="{nq_td}text-align:right">
+        <span style="display:inline-block;background:#dc2626;color:#ffffff;font-weight:700;
+                     font-size:12px;padding:3px 10px;border-radius:4px;letter-spacing:.5px">
+          NO QUOTE
+        </span>
+      </td>
+    </tr>
+  </tbody>
+</table>
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 16px">"""
+        else:
+            unit_p = f"${it['unit_price']:,.2f}"
+            line_t = f"${it['extended_price']:,.2f}"
+            item_blocks += f"""
 <table width="100%" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px;font-size:14px">
   <thead>
     <tr style="background:#f9fafb">
@@ -1848,9 +1889,14 @@ def build_quote_email(quote, rfq, items, settings):
   </tr>
 </table>
 
-<h1 style="font-size:20px;font-weight:700;margin-bottom:4px">
-  Quote from <span style="background:#fef08a;padding:0 4px">Eastern Aero Pty Ltd</span> for RFQ # {rfq['rfq_number']}
+<h1 style="font-size:22px;font-weight:700;margin-bottom:6px;color:#111827">
+  Quote Ref# {quote['quote_number']}
 </h1>
+<p style="margin:0 0 16px;font-size:13px;color:#6b7280;font-style:italic">
+  Prices are in {currency} and valid for {quote['valid_days']} days, subject to availability.
+  For AOG support please call <a href="tel:+13213419779" style="color:#1a3c6e;text-decoration:none">+1 321-341-9779</a>
+  or WhatsApp <a href="tel:+17722032109" style="color:#1a3c6e;text-decoration:none">+1 772-203-2109</a>.
+</p>
 {_build_to_block(rfq)}
 
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
