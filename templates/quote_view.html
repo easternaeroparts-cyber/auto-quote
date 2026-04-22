@@ -17,42 +17,53 @@
 {% block head %}
 <style>
 @media print {
-  /* Hide chrome */
-  .sidebar,.topbar,.flash-wrap,.no-print,footer { display:none !important; }
+  /* Hide all chrome — sidebar, topbar, buttons, flash, footer */
+  .sidebar, .topbar, .flash-wrap, .no-print, footer { display:none !important; }
   .main-wrap { margin-left:0 !important; }
   .content { padding:0 !important; }
 
-  /* Fit to one page */
-  @page { size: US-Letter portrait; margin: 10mm 12mm; }
+  /* Page setup */
+  @page { size: US-Letter portrait; margin: 8mm 12mm; }
 
-  html, body { height:auto !important; overflow:visible !important; }
+  /* overflow:hidden is the key fix — prevents Safari from measuring the full
+     scrollable height and generating a blank second page */
+  html, body {
+    height: auto !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
 
   /* Compact cards */
-  .card { box-shadow:none !important; border:1px solid #ccc !important; margin-bottom:6px !important; }
-  .card-body { padding:8px 12px !important; }
-  .card-header { padding:6px 12px !important; }
+  .card { box-shadow:none !important; border:1px solid #ddd !important; margin-bottom:4px !important; }
+  .card-body { padding:5px 10px !important; }
+  .card-header { padding:4px 10px !important; }
 
-  /* Shrink fonts & spacing */
-  body, p, td, th, small, .small { font-size: 10px !important; }
-  h4, h5 { font-size: 12px !important; margin:0 !important; }
-  .fs-3 { font-size: 14px !important; }
-  .fs-5 { font-size: 11px !important; }
-  code  { font-size: 10px !important; }
+  /* Compact fonts */
+  body, p, td, th, small, .small, span { font-size:9px !important; line-height:1.3 !important; }
+  h4, h5 { font-size:11px !important; margin:0 !important; }
+  .fs-3 { font-size:13px !important; }
+  .fs-5 { font-size:10px !important; }
+  code { font-size:9px !important; }
 
   /* Compact tables */
-  table { width:100% !important; }
-  td, th { padding: 3px 6px !important; }
+  table { width:100% !important; border-collapse:collapse !important; }
+  td, th { padding:2px 4px !important; }
 
-  /* Compact item blocks */
-  .border.rounded.mb-3 { margin-bottom:4px !important; }
-  .px-3.pb-3.pt-1 { padding: 4px 8px !important; }
+  /* Compact item rows */
+  .border.rounded.mb-3, .mb-3 { margin-bottom:3px !important; }
+  .px-3.pb-3.pt-1 { padding:3px 6px !important; }
+  .mb-2 { margin-bottom:2px !important; }
+  .py-2 { padding-top:2px !important; padding-bottom:2px !important; }
+  .mt-3, .mt-2 { margin-top:2px !important; }
 
-  /* Keep everything together */
-  .card, .border.rounded { page-break-inside: avoid; }
-  p.text-muted.small { margin:2px 0 !important; }
+  /* Avoid page breaks mid-item */
+  .card, .border.rounded { page-break-inside:avoid; break-inside:avoid; }
+  p.text-muted.small { margin:1px 0 !important; }
 
-  /* Scale down if still too tall */
-  .content-wrap, .container-fluid { zoom: 0.85; }
+  /* Prevent any element from forcing a new page */
+  * { page-break-after: auto !important; }
+  body > *:last-child { page-break-after: avoid !important; }
 }
 </style>
 {% endblock %}
