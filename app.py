@@ -209,6 +209,17 @@ def init_db():
         print('  Default admin created: username=admin  password=admin123')
         print('  ⚠  Change this password immediately in Settings → Users.')
 
+    # Migrations — add columns that may not exist in older databases
+    migrations = [
+        "ALTER TABLE rfqs ADD COLUMN email_message_id TEXT",
+        "CREATE TABLE IF NOT EXISTS blocked_senders (email TEXT PRIMARY KEY, reason TEXT, blocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+    ]
+    for sql in migrations:
+        try:
+            conn.execute(sql)
+        except Exception:
+            pass  # Column/table already exists
+
     conn.commit()
     conn.close()
 
