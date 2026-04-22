@@ -9,22 +9,6 @@
 {% endblock %}
 
 {% block content %}
-
-<!-- Workflow guide -->
-<div class="d-flex align-items-center gap-2 mb-4 p-3 rounded-3" style="background:#fff;border:1px solid var(--border);">
-  <span class="badge bg-navy px-3 py-2" style="font-size:.78rem;background:var(--navy)!important;color:#fff;">Step 1</span>
-  <div style="font-size:.87rem;">
-    <strong>RFQ Received</strong> — review the parts below, then
-    {% if quotes %}<strong>view or send the quote</strong>{% else %}<strong>generate a quote</strong>{% endif %}.
-    Quote → Send to customer → Convert to Sales Order.
-  </div>
-  {% if quotes %}
-  <a href="{{ url_for('quote_view', quote_id=quotes[0].id) }}" class="btn btn-sm btn-navy ms-auto">
-    <i class="bi bi-file-earmark-text me-1"></i> View Quote
-  </a>
-  {% endif %}
-</div>
-
 <div class="row g-3">
 
   <!-- Customer info card -->
@@ -73,39 +57,6 @@
               <i class="bi bi-magic"></i> Generate Quote
             </button>
           </form>
-        {% endif %}
-
-        <hr class="my-2">
-
-        <!-- Convert to PO -->
-        {% if po_exists %}
-          <a href="{{ url_for('po_detail', pid=po_exists.id) }}" class="btn btn-outline-secondary w-100 fw-semibold mb-2">
-            <i class="bi bi-bag me-1"></i> View Purchase Order
-          </a>
-        {% else %}
-          <button type="button" class="btn btn-outline-warning w-100 fw-semibold mb-2"
-                  data-bs-toggle="modal" data-bs-target="#createPoModal">
-            <i class="bi bi-bag-plus me-1"></i> Convert to PO
-          </button>
-        {% endif %}
-
-        <hr class="my-2">
-
-        <!-- Partsbase Send -->
-        {% if rfq.pb_rfq_id %}
-          <div class="text-center">
-            <span class="badge text-bg-success py-2 px-3 w-100" style="font-size:.8rem">
-              <i class="bi bi-check-circle-fill me-1"></i> Sent to Partsbase
-            </span>
-            <small class="d-block text-muted mt-1">PB ID: {{ rfq.pb_rfq_id }}</small>
-            <small class="d-block text-muted">{{ rfq.pb_sent_at[:16] if rfq.pb_sent_at else '' }}</small>
-          </div>
-        {% else %}
-          <button type="button" id="pbSendBtn" class="btn btn-outline-primary w-100 fw-semibold"
-                  onclick="sendToPartsbase({{ rfq.id }})">
-            <i class="bi bi-send me-1"></i> Send to Partsbase
-          </button>
-          <div id="pbSendResult" class="mt-2" style="font-size:.82rem"></div>
         {% endif %}
       </div>
     </div>
@@ -187,72 +138,4 @@
   </div>
 
 </div>
-{% endblock %}
-
-<!-- Convert to PO Modal -->
-<div class="modal fade" id="createPoModal" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h6 class="modal-title"><i class="bi bi-bag-plus me-1"></i> Convert RFQ to Purchase Order</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <form method="post" action="{{ url_for('rfq_create_po', rfq_id=rfq.id) }}">
-        <div class="modal-body">
-          <p class="text-muted small mb-3">
-            All <strong>{{ items|length }} part(s)</strong> from this RFQ will be copied into a new PO at $0 cost.
-            You can set prices after creation.
-          </p>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Select Vendor <small class="text-muted fw-normal">(optional — can assign later)</small></label>
-            <select name="vendor_id" class="form-select">
-              <option value="">— Assign vendor later —</option>
-              {% for v in vendors %}
-              <option value="{{ v.id }}">{{ v.name }}{% if v.company %} ({{ v.company }}){% endif %}</option>
-              {% endfor %}
-            </select>
-            {% if not vendors %}
-            <div class="form-text text-warning"><i class="bi bi-exclamation-triangle"></i> No vendors yet — <a href="{{ url_for('vendor_new') }}">add one</a> first.</div>
-            {% endif %}
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-warning btn-sm fw-semibold">
-            <i class="bi bi-bag-plus me-1"></i> Create Purchase Order
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
-
-{% block scripts %}
-<script>
-async function sendToPartsbase(rfqId) {
-  const btn = document.getElementById('pbSendBtn');
-  const res_div = document.getElementById('pbSendResult');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sending…';
-  res_div.innerHTML = '';
-
-  try {
-    const res  = await fetch('/rfqs/' + rfqId + '/send-partsbase', {method: 'POST'});
-    const data = await res.json();
-    if (data.success) {
-      btn.className = 'btn btn-success w-100 fw-semibold';
-      btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Sent to Partsbase';
-      res_div.innerHTML = '<small class="text-muted">PB ID: ' + data.pb_rfq_id + ' &mdash; ' + (data.sent_at || '') + '</small>';
-    } else {
-      btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-send me-1"></i> Send to Partsbase';
-      res_div.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + (data.error || 'Unknown error') + '</span>';
-    }
-  } catch (e) {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-send me-1"></i> Send to Partsbase';
-    res_div.innerHTML = '<span class="text-danger">Network error — try again.</span>';
-  }
-}
-</script>
 {% endblock %}
