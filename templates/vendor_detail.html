@@ -44,18 +44,6 @@
               <label class="form-label">Phone</label>
               <input name="phone" class="form-control" value="{{ vendor.phone if vendor else '' }}">
             </div>
-            <div class="col-12">
-              <label class="form-label">Address</label>
-              <input name="address" class="form-control" value="{{ vendor.address if vendor else '' }}">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">City</label>
-              <input name="city" class="form-control" value="{{ vendor.city if vendor else '' }}">
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">Country</label>
-              <input name="country" class="form-control" value="{{ vendor.country if vendor else '' }}">
-            </div>
             <div class="col-md-6">
               <label class="form-label">Payment Terms</label>
               <select name="payment_terms" class="form-select">
@@ -74,8 +62,92 @@
             </div>
             <div class="col-12">
               <label class="form-label">Notes</label>
-              <textarea name="notes" class="form-control" rows="3">{{ vendor.notes if vendor else '' }}</textarea>
+              <textarea name="notes" class="form-control" rows="2">{{ vendor.notes if vendor else '' }}</textarea>
             </div>
+
+            <!-- ── Ship To Address ─────────────────────────────────────── -->
+            <div class="col-12">
+              <hr class="my-1">
+              <p class="fw-semibold mb-2" style="font-size:.87rem;color:var(--navy);">
+                <i class="bi bi-geo-alt me-1"></i> Ship To Address
+              </p>
+              <input name="ship_to_address" class="form-control mb-2"
+                     placeholder="Street address"
+                     value="{{ vendor.ship_to_address if vendor and vendor.ship_to_address else '' }}">
+              <div class="row g-2">
+                <div class="col-md-5">
+                  <input name="ship_to_city" class="form-control" placeholder="City"
+                         value="{{ vendor.ship_to_city if vendor and vendor.ship_to_city else '' }}">
+                </div>
+                <div class="col-md-3">
+                  <input name="ship_to_state" class="form-control" placeholder="State"
+                         value="{{ vendor.ship_to_state if vendor and vendor.ship_to_state else '' }}">
+                </div>
+                <div class="col-md-4">
+                  <input name="ship_to_zip" class="form-control" placeholder="ZIP / Postal"
+                         value="{{ vendor.ship_to_zip if vendor and vendor.ship_to_zip else '' }}">
+                </div>
+                <div class="col-12">
+                  <input name="ship_to_country" class="form-control" placeholder="Country"
+                         value="{{ vendor.ship_to_country if vendor and vendor.ship_to_country else '' }}">
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Bill To Address ─────────────────────────────────────── -->
+            <div class="col-12">
+              <hr class="my-1">
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <p class="fw-semibold mb-0" style="font-size:.87rem;color:var(--navy);">
+                  <i class="bi bi-receipt me-1"></i> Bill To Address
+                </p>
+                <div class="form-check mb-0">
+                  <input class="form-check-input" type="checkbox" name="bill_same_as_ship"
+                         id="billSameCheck"
+                         {% if not vendor or vendor.bill_same_as_ship is none or vendor.bill_same_as_ship %}checked{% endif %}
+                         onchange="toggleBillTo(this)">
+                  <label class="form-check-label fw-semibold" for="billSameCheck"
+                         style="font-size:.82rem;cursor:pointer;">
+                    <i class="bi bi-check2-circle me-1 text-success"></i> Same as Ship To
+                  </label>
+                </div>
+              </div>
+
+              <div id="billToFields"
+                   style="{% if not vendor or vendor.bill_same_as_ship is none or vendor.bill_same_as_ship %}display:none{% endif %}">
+                <input name="bill_to_address" class="form-control mb-2"
+                       placeholder="Street address"
+                       value="{{ vendor.bill_to_address if vendor and vendor.bill_to_address else '' }}">
+                <div class="row g-2">
+                  <div class="col-md-5">
+                    <input name="bill_to_city" class="form-control" placeholder="City"
+                           value="{{ vendor.bill_to_city if vendor and vendor.bill_to_city else '' }}">
+                  </div>
+                  <div class="col-md-3">
+                    <input name="bill_to_state" class="form-control" placeholder="State"
+                           value="{{ vendor.bill_to_state if vendor and vendor.bill_to_state else '' }}">
+                  </div>
+                  <div class="col-md-4">
+                    <input name="bill_to_zip" class="form-control" placeholder="ZIP / Postal"
+                           value="{{ vendor.bill_to_zip if vendor and vendor.bill_to_zip else '' }}">
+                  </div>
+                  <div class="col-12">
+                    <input name="bill_to_country" class="form-control" placeholder="Country"
+                           value="{{ vendor.bill_to_country if vendor and vendor.bill_to_country else '' }}">
+                  </div>
+                </div>
+              </div>
+
+              <div id="billSameNote"
+                   class="mt-2"
+                   style="{% if vendor and vendor.bill_same_as_ship is not none and not vendor.bill_same_as_ship %}display:none{% endif %};
+                          font-size:.8rem;color:var(--muted);padding:.4rem .6rem;
+                          background:#f8fafc;border-radius:.4rem;border:1px dashed var(--border);">
+                <i class="bi bi-info-circle me-1"></i>
+                Bill To will use the same address as Ship To.
+              </div>
+            </div>
+
             <div class="col-12">
               <button class="btn btn-navy fw-semibold w-100">
                 <i class="bi bi-check-lg me-1"></i> {{ 'Save Changes' if vendor else 'Create Vendor' }}
@@ -89,6 +161,64 @@
 
   {% if vendor %}
   <div class="col-lg-7">
+
+    <!-- Address summary card -->
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-geo me-1"></i> Address Summary</strong>
+      </div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <p class="fw-semibold mb-1" style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">
+              <i class="bi bi-geo-alt me-1"></i> Ship To
+            </p>
+            {% if vendor.ship_to_address %}
+            <p class="mb-0" style="font-size:.9rem;line-height:1.7;">
+              {{ vendor.ship_to_address }}<br>
+              {% if vendor.ship_to_city %}{{ vendor.ship_to_city }}{% endif %}{% if vendor.ship_to_state %}, {{ vendor.ship_to_state }}{% endif %}{% if vendor.ship_to_zip %}&nbsp;{{ vendor.ship_to_zip }}{% endif %}
+              {% if vendor.ship_to_city or vendor.ship_to_state or vendor.ship_to_zip %}<br>{% endif %}
+              {{ vendor.ship_to_country or '' }}
+            </p>
+            {% else %}
+            <p class="text-muted mb-0" style="font-size:.85rem;font-style:italic;">Not set</p>
+            {% endif %}
+          </div>
+          <div class="col-md-6">
+            <p class="fw-semibold mb-1" style="font-size:.78rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;">
+              <i class="bi bi-receipt me-1"></i> Bill To
+              {% if vendor.bill_same_as_ship or vendor.bill_same_as_ship is none %}
+              <span class="badge text-bg-success ms-1" style="font-size:.65rem;font-weight:600;">= Ship To</span>
+              {% endif %}
+            </p>
+            {% if vendor.bill_same_as_ship or vendor.bill_same_as_ship is none %}
+              {% set bill_addr    = vendor.ship_to_address %}
+              {% set bill_city    = vendor.ship_to_city %}
+              {% set bill_state   = vendor.ship_to_state %}
+              {% set bill_zip     = vendor.ship_to_zip %}
+              {% set bill_country = vendor.ship_to_country %}
+            {% else %}
+              {% set bill_addr    = vendor.bill_to_address %}
+              {% set bill_city    = vendor.bill_to_city %}
+              {% set bill_state   = vendor.bill_to_state %}
+              {% set bill_zip     = vendor.bill_to_zip %}
+              {% set bill_country = vendor.bill_to_country %}
+            {% endif %}
+            {% if bill_addr %}
+            <p class="mb-0" style="font-size:.9rem;line-height:1.7;">
+              {{ bill_addr }}<br>
+              {% if bill_city %}{{ bill_city }}{% endif %}{% if bill_state %}, {{ bill_state }}{% endif %}{% if bill_zip %}&nbsp;{{ bill_zip }}{% endif %}
+              {% if bill_city or bill_state or bill_zip %}<br>{% endif %}
+              {{ bill_country or '' }}
+            </p>
+            {% else %}
+            <p class="text-muted mb-0" style="font-size:.85rem;font-style:italic;">Not set</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Purchase Orders -->
     <div class="card mb-3">
       <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
@@ -150,4 +280,20 @@
   </div>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleBillTo(checkbox) {
+  const fields = document.getElementById('billToFields');
+  const note   = document.getElementById('billSameNote');
+  if (checkbox.checked) {
+    fields.style.display = 'none';
+    note.style.display   = '';
+  } else {
+    fields.style.display = '';
+    note.style.display   = 'none';
+  }
+}
+</script>
 {% endblock %}

@@ -460,6 +460,39 @@ def init_db():
         "ALTER TABLE inventory ADD COLUMN repair_status TEXT",
         "ALTER TABLE inventory ADD COLUMN repair_wo_id INTEGER",
         "ALTER TABLE inventory ADD COLUMN repair_wo_number TEXT",
+        # ── PO extra print fields ──────────────────────────────────────────────
+        "ALTER TABLE purchase_orders ADD COLUMN payment_method TEXT",
+        "ALTER TABLE purchase_orders ADD COLUMN ordered_by TEXT",
+        "ALTER TABLE purchase_orders ADD COLUMN ordered_by_email TEXT",
+        # ── SO extra print fields ──────────────────────────────────────────────
+        "ALTER TABLE sales_orders ADD COLUMN payment_method TEXT",
+        "ALTER TABLE sales_orders ADD COLUMN ship_via TEXT",
+        "ALTER TABLE sales_orders ADD COLUMN customer_po TEXT",
+        "ALTER TABLE sales_orders ADD COLUMN incoterms TEXT",
+        "ALTER TABLE sales_orders ADD COLUMN tracking_number TEXT",
+        "ALTER TABLE sales_orders ADD COLUMN attn TEXT",
+        "ALTER TABLE sales_orders ADD COLUMN freight REAL DEFAULT 0",
+        "ALTER TABLE sales_orders ADD COLUMN tax REAL DEFAULT 0",
+        "ALTER TABLE sales_orders ADD COLUMN misc_charges REAL DEFAULT 0",
+        "ALTER TABLE sales_orders ADD COLUMN discount REAL DEFAULT 0",
+        # ── Quote extra print fields ───────────────────────────────────────────
+        "ALTER TABLE quotes ADD COLUMN misc_charges REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN freight REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN tax REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN discount REAL DEFAULT 0",
+        "ALTER TABLE quotes ADD COLUMN priority TEXT DEFAULT 'Normal'",
+        "ALTER TABLE quotes ADD COLUMN quoted_by TEXT",
+        # ── Stockline / extended inventory fields ─────────────────────────────
+        "ALTER TABLE inventory ADD COLUMN manufacturer TEXT",
+        "ALTER TABLE inventory ADD COLUMN alt_part_number TEXT",
+        "ALTER TABLE inventory ADD COLUMN tag_type TEXT",
+        "ALTER TABLE inventory ADD COLUMN tagged_by TEXT",
+        "ALTER TABLE inventory ADD COLUMN trace_to TEXT",
+        "ALTER TABLE inventory ADD COLUMN obtained_from TEXT",
+        "ALTER TABLE inventory ADD COLUMN date_received TEXT",
+        "ALTER TABLE inventory ADD COLUMN expiry_date TEXT",
+        "ALTER TABLE inventory ADD COLUMN po_number_ref TEXT",
+        "ALTER TABLE inventory ADD COLUMN category TEXT",
         # ── Work order parts: repair tracking columns (for existing tables) ─
         "ALTER TABLE work_order_parts ADD COLUMN inventory_id INTEGER",
         "ALTER TABLE work_order_parts ADD COLUMN returned INTEGER DEFAULT 0",
@@ -512,6 +545,18 @@ def init_db():
             FOREIGN KEY (so_id)      REFERENCES sales_orders(id),
             FOREIGN KEY (customer_id) REFERENCES customers(id)
         )""",
+        # ── Vendor Ship To / Bill To addresses ──────────────────────────────
+        "ALTER TABLE vendors ADD COLUMN ship_to_address TEXT",
+        "ALTER TABLE vendors ADD COLUMN ship_to_city TEXT",
+        "ALTER TABLE vendors ADD COLUMN ship_to_state TEXT",
+        "ALTER TABLE vendors ADD COLUMN ship_to_zip TEXT",
+        "ALTER TABLE vendors ADD COLUMN ship_to_country TEXT",
+        "ALTER TABLE vendors ADD COLUMN bill_to_address TEXT",
+        "ALTER TABLE vendors ADD COLUMN bill_to_city TEXT",
+        "ALTER TABLE vendors ADD COLUMN bill_to_state TEXT",
+        "ALTER TABLE vendors ADD COLUMN bill_to_zip TEXT",
+        "ALTER TABLE vendors ADD COLUMN bill_to_country TEXT",
+        "ALTER TABLE vendors ADD COLUMN bill_same_as_ship INTEGER DEFAULT 1",
     ]
     for sql in migrations:
         try:
@@ -1160,82 +1205,174 @@ def upload_inventory():
         flash('No file selected.', 'error')
         return redirect(url_for('inventory'))
 
-    f = request.files['file']
+    f    = request.files['file']
     path = os.path.join(UPLOAD_FOLDER, f.filename)
     f.save(path)
 
     try:
-        df = pd.read_csv(path) if f.filename.lower().endswith('.csv') else pd.read_excel(path)
-        df.columns = [c.upper().strip() for c in df.columns]
+        fname = f.filename.lower()
 
-        COL = {}
-        for c in df.columns:
-            cu = c.upper()
-            if any(x in cu for x in ['PART','P/N','PN','PARTNO','PART_NUM','PART NO']):
-                COL.setdefault('part_number', c)
-            elif 'DESC' in cu:
-                COL.setdefault('description', c)
-            elif 'COND' in cu:
-                COL.setdefault('condition', c)
-            elif cu in ('QTY','QUANTITY','STOCK','ON HAND','ONHAND','QTY ON HAND'):
-                COL.setdefault('quantity', c)
-            elif 'COST' in cu:
-                COL.setdefault('unit_cost', c)
-            elif 'PRICE' in cu or 'SELL' in cu:
-                COL.setdefault('unit_price', c)
-            elif 'LOC' in cu or 'BIN' in cu or 'SHELF' in cu:
-                COL.setdefault('location', c)
-            elif cu in ('UOM','UNIT OF MEASURE'):
-                COL.setdefault('uom', c)
+        # ── Detect Stockline export format ─────────────────────────────────
+        # Stockline files have a title in row 1 and headers in row 2.
+        # Detect by checking cell A1 for non-header text.
+        is_stockline = False
+        if fname.endswith(('.xlsx', '.xls')):
+            import openpyxl
+            _wb  = openpyxl.load_workbook(path, read_only=True, data_only=True)
+            _ws  = _wb.active
+            _a1  = str(_ws.cell(1, 1).value or '').strip().upper()
+            _a2  = str(_ws.cell(2, 1).value or '').strip().upper()
+            _wb.close()
+            # Row 1 is title (not a header), row 2 starts with "PN"
+            if _a2 == 'PN' and _a1 != 'PN':
+                is_stockline = True
 
-        if 'part_number' not in COL:
-            flash('Cannot find a Part Number column. Name it "Part Number", "P/N", or "PN".', 'error')
+        if fname.endswith('.csv'):
+            # Try reading; if first row looks like a title, skip it
+            import csv
+            with open(path, newline='', encoding='utf-8-sig') as cf:
+                reader = csv.reader(cf)
+                first  = next(reader, [])
+                second = next(reader, [])
+            if second and second[0].strip().upper() == 'PN':
+                is_stockline = True
+
+        # ── Load dataframe ─────────────────────────────────────────────────
+        header_row = 1 if is_stockline else 0   # pandas is 0-indexed
+        if fname.endswith('.csv'):
+            df = pd.read_csv(path, header=header_row, dtype=str)
+        else:
+            df = pd.read_excel(path, header=header_row, dtype=str)
+
+        df.columns = [str(c).strip() for c in df.columns]
+
+        # ── Column mapping ─────────────────────────────────────────────────
+        # Priority order: exact Stockline names first, then generic fallbacks.
+        def find_col(candidates, cols):
+            """Return first matching column name (case-insensitive)."""
+            cols_upper = {c.upper(): c for c in cols}
+            for cand in candidates:
+                if cand.upper() in cols_upper:
+                    return cols_upper[cand.upper()]
+            return None
+
+        cols = list(df.columns)
+        COL = {
+            'part_number':    find_col(['PN','PART NUMBER','PART NO','P/N','PART_NUMBER','PARTNO'], cols),
+            'alt_pn':         find_col(['ALT PN','ALT_PN','ALT PART NUMBER'], cols),
+            'description':    find_col(['PN DESCRIPTION','DESCRIPTION','DESC','PART DESC'], cols),
+            'manufacturer':   find_col(['MANUFACTURER','MFR','MFG','MAKE'], cols),
+            'category':       find_col(['ITEM GROUP','CATEGORY','GROUP','ITEM_GROUP'], cols),
+            'uom':            find_col(['UOM','UNIT OF MEASURE','UNIT'], cols),
+            'condition':      find_col(['COND','CONDITION'], cols),
+            'location':       find_col(['LOCATION','LOC','BIN','SHELF','WAREHOUSE'], cols),
+            'quantity':       find_col(['QTY OH','QTY ON HAND','QTY_OH','QTY ONHAND','ON HAND','ONHAND','QTY','QUANTITY','STOCK'], cols),
+            'unit_cost':      find_col(['UNIT COST','UNIT_COST','COST','UNITCOST'], cols),
+            'unit_price':     find_col(['SELL PRICE','SELL PRICE','UNIT PRICE','PRICE'], cols),
+            'serial_number':  find_col(['SER NUM','SERIAL NUMBER','SERIAL_NUMBER','SERIAL NO','SER_NUM','SERIAL'], cols),
+            'tag_type':       find_col(['TAG TYPE','TAG_TYPE','TAGTYPE'], cols),
+            'tagged_by':      find_col(['TAGGED BY','TAGGED_BY'], cols),
+            'trace_to':       find_col(['TRACEABLE TO','TRACE TO','TRACE_TO','TRACEABLE'], cols),
+            'obtained_from':  find_col(['OBTAINED FROM','OBTAINED_FROM','VENDOR','SUPPLIER','SOURCE'], cols),
+            'date_received':  find_col(["REC'D DATE","RECD DATE","RECEIVED DATE","DATE RECEIVED","DATE_RECEIVED"], cols),
+            'expiry_date':    find_col(['EXP DATE','EXPIRY DATE','EXPIRY','EXPIRATION DATE','EXP_DATE'], cols),
+            'po_number_ref':  find_col(['PO NUMBER','PO_NUMBER','PO#','PONUMBER'], cols),
+        }
+
+        if not COL['part_number']:
+            flash('Cannot find a Part Number column (expected "PN", "Part Number", or "P/N").', 'error')
             return redirect(url_for('inventory'))
 
-        conn  = get_db()
-        mode  = request.form.get('mode', 'merge')
+        conn = get_db()
+        mode = request.form.get('mode', 'merge')
         if mode == 'replace':
             conn.execute('DELETE FROM inventory')
 
-        added = updated = 0
+        added = updated = skipped = 0
+
         for _, row in df.iterrows():
-            pn = str(row[COL['part_number']]).strip().upper()
-            if not pn or pn in ('NAN', 'NONE', ''):
+            raw_pn = str(row.get(COL['part_number'], '')).strip()
+            if not raw_pn or raw_pn.upper() in ('NAN', 'NONE', '', 'PART NUMBER', 'PN'):
+                skipped += 1
                 continue
+            pn = raw_pn.upper()
 
             def g(key, default=''):
-                col = COL.get(key)
-                if not col: return default
-                val = row.get(col, default)
-                return default if str(val).upper() in ('NAN','NONE','') else val
+                c = COL.get(key)
+                if not c:
+                    return default
+                v = str(row.get(c, default) or default).strip()
+                return default if v.upper() in ('NAN', 'NONE', '') else v
 
-            desc  = str(g('description', '')).strip().title()
-            cond  = str(g('condition', 'SV')).strip().upper()
-            loc   = str(g('location', '')).strip()
-            uom   = str(g('uom', 'EA')).strip() or 'EA'
-            try: qty = int(float(g('quantity', 0)))
-            except: qty = 0
-            try: cost = float(g('unit_cost', 0))
-            except: cost = 0.0
-            try: price = float(g('unit_price', 0))
-            except: price = 0.0
+            def gn(key, default=0):
+                try:
+                    return int(float(g(key, default) or default))
+                except:
+                    return default
 
-            exists = conn.execute('SELECT id FROM inventory WHERE part_number=?', (pn,)).fetchone()
+            def gf(key, default=0.0):
+                try:
+                    return round(float(g(key, default) or default), 4)
+                except:
+                    return default
+
+            desc     = g('description', '').title()
+            mfr      = g('manufacturer', '')
+            alt_pn   = g('alt_pn', '')
+            category = g('category', '')
+            uom      = g('uom', 'EA') or 'EA'
+            cond     = g('condition', 'SV').upper()
+            loc      = g('location', '')
+            qty      = gn('quantity', 0)
+            cost     = gf('unit_cost',  0.0)
+            price    = gf('unit_price', 0.0)
+            ser_num  = g('serial_number', '')
+            tag_type = g('tag_type', '')
+            tag_by   = g('tagged_by', '')
+            trace_to = g('trace_to', '')
+            ob_from  = g('obtained_from', '')
+            date_rcv = g('date_received', '')
+            exp_date = g('expiry_date', '')
+            po_ref   = g('po_number_ref', '')
+
+            exists = conn.execute(
+                'SELECT id FROM inventory WHERE part_number=? AND (serial_number IS NULL OR serial_number=? OR serial_number="")',
+                (pn, ser_num)).fetchone()
+
             if exists:
-                conn.execute(
-                    'UPDATE inventory SET description=?,condition=?,quantity=?,unit_cost=?,unit_price=?,location=?,uom=?,updated_at=CURRENT_TIMESTAMP WHERE part_number=?',
-                    (desc, cond, qty, cost, price, loc, uom, pn))
+                conn.execute('''UPDATE inventory SET
+                    description=?, manufacturer=?, alt_part_number=?, category=?,
+                    condition=?, uom=?, location=?, quantity=?, unit_cost=?, unit_price=?,
+                    serial_number=?, tag_type=?, tagged_by=?, trace_to=?, obtained_from=?,
+                    date_received=?, expiry_date=?, po_number_ref=?,
+                    updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?''',
+                    (desc, mfr, alt_pn, category,
+                     cond, uom, loc, qty, cost, price,
+                     ser_num, tag_type, tag_by, trace_to, ob_from,
+                     date_rcv, exp_date, po_ref,
+                     exists['id']))
                 updated += 1
             else:
-                conn.execute(
-                    'INSERT INTO inventory (part_number,description,condition,quantity,unit_cost,unit_price,location,uom) VALUES (?,?,?,?,?,?,?,?)',
-                    (pn, desc, cond, qty, cost, price, loc, uom))
+                conn.execute('''INSERT INTO inventory
+                    (part_number, description, manufacturer, alt_part_number, category,
+                     condition, uom, location, quantity, unit_cost, unit_price,
+                     serial_number, tag_type, tagged_by, trace_to, obtained_from,
+                     date_received, expiry_date, po_number_ref)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    (pn, desc, mfr, alt_pn, category,
+                     cond, uom, loc, qty, cost, price,
+                     ser_num, tag_type, tag_by, trace_to, ob_from,
+                     date_rcv, exp_date, po_ref))
                 added += 1
 
         conn.commit()
         conn.close()
-        flash(f'Inventory updated — {added} added, {updated} updated.', 'success')
+        fmt = 'Stockline' if is_stockline else 'Standard'
+        flash(f'Import complete ({fmt} format) — {added} added, {updated} updated, {skipped} skipped.', 'success')
+
     except Exception as e:
+        import traceback; traceback.print_exc()
         flash(f'Error reading file: {e}', 'error')
 
     return redirect(url_for('inventory'))
@@ -1478,6 +1615,52 @@ def create_quote(rfq_id):
 
 # ─── Routes: Quotes ──────────────────────────────────────────────────────────
 
+@app.route('/quotes/new', methods=['GET', 'POST'])
+@login_required
+def quote_new():
+    """Create a standalone quote (auto-creates a blank RFQ behind the scenes)."""
+    conn     = get_db()
+    settings = get_settings()
+    vendors  = conn.execute('SELECT id, name, company FROM vendors ORDER BY name').fetchall()
+
+    if request.method == 'POST':
+        f = request.form
+        # 1 — create a blank RFQ to anchor the quote
+        rfq_no = gen_rfq_number()
+        conn.execute(
+            'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,phone,source,notes) VALUES (?,?,?,?,?,?,?)',
+            (rfq_no,
+             f.get('customer_name', ''),
+             f.get('customer_email', ''),
+             f.get('company', ''),
+             f.get('phone', ''),
+             'Manual',
+             f.get('notes', '')))
+        rfq_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+        # 2 — create the quote
+        markup     = float(f.get('markup', settings.get('default_markup', 30)) or 30)
+        valid_days = int(f.get('valid_days', settings.get('quote_valid_days', 30)) or 30)
+        today      = datetime.now().strftime('%Y-%m-%d')
+        quote_no   = gen_quote_number()
+        conn.execute('''INSERT INTO quotes
+            (quote_number, rfq_id, status, markup_percent, valid_days, notes, currency,
+             entry_date, outright_amount, cogs_percent, cogs_amount,
+             exchange_loan_fee, fee_billings_count, billing_interval_days,
+             deposit_amount, periodic_billing_amt)
+            VALUES (?,?,?,?,?,?,?,?,0,0,0,0,1,30,0,0)''',
+            (quote_no, rfq_id, 'draft', markup, valid_days,
+             f.get('notes', ''), f.get('currency', 'USD'), today))
+        quote_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.commit()
+        conn.close()
+        flash(f'Quote {quote_no} created. Add parts below.', 'success')
+        return redirect(url_for('quote_view', quote_id=quote_id))
+
+    conn.close()
+    return render_template('quote_new.html', settings=settings, vendors=vendors)
+
+
 @app.route('/quotes')
 @login_required
 def quote_list():
@@ -1500,10 +1683,12 @@ def quote_view(quote_id):
     items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
     attachments = conn.execute('SELECT * FROM quote_attachments WHERE quote_id=? ORDER BY uploaded_at', (quote_id,)).fetchall()
     so_exists   = conn.execute('SELECT id, so_number FROM sales_orders WHERE quote_id=? LIMIT 1', (quote_id,)).fetchone()
+    vendors     = conn.execute('SELECT id, name, company, email FROM vendors ORDER BY name').fetchall()
     settings    = get_settings()
     conn.close()
     return render_template('quote_view.html', quote=quote, rfq=rfq, items=items,
-                           attachments=attachments, settings=settings, so_exists=so_exists)
+                           attachments=attachments, settings=settings, so_exists=so_exists,
+                           vendors=vendors)
 
 
 @app.route('/quotes/<int:quote_id>/update-item', methods=['POST'])
@@ -1936,6 +2121,125 @@ def send_quote(quote_id):
     thread.start()
 
     flash(f'Sending quote to {to_email}… Refresh in a few seconds to confirm it was sent.', 'success')
+    return redirect(url_for('quote_view', quote_id=quote_id))
+
+
+@app.route('/quotes/<int:quote_id>/send-vendor', methods=['POST'])
+@login_required
+def send_quote_vendor(quote_id):
+    """Send quote to a vendor (sourcing / RFQ-out email)."""
+    conn     = get_db()
+    quote    = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
+    rfq      = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
+    items    = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
+    settings = get_settings()
+
+    vendor_id  = request.form.get('vendor_id', '').strip()
+    custom_email = request.form.get('vendor_email', '').strip()
+
+    to_email   = custom_email
+    vendor_name = 'Vendor'
+    if vendor_id:
+        v = conn.execute('SELECT * FROM vendors WHERE id=?', (vendor_id,)).fetchone()
+        if v:
+            vendor_name = v['name'] or v['company'] or 'Vendor'
+            to_email = to_email or v['email'] or ''
+    conn.close()
+
+    if not to_email:
+        flash('No vendor email provided.', 'error')
+        return redirect(url_for('quote_view', quote_id=quote_id))
+
+    smtp_host = settings.get('smtp_host', 'smtp.gmail.com').strip()
+    smtp_port = int(settings.get('smtp_port', 587))
+    smtp_user = settings.get('smtp_user', '').strip()
+    smtp_pass = settings.get('smtp_pass', '').strip()
+    resend_key = (os.environ.get('RESEND_API_KEY') or settings.get('resend_api_key', '')).strip()
+
+    if not resend_key and (not smtp_user or not smtp_pass):
+        flash('Email is not configured. Go to Settings and add SMTP or Resend credentials.', 'error')
+        return redirect(url_for('quote_view', quote_id=quote_id))
+
+    company_name  = settings.get('company_name', 'Our Company')
+    from_addr     = f"{company_name} <{smtp_user or 'noreply@example.com'}>"
+    subject_line  = f"RFQ / Parts Inquiry — {quote['quote_number']} — {company_name}"
+
+    # Build a simple vendor-facing parts-request email
+    rows_html = ''.join(
+        f"<tr><td style='padding:6px 10px;border-bottom:1px solid #eee;font-family:monospace'>{it['part_number']}</td>"
+        f"<td style='padding:6px 10px;border-bottom:1px solid #eee'>{it['description'] or '—'}</td>"
+        f"<td style='padding:6px 10px;border-bottom:1px solid #eee;text-align:center'>{it['quantity_requested']}</td>"
+        f"<td style='padding:6px 10px;border-bottom:1px solid #eee;text-align:center'>{it['condition'] or 'Any'}</td></tr>"
+        for it in items
+    )
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;color:#222">
+      <div style="background:#1a3c6e;padding:20px 28px;border-radius:8px 8px 0 0">
+        <h2 style="color:#fff;margin:0;font-size:1.25rem">{company_name}</h2>
+        <p style="color:#c8d8f0;margin:4px 0 0;font-size:.85rem">Parts Sourcing Inquiry</p>
+      </div>
+      <div style="background:#fff;padding:24px 28px;border:1px solid #e2e8f0;border-top:none">
+        <p>Dear {vendor_name},</p>
+        <p>We are requesting pricing and availability for the following parts. Please reply with
+           your best price, condition, and lead time.</p>
+        <table style="width:100%;border-collapse:collapse;font-size:.9rem;margin:16px 0">
+          <thead>
+            <tr style="background:#f4f7fb">
+              <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e2e8f0">Part Number</th>
+              <th style="padding:8px 10px;text-align:left;border-bottom:2px solid #e2e8f0">Description</th>
+              <th style="padding:8px 10px;text-align:center;border-bottom:2px solid #e2e8f0">Qty</th>
+              <th style="padding:8px 10px;text-align:center;border-bottom:2px solid #e2e8f0">Condition</th>
+            </tr>
+          </thead>
+          <tbody>{rows_html}</tbody>
+        </table>
+        <p style="font-size:.85rem;color:#555">Reference: <strong>{quote['quote_number']}</strong></p>
+        <p>Please reply to this email with your quote at your earliest convenience.</p>
+        <p>Thank you,<br><strong>{company_name}</strong><br>
+           {settings.get('company_email','')}&nbsp;|&nbsp;{settings.get('company_phone','')}</p>
+      </div>
+    </div>"""
+
+    sent = False
+    last_err = None
+
+    if resend_key:
+        try:
+            email_id = send_via_resend(resend_key, from_addr, to_email, subject_line, html)
+            sent = bool(email_id)
+        except Exception as e:
+            last_err = e
+
+    if not sent and smtp_user and smtp_pass:
+        import smtplib, email.encoders as _encoders
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject_line
+        msg['From']    = from_addr
+        msg['To']      = to_email
+        msg.attach(MIMEText(html, 'html'))
+        for mode, host, port in [('starttls', smtp_host, smtp_port), ('ssl', smtp_host, 465)]:
+            try:
+                if mode == 'ssl':
+                    with smtplib.SMTP_SSL(host, port, timeout=15) as srv:
+                        srv.login(smtp_user, smtp_pass)
+                        srv.sendmail(from_addr, [to_email], msg.as_string())
+                else:
+                    with smtplib.SMTP(host, port, timeout=15) as srv:
+                        srv.ehlo(); srv.starttls(); srv.ehlo()
+                        srv.login(smtp_user, smtp_pass)
+                        srv.sendmail(from_addr, [to_email], msg.as_string())
+                sent = True
+                break
+            except Exception as e:
+                last_err = e
+
+    if sent:
+        flash(f'Parts inquiry sent to {to_email} ({vendor_name}).', 'success')
+    else:
+        flash(f'Failed to send to {to_email}: {last_err}', 'error')
+
     return redirect(url_for('quote_view', quote_id=quote_id))
 
 
@@ -3071,7 +3375,8 @@ def settings_page():
                     'default_markup','quote_valid_days',
                     'imap_host','imap_port','imap_user','imap_pass','imap_folder',
                     'smtp_host','smtp_port','smtp_user','smtp_pass','resend_api_key',
-                    'pb_client_id','pb_client_secret','pb_username','pb_password']:
+                    'pb_client_id','pb_client_secret','pb_username','pb_password',
+                    'bank_name','bank_address','bank_account','bank_routing','bank_ach','bank_swift']:
             conn.execute('INSERT OR REPLACE INTO settings VALUES (?,?)', (key, request.form.get(key,'')))
         conn.commit()
         conn.close()
@@ -3268,12 +3573,25 @@ def vendor_new():
     if request.method == 'POST':
         f = request.form
         conn = get_db()
-        conn.execute('''INSERT INTO vendors (name,company,email,phone,address,city,country,payment_terms,currency,vendor_code,notes)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
+        bill_same = 1 if f.get('bill_same_as_ship') else 0
+        conn.execute('''INSERT INTO vendors
+                        (name,company,email,phone,address,city,country,payment_terms,currency,vendor_code,notes,
+                         ship_to_address,ship_to_city,ship_to_state,ship_to_zip,ship_to_country,
+                         bill_same_as_ship,
+                         bill_to_address,bill_to_city,bill_to_state,bill_to_zip,bill_to_country)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
                      (f.get('name',''), f.get('company',''), f.get('email',''), f.get('phone',''),
                       f.get('address',''), f.get('city',''), f.get('country',''),
                       f.get('payment_terms','Net 30'), f.get('currency','USD'),
-                      f.get('vendor_code',''), f.get('notes','')))
+                      f.get('vendor_code',''), f.get('notes',''),
+                      f.get('ship_to_address',''), f.get('ship_to_city',''), f.get('ship_to_state',''),
+                      f.get('ship_to_zip',''), f.get('ship_to_country',''),
+                      bill_same,
+                      f.get('bill_to_address','') if not bill_same else f.get('ship_to_address',''),
+                      f.get('bill_to_city','')    if not bill_same else f.get('ship_to_city',''),
+                      f.get('bill_to_state','')   if not bill_same else f.get('ship_to_state',''),
+                      f.get('bill_to_zip','')     if not bill_same else f.get('ship_to_zip',''),
+                      f.get('bill_to_country','') if not bill_same else f.get('ship_to_country','')))
         conn.commit()
         vid = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
         conn.close()
@@ -3288,12 +3606,26 @@ def vendor_detail(vid):
     conn = get_db()
     if request.method == 'POST':
         f = request.form
+        bill_same = 1 if f.get('bill_same_as_ship') else 0
         conn.execute('''UPDATE vendors SET name=?,company=?,email=?,phone=?,address=?,city=?,country=?,
-                        payment_terms=?,currency=?,vendor_code=?,notes=? WHERE id=?''',
+                        payment_terms=?,currency=?,vendor_code=?,notes=?,
+                        ship_to_address=?,ship_to_city=?,ship_to_state=?,ship_to_zip=?,ship_to_country=?,
+                        bill_same_as_ship=?,
+                        bill_to_address=?,bill_to_city=?,bill_to_state=?,bill_to_zip=?,bill_to_country=?
+                        WHERE id=?''',
                      (f.get('name',''), f.get('company',''), f.get('email',''), f.get('phone',''),
                       f.get('address',''), f.get('city',''), f.get('country',''),
                       f.get('payment_terms','Net 30'), f.get('currency','USD'),
-                      f.get('vendor_code',''), f.get('notes',''), vid))
+                      f.get('vendor_code',''), f.get('notes',''),
+                      f.get('ship_to_address',''), f.get('ship_to_city',''), f.get('ship_to_state',''),
+                      f.get('ship_to_zip',''), f.get('ship_to_country',''),
+                      bill_same,
+                      f.get('bill_to_address','') if not bill_same else f.get('ship_to_address',''),
+                      f.get('bill_to_city','')    if not bill_same else f.get('ship_to_city',''),
+                      f.get('bill_to_state','')   if not bill_same else f.get('ship_to_state',''),
+                      f.get('bill_to_zip','')     if not bill_same else f.get('ship_to_zip',''),
+                      f.get('bill_to_country','') if not bill_same else f.get('ship_to_country',''),
+                      vid))
         conn.commit()
         flash('Vendor updated.', 'success')
     vendor = conn.execute('SELECT * FROM vendors WHERE id=?', (vid,)).fetchone()
@@ -3401,9 +3733,11 @@ def po_detail(pid):
     gross_margin = round(so_revenue - po_landed, 2)
     margin_pct   = round((gross_margin / so_revenue * 100) if so_revenue else 0, 1)
     conn.close()
+    settings = get_settings()
     return render_template('po_detail.html', po=po, items=items, vendors=vendors, vendor=vendor,
                            ap_entry=ap_entry, linked_so=linked_so, linked_so_items=linked_so_items,
-                           open_sos=open_sos, gross_margin=gross_margin, margin_pct=margin_pct)
+                           open_sos=open_sos, gross_margin=gross_margin, margin_pct=margin_pct,
+                           settings=settings)
 
 
 @app.route('/purchase-orders/<int:pid>/add-item', methods=['POST'])
@@ -3573,11 +3907,17 @@ def so_detail(sid):
         f = request.form
         linked_po_id = f.get('linked_po_id') or None
         conn.execute('''UPDATE sales_orders SET customer_id=?,status=?,order_date=?,ship_date=?,
-                        delivery_address=?,payment_terms=?,notes=?,currency=?,linked_po_id=? WHERE id=?''',
+                        delivery_address=?,payment_terms=?,notes=?,currency=?,linked_po_id=?,
+                        payment_method=?,ship_via=?,customer_po=?,incoterms=?,tracking_number=?,attn=?,
+                        freight=?,tax=?,misc_charges=?,discount=? WHERE id=?''',
                      (f.get('customer_id') or None, f.get('status','draft'),
                       f.get('order_date',''), f.get('ship_date',''),
                       f.get('delivery_address',''), f.get('payment_terms','Net 30'),
-                      f.get('notes',''), f.get('currency','USD'), linked_po_id, sid))
+                      f.get('notes',''), f.get('currency','USD'), linked_po_id,
+                      f.get('payment_method',''), f.get('ship_via',''), f.get('customer_po',''),
+                      f.get('incoterms',''), f.get('tracking_number',''), f.get('attn',''),
+                      float(f.get('freight',0) or 0), float(f.get('tax',0) or 0),
+                      float(f.get('misc_charges',0) or 0), float(f.get('discount',0) or 0), sid))
         conn.commit()
         flash('Sales Order updated.', 'success')
     so = conn.execute('''SELECT so.*, c.name as customer_name, c.company as customer_company,
@@ -3596,10 +3936,12 @@ def so_detail(sid):
                                 WHERE po.id=?''', (so['linked_po_id'],)).fetchone() if so['linked_po_id'] else None
     linked_po_items = conn.execute('SELECT * FROM purchase_order_items WHERE po_id=?', (so['linked_po_id'],)).fetchall() if so['linked_po_id'] else []
     open_pos = conn.execute("SELECT id, po_number, total_amount FROM purchase_orders WHERE status NOT IN ('closed','cancelled') ORDER BY created_at DESC").fetchall()
+    customer = conn.execute('SELECT * FROM customers WHERE id=?', (so['customer_id'],)).fetchone() if so['customer_id'] else None
     conn.close()
+    settings = get_settings()
     return render_template('so_detail.html', so=so, items=items, customers=customers, quotes=[],
                            ar_entry=ar_entry, linked_po=linked_po, linked_po_items=linked_po_items,
-                           open_pos=open_pos)
+                           open_pos=open_pos, settings=settings, customer=customer)
 
 
 @app.route('/sales-orders/<int:sid>/add-item', methods=['POST'])

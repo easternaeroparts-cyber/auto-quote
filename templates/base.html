@@ -244,6 +244,9 @@
     <a href="{{ url_for('quote_list') }}" class="nav-link {% if request.endpoint in ['quote_list','quote_view'] %}active{% endif %}">
       <i class="bi bi-file-earmark-text"></i> Quotes
     </a>
+    <a href="{{ url_for('quote_new') }}" class="nav-link {% if request.endpoint=='quote_new' %}active{% endif %}">
+      <i class="bi bi-plus-circle"></i> New Quote
+    </a>
 
     <div class="sidebar-section">Operations</div>
     <a href="{{ url_for('so_list') }}" class="nav-link {% if 'so_' in request.endpoint or request.endpoint=='so_list' %}active{% endif %}">

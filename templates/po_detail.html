@@ -6,9 +6,162 @@
 <a href="{{ url_for('po_list') }}" class="btn btn-sm btn-outline-secondary">
   <i class="bi bi-arrow-left"></i> Back
 </a>
+{% if po %}
+<button onclick="window.print()" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-printer"></i> Print / PDF
+</button>
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<style>
+@media print {
+  @page { size: US-Letter portrait; margin: 10mm 12mm; }
+  .sidebar, .topbar, .flash-wrap, footer, #poMainContent { display:none !important; }
+  .main-wrap { margin-left:0 !important; }
+  .content { padding:0 !important; }
+  html, body { height:auto !important; overflow:visible !important; margin:0 !important; padding:0 !important; }
+  #poPrintDoc { display:block !important; }
+}
+#poPrintDoc {
+  display: none;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9pt;
+  color: #000;
+  line-height: 1.5;
+}
+#poPrintDoc table { border-collapse: collapse; width: 100%; }
+#poPrintDoc th { background:#f0f0f0; font-size:8pt; padding:4px 6px; border:1px solid #000; }
+#poPrintDoc td { padding:4px 6px; border:1px solid #000; vertical-align:top; }
+</style>
 {% endblock %}
 
 {% block content %}
+
+{% if po %}
+<!-- ═══ PURCHASE ORDER PRINT DOCUMENT ═══ -->
+<div id="poPrintDoc">
+  <table style="margin-bottom:0;">
+    <tr>
+      <td style="width:35%;padding:10px 14px;vertical-align:middle;border:1px solid #000;border-right:none;">
+        <div style="font-size:18pt;font-weight:900;letter-spacing:.1em;color:#1a3c6e;">
+          {{ settings.get('company_name','EASTERN AERO PARTS')|upper }}
+        </div>
+      </td>
+      <td style="padding:10px 14px;vertical-align:middle;border:1px solid #000;">
+        <strong>{{ settings.get('company_name','') }}</strong><br>
+        {{ settings.get('company_address','') }}<br>
+        Phone: {{ settings.get('company_phone','') }}&nbsp;&nbsp;
+        Email: {{ settings.get('company_email','') }}
+      </td>
+    </tr>
+  </table>
+  <table style="border:1px solid #000;border-top:none;margin-bottom:0;">
+    <tr>
+      <td style="text-align:center;font-size:14pt;font-weight:bold;letter-spacing:.04em;padding:6px;width:70%;border-right:1px solid #000;">PURCHASE ORDER</td>
+      <td style="padding:6px 12px;font-size:11pt;font-weight:bold;">PO#: {{ po.po_number }}</td>
+    </tr>
+  </table>
+  <table style="border:1px solid #000;border-top:none;margin-bottom:0;">
+    <tr>
+      <td style="width:50%;border-right:1px solid #000;padding:8px 10px;vertical-align:top;">
+        {% if vendor %}
+        <strong>Vendor#:</strong> {{ vendor.id }}<br>
+        {{ vendor.name or '' }}<br>
+        {% if vendor.ship_to_address %}{{ vendor.ship_to_address }}<br>{% elif vendor.address %}{{ vendor.address }}<br>{% endif %}
+        {% if vendor.ship_to_city %}{{ vendor.ship_to_city }}{% if vendor.ship_to_state %}, {{ vendor.ship_to_state }}{% endif %}{% if vendor.ship_to_zip %} {{ vendor.ship_to_zip }}{% endif %}<br>{% endif %}
+        {% if vendor.ship_to_country %}{{ vendor.ship_to_country }}<br>{% endif %}
+        {% if vendor.phone %}<strong>Phone #:</strong> {{ vendor.phone }}<br>{% endif %}
+        {% if vendor.email %}{{ vendor.email }}{% endif %}
+        {% else %}<em>No vendor assigned</em>{% endif %}
+      </td>
+      <td style="width:50%;padding:8px 10px;vertical-align:top;">
+        <strong>Ship To:</strong><br>
+        {{ settings.get('company_name','') }}<br>
+        {{ settings.get('company_address','') }}
+        {% if po.shipping_address %}<br>{{ po.shipping_address }}{% endif %}
+      </td>
+    </tr>
+  </table>
+  <table style="border:1px solid #000;border-top:none;margin-bottom:0;">
+    <tr>
+      <td style="width:33%;border-right:1px solid #000;padding:5px 8px;font-size:8.5pt;"><strong>Order Date:</strong> {{ po.order_date or po.created_at[:10] }}</td>
+      <td style="width:34%;border-right:1px solid #000;padding:5px 8px;font-size:8.5pt;"><strong>Payment Method:</strong> {{ po.payment_method or '' }}</td>
+      <td style="width:33%;padding:5px 8px;font-size:8.5pt;"><strong>Ship Via:</strong> {{ po.shipping_service or '' }} {{ po.shipping_provider or '' }}</td>
+    </tr>
+    <tr>
+      <td style="border-right:1px solid #000;padding:5px 8px;font-size:8.5pt;"><strong>Required Date:</strong> {{ po.expected_date or '' }}</td>
+      <td style="border-right:1px solid #000;padding:5px 8px;font-size:8.5pt;"><strong>Payment Terms:</strong> {{ vendor.payment_terms if vendor else 'Net 30' }}</td>
+      <td style="padding:5px 8px;font-size:8.5pt;"><strong>AWB #:</strong> {{ po.awb_number or '' }}</td>
+    </tr>
+  </table>
+  <table style="border:1px solid #000;border-top:none;margin-bottom:6px;">
+    <tr><td style="padding:5px 8px;font-size:7.5pt;">
+      All materials require name of A/L or OEM origin on cert for traceability as a condition of purchase.
+      All Airworthiness Directives (AD's) that are represented as having been accomplished are documented.
+      Please acknowledge receipt of PO. Thank you.
+      {% if po.notes %}<br><em>{{ po.notes }}</em>{% endif %}
+    </td></tr>
+  </table>
+  <table>
+    <thead>
+      <tr>
+        <th style="width:4%;text-align:center;">#</th>
+        <th style="width:15%;text-align:left;">P/N</th>
+        <th style="text-align:left;">Description</th>
+        <th style="width:5%;text-align:center;">UM</th>
+        <th style="width:10%;">S/N</th>
+        <th style="width:7%;text-align:center;">Cond</th>
+        <th style="width:6%;text-align:center;">Qty</th>
+        <th style="width:12%;text-align:right;">Unit Price</th>
+        <th style="width:12%;text-align:right;">Sub Total</th>
+        <th style="width:5%;text-align:center;">PT</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for it in items %}
+    <tr>
+      <td style="text-align:center;">{{ loop.index }}</td>
+      <td><strong>{{ it.part_number }}</strong></td>
+      <td>{{ it.description or '' }}</td>
+      <td style="text-align:center;">EA</td>
+      <td style="font-size:8pt;">{{ it.serial_number if it.get('serial_number') else '' }}</td>
+      <td style="text-align:center;">{{ it.condition or 'SV' }}</td>
+      <td style="text-align:center;">{{ it.quantity }}</td>
+      <td style="text-align:right;">${{ '%.2f'|format(it.unit_cost) }}</td>
+      <td style="text-align:right;">${{ '%.2f'|format(it.total_landed_cost if it.total_landed_cost else it.extended_cost) }}</td>
+      <td style="text-align:center;">OR</td>
+    </tr>
+    {% if it.notes %}<tr><td colspan="10" style="font-size:8pt;background:#fafafa;font-style:italic;">Notes: {{ it.notes }}</td></tr>{% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  <table style="margin-top:14px;border:none;">
+    <tr>
+      <td style="width:55%;border:none;vertical-align:top;">
+        <div style="font-size:9pt;"><strong>Ordered by:</strong> {{ po.ordered_by or settings.get('company_name','') }}<br>
+        <strong>Email:</strong> {{ po.ordered_by_email or settings.get('company_email','') }}</div>
+        <div style="margin-top:24px;font-size:9pt;"><strong>Auth. Sig.: </strong>___________________________________</div>
+      </td>
+      <td style="width:45%;border:none;vertical-align:top;">
+        <table style="width:100%;">
+          <tr><td style="font-weight:bold;">Order SubTotal:</td><td style="text-align:right;font-weight:bold;">${{ '%.2f'|format(po.total_amount) }}</td></tr>
+          <tr><td style="font-weight:bold;border-top:2px solid #000;">Order Total:</td><td style="text-align:right;font-weight:bold;border-top:2px solid #000;">${{ '%.2f'|format(po.total_amount) }}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  <div style="margin-top:12px;font-size:7.5pt;font-style:italic;border-top:1px solid #ccc;padding-top:5px;">
+    Disclaimer: All items require a certificate of conformity, test report, non-incident report and/or airworthiness approval
+    from approved manufacturer or approved repair shop. Supplier is required to notify the organization of changes in product
+    definition, and of nonconforming product. The organization, their customers, and regulatory authorities reserve the right
+    of access to all facilities involved in the order and all applicable records. Unit is subject to inspection unless otherwise
+    agreed by written consent.
+  </div>
+</div><!-- END PO PRINT DOC -->
+{% endif %}
+
+<div id="poMainContent">
 <div class="row g-3">
   <!-- Left: PO Header form -->
   <div class="col-lg-4">
@@ -464,6 +617,7 @@
   </div>
   {% endif %}
 </div>
+</div>{# end poMainContent #}
 {% endblock %}
 
 {% block scripts %}

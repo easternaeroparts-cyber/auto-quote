@@ -12,6 +12,9 @@
 <button class="btn btn-sm {% if quote.status == 'sent' %}btn-outline-secondary{% else %}btn-gold fw-semibold{% endif %} no-print" data-bs-toggle="modal" data-bs-target="#sendModal">
   <i class="bi bi-send"></i> {% if quote.status == 'sent' %}Resend{% else %}Send to Customer{% endif %}
 </button>
+<button class="btn btn-sm btn-outline-primary no-print" data-bs-toggle="modal" data-bs-target="#sendVendorModal">
+  <i class="bi bi-truck"></i> Send to Vendor
+</button>
 {% if so_exists %}
   <a href="{{ url_for('so_detail', sid=so_exists.id) }}" class="btn btn-sm btn-outline-success no-print">
     <i class="bi bi-cart-check"></i> View SO {{ so_exists.so_number }}
@@ -29,58 +32,213 @@
 {% block head %}
 <style>
 @media print {
-  /* Hide all chrome — sidebar, topbar, buttons, flash, footer */
-  .sidebar, .topbar, .flash-wrap, .no-print, footer { display:none !important; }
+  @page { size: US-Letter portrait; margin: 10mm 12mm; }
+  .sidebar, .topbar, .flash-wrap, .no-print, footer, #mainContent { display:none !important; }
   .main-wrap { margin-left:0 !important; }
   .content { padding:0 !important; }
-
-  /* Page setup */
-  @page { size: US-Letter portrait; margin: 8mm 12mm; }
-
-  /* overflow:hidden is the key fix — prevents Safari from measuring the full
-     scrollable height and generating a blank second page */
-  html, body {
-    height: auto !important;
-    overflow: hidden !important;
-    margin: 0 !important;
-    padding: 0 !important;
-  }
-
-  /* Compact cards */
-  .card { box-shadow:none !important; border:1px solid #ddd !important; margin-bottom:4px !important; }
-  .card-body { padding:5px 10px !important; }
-  .card-header { padding:4px 10px !important; }
-
-  /* Compact fonts */
-  body, p, td, th, small, .small, span { font-size:9px !important; line-height:1.3 !important; }
-  h4, h5 { font-size:11px !important; margin:0 !important; }
-  .fs-3 { font-size:13px !important; }
-  .fs-5 { font-size:10px !important; }
-  code { font-size:9px !important; }
-
-  /* Compact tables */
-  table { width:100% !important; border-collapse:collapse !important; }
-  td, th { padding:2px 4px !important; }
-
-  /* Compact item rows */
-  .border.rounded.mb-3, .mb-3 { margin-bottom:3px !important; }
-  .px-3.pb-3.pt-1 { padding:3px 6px !important; }
-  .mb-2 { margin-bottom:2px !important; }
-  .py-2 { padding-top:2px !important; padding-bottom:2px !important; }
-  .mt-3, .mt-2 { margin-top:2px !important; }
-
-  /* Avoid page breaks mid-item */
-  .card, .border.rounded { page-break-inside:avoid; break-inside:avoid; }
-  p.text-muted.small { margin:1px 0 !important; }
-
-  /* Prevent any element from forcing a new page */
-  * { page-break-after: auto !important; }
-  body > *:last-child { page-break-after: avoid !important; }
+  html, body { height:auto !important; overflow:visible !important; margin:0 !important; padding:0 !important; }
+  #printDoc { display:block !important; }
 }
+/* Print doc is hidden on screen */
+#printDoc {
+  display: none;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9pt;
+  color: #000;
+  line-height: 1.4;
+}
+#printDoc table { border-collapse: collapse; width: 100%; }
+#printDoc .pd-header-box { border: 1px solid #000; margin-bottom: 6px; }
+#printDoc .pd-title { text-align:center; font-size:14pt; font-weight:bold; letter-spacing:.04em; padding:6px; border-top:1px solid #000; border-bottom:1px solid #000; }
+#printDoc .pd-meta-table td { padding:3px 6px; border:1px solid #000; font-size:8.5pt; }
+#printDoc .pd-section-label { font-size:8pt; font-style:italic; text-align:center; background:#f5f5f5; padding:3px; border:1px solid #000; margin:5px 0 0; }
+#printDoc .pd-items-table th { background:#f0f0f0; font-size:8pt; padding:4px 5px; border:1px solid #000; text-align:center; }
+#printDoc .pd-items-table td { padding:3px 5px; border:1px solid #000; vertical-align:top; }
+#printDoc .pd-notes-row td { border:1px solid #000; padding:3px 8px; font-size:8pt; background:#fafafa; }
+#printDoc .pd-footer-text { font-size:7.5pt; font-style:italic; margin-top:8px; border-top:1px solid #ccc; padding-top:4px; }
+#printDoc .pd-totals td { padding:3px 8px; border:1px solid #000; }
+#printDoc .pd-sig-table td { padding:6px 10px; border:1px solid #000; }
 </style>
 {% endblock %}
 
 {% block content %}
+
+<!-- ═══════════════════════════════════════════════════════════════════════
+     PRINT DOCUMENT — only visible when printing (display:none on screen)
+     Matches reference "CUSTOMER QUOTATION" format
+     ═══════════════════════════════════════════════════════════════════════ -->
+<div id="printDoc">
+
+  {# ── Company header ── #}
+  <table style="width:100%;border:1px solid #000;margin-bottom:0;">
+    <tr>
+      <td style="width:38%;padding:10px 14px;vertical-align:middle;border-right:1px solid #000;">
+        <div style="font-size:20pt;font-weight:900;letter-spacing:.12em;color:#1a3c6e;">
+          {{ settings.get('company_name','Eastern Aero Parts')|upper }}
+        </div>
+      </td>
+      <td style="padding:10px 14px;vertical-align:middle;font-size:9pt;line-height:1.6;">
+        <strong>{{ settings.get('company_name','Eastern Aero Parts') }}</strong><br>
+        {{ settings.get('company_address','') }}<br>
+        Phone: {{ settings.get('company_phone','') }}<br>
+        Email: {{ settings.get('company_email','') }}
+      </td>
+    </tr>
+  </table>
+
+  {# ── Title bar ── #}
+  <table style="width:100%;border:1px solid #000;border-top:none;margin-bottom:0;">
+    <tr>
+      <td class="pd-title" style="width:70%;border-right:1px solid #000;">CUSTOMER QUOTATION</td>
+      <td style="padding:6px 12px;font-size:10pt;font-weight:bold;">Quotation #: {{ quote.quote_number }}</td>
+    </tr>
+  </table>
+
+  {# ── Bill To / Ship To ── #}
+  <table style="width:100%;border:1px solid #000;border-top:none;margin-bottom:0;">
+    <tr>
+      <td style="width:50%;padding:8px 10px;vertical-align:top;border-right:1px solid #000;">
+        <div style="font-size:8pt;font-weight:bold;margin-bottom:4px;">BILL TO:</div>
+        <div style="font-weight:bold;">{{ rfq.customer_name or '' }}</div>
+        {% if rfq.company %}<div>{{ rfq.company }}</div>{% endif %}
+        {% if rfq.address %}<div style="white-space:pre-line">{{ rfq.address }}</div>{% endif %}
+      </td>
+      <td style="width:50%;padding:8px 10px;vertical-align:top;">
+        <div style="font-size:8pt;font-weight:bold;margin-bottom:4px;">SHIP TO:</div>
+        <div style="font-weight:bold;">{{ rfq.customer_name or '' }}</div>
+        {% if rfq.company %}<div>{{ rfq.company }}</div>{% endif %}
+        {% if rfq.address %}<div style="white-space:pre-line">{{ rfq.address }}</div>{% endif %}
+      </td>
+    </tr>
+  </table>
+
+  {# ── Meta row (date / quoted by / contact) ── #}
+  <table style="width:100%;border:1px solid #000;border-top:none;margin-bottom:0;">
+    <tr>
+      <td style="width:33%;padding:6px 10px;border-right:1px solid #000;vertical-align:top;font-size:8.5pt;">
+        <strong>Quote date:</strong> {{ quote.created_at[:10] }}<br>
+        <strong>Valid thru:</strong>
+        {% set vdate = quote.created_at[:10] %}
+        {{ vdate }}<br>
+        <strong>Ref #:</strong> {{ rfq.customer_ref or '' }}
+      </td>
+      <td style="width:34%;padding:6px 10px;border-right:1px solid #000;vertical-align:top;font-size:8.5pt;">
+        <strong>Quoted By:</strong> {{ quote.quoted_by or settings.get('company_name','') }}<br>
+        <strong>Priority:</strong> {{ quote.priority or 'Normal' }}<br>
+        <strong>Terms:</strong> {{ quote.valid_days }} days
+      </td>
+      <td style="width:33%;padding:6px 10px;vertical-align:top;font-size:8.5pt;">
+        <strong>Contact:</strong> {{ rfq.customer_name or '' }}<br>
+        <strong>Email:</strong> {{ rfq.customer_email or '' }}<br>
+        <strong>Phone:</strong> {{ rfq.phone or '' }}
+      </td>
+    </tr>
+  </table>
+
+  {# ── Section label ── #}
+  <div class="pd-section-label">Quoted Items</div>
+
+  {# ── Line items ── #}
+  {% set ns = namespace(subtotal=0) %}
+  {% for it in items %}{% if not it.no_quote %}
+  <table class="pd-items-table" style="margin-top:0;border-top:none;">
+    <thead>
+      <tr>
+        <th style="width:4%;">Item</th>
+        <th style="width:14%;text-align:left;">PN</th>
+        <th style="text-align:left;">Desc.</th>
+        <th style="width:7%;">Cond.</th>
+        <th style="width:5%;">UM</th>
+        <th style="width:6%;">Qty</th>
+        <th style="width:10%;text-align:right;">Price</th>
+        <th style="width:11%;text-align:right;">Sub Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="text-align:center;">{{ loop.index }}</td>
+        <td>
+          <strong>{{ it.part_number }}</strong><br>
+          <span style="font-size:7.5pt;color:#444;">Lead time: {{ it.lead_time or 'Stock' }}</span><br>
+          <span style="font-size:7.5pt;color:#444;">Sales Type: {{ it.price_type or 'Outright' }}</span>
+        </td>
+        <td>{{ it.description or '—' }}</td>
+        <td style="text-align:center;">{{ it.condition or 'SV' }}</td>
+        <td style="text-align:center;">EA</td>
+        <td style="text-align:center;">{{ it.quantity_requested }}</td>
+        <td style="text-align:right;">${{ '%.2f'|format(it.unit_price) }}</td>
+        <td style="text-align:right;">${{ '%.2f'|format(it.extended_price) }}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% if it.notes or it.trace_to or it.tag_type %}
+  <table style="width:100%;border:1px solid #000;border-top:none;margin-top:0;">
+    <tr class="pd-notes-row">
+      <td><strong>Notes:</strong>&nbsp;
+        {{ it.notes or '' }}{% if it.trace_to %} Traceable to: {{ it.trace_to }}{% endif %}
+        {% if it.tag_type %} Tag: {{ it.tag_type }}{% endif %}
+      </td>
+    </tr>
+  </table>
+  {% endif %}
+  {% set ns.subtotal = ns.subtotal + it.extended_price %}
+  {% endif %}{% endfor %}
+
+  {# ── Totals (last page) ── #}
+  <table style="width:100%;margin-top:8px;">
+    <tr>
+      <td style="width:55%;vertical-align:top;padding-right:10px;font-size:8pt;font-style:italic;color:#333;">
+        Prices quoted are US Dollars and do not include freight charges. All parts quoted are subject
+        to prior sale. Prices valid for {{ quote.valid_days }} days or until stock lasts.
+        Minimum order is $50.00. No returns accepted without prior authorization.
+      </td>
+      <td style="width:45%;">
+        <table class="pd-totals" style="width:100%;">
+          <tr><td>Order Sub total:</td><td style="text-align:right;">${{ '%.2f'|format(quote.total_amount) }}</td></tr>
+          <tr><td>Misc. Charges:</td><td style="text-align:right;">${{ '%.2f'|format(quote.misc_charges or 0) }}</td></tr>
+          <tr><td>Freight:</td><td style="text-align:right;">${{ '%.2f'|format(quote.freight or 0) }}</td></tr>
+          <tr><td>Tax:</td><td style="text-align:right;">${{ '%.2f'|format(quote.tax or 0) }}</td></tr>
+          <tr><td>Discount:</td><td style="text-align:right;">-${{ '%.2f'|format(quote.discount or 0) }}</td></tr>
+          <tr style="font-weight:bold;font-size:10pt;">
+            <td style="border-top:2px solid #000;">Total:</td>
+            <td style="text-align:right;border-top:2px solid #000;">
+              ${{ '%.2f'|format((quote.total_amount or 0) + (quote.misc_charges or 0) + (quote.freight or 0) + (quote.tax or 0) - (quote.discount or 0)) }}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  {# ── Signature block ── #}
+  <table class="pd-sig-table" style="width:100%;margin-top:10px;">
+    <tr>
+      <td style="width:33%;">Authorized Signature: ___________________</td>
+      <td style="width:33%;">{{ quote.quoted_by or settings.get('company_name','') }}</td>
+      <td style="width:34%;text-align:right;">Total: ${{ '%.2f'|format((quote.total_amount or 0) + (quote.misc_charges or 0) + (quote.freight or 0) + (quote.tax or 0) - (quote.discount or 0)) }}</td>
+    </tr>
+  </table>
+  <table class="pd-sig-table" style="width:100%;margin-top:4px;">
+    <tr>
+      <td style="width:33%;">Approved by: ___________________</td>
+      <td style="width:33%;">Print Name: ___________________</td>
+      <td style="width:34%;">Approval Date: ___________________</td>
+    </tr>
+    <tr>
+      <td>Rejected by: ___________________</td>
+      <td>Print Name: ___________________</td>
+      <td>Rejected Date: ___________________</td>
+    </tr>
+  </table>
+
+  <div class="pd-footer-text">
+    These Commodities, technology, or software were exported from the United States in accordance
+    with Export Administration Regulations. Diversion contrary to U.S. law is prohibited.
+  </div>
+</div>
+<!-- END PRINT DOC -->
+
+<div id="mainContent">
 <!-- Header -->
 <div class="card mb-3">
   <div class="card-body">
@@ -404,6 +562,64 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
   </div>
 </div>
 
+<!-- Send to Vendor Modal -->
+<div class="modal fade" id="sendVendorModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-truck me-1"></i> Send Parts Inquiry to Vendor</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('send_quote_vendor', quote_id=quote.id) }}">
+        <div class="modal-body">
+          <p class="text-muted small mb-3">
+            A parts sourcing email listing all <strong>{{ items|length }} part(s)</strong> on this quote
+            will be sent to the selected vendor asking for pricing and availability.
+          </p>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Select Vendor</label>
+            <select name="vendor_id" class="form-select" id="vendorSelect"
+                    onchange="fillVendorEmail(this)">
+              <option value="">— Choose a vendor —</option>
+              {% for v in vendors %}
+              <option value="{{ v.id }}" data-email="{{ v.email or '' }}">
+                {{ v.name }}{% if v.company %} ({{ v.company }}){% endif %}
+                {% if v.email %} — {{ v.email }}{% endif %}
+              </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Vendor Email
+              <span class="text-muted fw-normal">(auto-filled or enter manually)</span>
+            </label>
+            <input type="email" name="vendor_email" id="vendorEmailInput"
+                   class="form-control" placeholder="vendor@example.com">
+            <div class="form-text">Leave blank to use the email on the vendor record above.</div>
+          </div>
+
+          <div class="bg-light rounded p-3" style="font-size:.82rem;">
+            <strong>Parts in this inquiry:</strong>
+            <ul class="mb-0 mt-1 ps-3">
+              {% for it in items %}
+              <li><code>{{ it.part_number }}</code> — Qty {{ it.quantity_requested }}{% if it.condition %} ({{ it.condition }}){% endif %}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary fw-semibold">
+            <i class="bi bi-send-fill me-1"></i> Send Inquiry
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <!-- Add Part Modal -->
 <div class="modal fade" id="addItemModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
@@ -592,6 +808,7 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
     </div>
   </div>
 </div>
+</div>{# end #mainContent #}
 {% endblock %}
 
 {% block scripts %}
@@ -1166,6 +1383,14 @@ async function saveItem() {
     }
     _closeModal();
   }
+}
+
+// ── Send to Vendor — auto-fill email from vendor dropdown ────────────────────
+function fillVendorEmail(select) {
+  const opt   = select.options[select.selectedIndex];
+  const email = opt ? (opt.dataset.email || '') : '';
+  const input = document.getElementById('vendorEmailInput');
+  if (input && email) input.value = email;
 }
 </script>
 {% endblock %}

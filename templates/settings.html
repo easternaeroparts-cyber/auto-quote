@@ -188,6 +188,42 @@
     </div>
   </div>
 
+  <!-- Wire Transfer / Banking -->
+  <div class="card mb-3">
+    <div class="card-header bg-white py-3">
+      <strong><i class="bi bi-bank me-1"></i> Wire Transfer / Banking</strong>
+      <small class="text-muted ms-2">Printed on Sales Order PDFs when filled in</small>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Bank Name</label>
+          <input name="bank_name" class="form-control" value="{{ s.get('bank_name','') }}" placeholder="Bank of America">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Bank Address</label>
+          <input name="bank_address" class="form-control" value="{{ s.get('bank_address','') }}" placeholder="100 North Tryon St, Charlotte NC 28255">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Account Number</label>
+          <input name="bank_account" class="form-control font-monospace" value="{{ s.get('bank_account','') }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">ABA Routing</label>
+          <input name="bank_routing" class="form-control font-monospace" value="{{ s.get('bank_routing','') }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">ACH R/T</label>
+          <input name="bank_ach" class="form-control font-monospace" value="{{ s.get('bank_ach','') }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">SWIFT Code</label>
+          <input name="bank_swift" class="form-control font-monospace" value="{{ s.get('bank_swift','') }}" placeholder="BOFAUS3N">
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <div class="mt-3 d-flex justify-content-end">

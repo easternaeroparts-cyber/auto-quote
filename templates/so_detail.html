@@ -6,9 +6,204 @@
 <a href="{{ url_for('so_list') }}" class="btn btn-sm btn-outline-secondary">
   <i class="bi bi-arrow-left"></i> Back
 </a>
+{% if so %}
+<button onclick="window.print()" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-printer"></i> Print / PDF
+</button>
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<style>
+@media print {
+  @page { size: US-Letter portrait; margin: 10mm 12mm; }
+  .sidebar, .topbar, .flash-wrap, footer, #soMainContent { display:none !important; }
+  .main-wrap { margin-left:0 !important; }
+  .content { padding:0 !important; }
+  html, body { height:auto !important; overflow:visible !important; margin:0 !important; padding:0 !important; }
+  #soPrintDoc { display:block !important; }
+}
+#soPrintDoc {
+  display: none;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 9pt;
+  color: #000;
+  line-height: 1.5;
+}
+#soPrintDoc table { border-collapse: collapse; width: 100%; }
+#soPrintDoc th { background:#f0f0f0; font-size:8pt; padding:4px 6px; border:1px solid #000; }
+#soPrintDoc td { padding:4px 6px; border:1px solid #000; vertical-align:top; }
+</style>
 {% endblock %}
 
 {% block content %}
+
+{% if so %}
+<!-- ═══ SALES ORDER PRINT DOCUMENT ═══ -->
+<div id="soPrintDoc">
+
+  {# Company header #}
+  <table style="margin-bottom:0;">
+    <tr>
+      <td style="width:35%;padding:10px 14px;vertical-align:middle;border:1px solid #000;border-right:none;">
+        <div style="font-size:18pt;font-weight:900;letter-spacing:.1em;color:#1a3c6e;">
+          {{ settings.get('company_name','EASTERN AERO PARTS')|upper }}
+        </div>
+      </td>
+      <td style="padding:8px 14px;vertical-align:middle;border:1px solid #000;font-size:8.5pt;line-height:1.5;">
+        <strong>{{ settings.get('company_name','') }}</strong><br>
+        {{ settings.get('company_address','') }}<br>
+        Phone: {{ settings.get('company_phone','') }}&nbsp;&nbsp;
+        Email: {{ settings.get('company_email','') }}
+      </td>
+    </tr>
+  </table>
+
+  {# Title + Date + SO# #}
+  <table style="border:1px solid #000;border-top:none;margin-bottom:0;">
+    <tr>
+      <td style="width:20%;padding:5px 10px;border-right:1px solid #000;font-size:8.5pt;"><strong>Date:</strong> {{ so.order_date or so.created_at[:10] }}</td>
+      <td style="text-align:center;font-size:14pt;font-weight:bold;letter-spacing:.04em;padding:6px;width:55%;border-right:1px solid #000;">SALES ORDER</td>
+      <td style="padding:6px 12px;font-size:11pt;font-weight:bold;">SO #: {{ so.so_number }}</td>
+    </tr>
+  </table>
+
+  {# Bill To / Shipped To #}
+  <table style="border:1px solid #000;border-top:none;margin-bottom:0;">
+    <tr>
+      <td style="width:50%;border-right:1px solid #000;padding:8px 10px;vertical-align:top;">
+        <div style="font-size:8pt;font-weight:bold;margin-bottom:3px;">Bill To:</div>
+        {% if customer %}
+        <strong>{{ customer.name or '' }}</strong><br>
+        {% if customer.company %}{{ customer.company }}<br>{% endif %}
+        {% if customer.address %}{{ customer.address }}<br>{% endif %}
+        {% if customer.city %}{{ customer.city }}{% if customer.state %}, {{ customer.state }}{% endif %}{% if customer.zip %} {{ customer.zip }}{% endif %}<br>{% endif %}
+        {% if customer.country %}{{ customer.country }}<br>{% endif %}
+        {% else %}
+        {{ so.customer_name or so.customer_company or '—' }}
+        {% endif %}
+      </td>
+      <td style="width:50%;padding:8px 10px;vertical-align:top;">
+        <div style="font-size:8pt;font-weight:bold;margin-bottom:3px;">Shipped To:</div>
+        {% if so.delivery_address %}
+        {{ so.delivery_address }}
+        {% elif customer %}
+        <strong>{{ customer.name or '' }}</strong><br>
+        {% if customer.company %}{{ customer.company }}<br>{% endif %}
+        {% if customer.address %}{{ customer.address }}<br>{% endif %}
+        {% endif %}
+      </td>
+    </tr>
+  </table>
+
+  {# Order meta #}
+  <table style="border:1px solid #000;border-top:none;margin-bottom:0;">
+    <tr>
+      <td style="width:34%;border-right:1px solid #000;padding:5px 8px;font-size:8.5pt;">
+        <strong>Attn:</strong> {{ so.attn or (customer.name if customer else '') }}&nbsp;&nbsp;
+        <strong>Payment Terms:</strong> {{ so.payment_terms or 'Net 30' }}
+      </td>
+      <td style="width:33%;border-right:1px solid #000;padding:5px 8px;font-size:8.5pt;">
+        <strong>Ship Via:</strong> {{ so.ship_via or '' }}
+      </td>
+      <td style="width:33%;padding:5px 8px;font-size:8.5pt;">
+        &nbsp;
+      </td>
+    </tr>
+    <tr>
+      <td style="border-right:1px solid #000;padding:5px 8px;font-size:8.5pt;">
+        <strong>Customer PO #:</strong> {{ so.customer_po or '' }}
+      </td>
+      <td style="border-right:1px solid #000;padding:5px 8px;font-size:8.5pt;">
+        <strong>Payment Method:</strong> {{ so.payment_method or '' }}
+      </td>
+      <td style="padding:5px 8px;font-size:8.5pt;">
+        <strong>Incoterms:</strong> {{ so.incoterms or '' }}
+      </td>
+    </tr>
+    <tr>
+      <td colspan="3" style="padding:5px 8px;font-size:8.5pt;">
+        <strong>Tracking Number:</strong> {{ so.tracking_number or '' }}
+      </td>
+    </tr>
+  </table>
+
+  {# Line items #}
+  <table style="margin-top:4px;">
+    <thead>
+      <tr>
+        <th style="width:5%;text-align:center;">Item</th>
+        <th style="width:14%;text-align:left;">P/N</th>
+        <th style="text-align:left;">Description</th>
+        <th style="width:10%;">S/N</th>
+        <th style="width:7%;text-align:center;">Cond</th>
+        <th style="width:6%;text-align:center;">Qty</th>
+        <th style="width:5%;text-align:center;">UM</th>
+        <th style="width:11%;text-align:right;">Price</th>
+        <th style="width:12%;text-align:right;">Sub Total</th>
+        <th style="width:5%;text-align:center;">ST</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for it in items %}
+    <tr>
+      <td style="text-align:center;">{{ loop.index }}</td>
+      <td><strong>{{ it.part_number }}</strong></td>
+      <td>{{ it.description or '' }}</td>
+      <td style="font-size:8pt;">{{ it.serial_number or '' }}</td>
+      <td style="text-align:center;">{{ it.condition or 'SV' }}</td>
+      <td style="text-align:center;">{{ it.quantity }}</td>
+      <td style="text-align:center;">EA</td>
+      <td style="text-align:right;">${{ '%.2f'|format(it.unit_price) }}</td>
+      <td style="text-align:right;">${{ '%.2f'|format(it.extended_price) }}</td>
+      <td style="text-align:center;">OR</td>
+    </tr>
+    {% if it.notes or it.trace_to %}
+    <tr><td colspan="10" style="font-size:8pt;background:#fafafa;font-style:italic;border-top:none;">
+      <strong>Item Notes:</strong> {{ it.notes or '' }}{% if it.trace_to %} Traceable to: {{ it.trace_to }}{% endif %}
+    </td></tr>
+    {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+
+  {# Bottom: wire transfer + totals #}
+  <table style="margin-top:10px;border:none;">
+    <tr>
+      <td style="width:52%;border:none;vertical-align:top;padding-right:8px;font-size:8pt;">
+        {% if settings.get('bank_name') or settings.get('bank_account') %}
+        <strong>WIRE TRANSFER INSTRUCTIONS</strong><br>
+        Beneficiary: {{ settings.get('company_name','') }}<br>
+        {% if settings.get('bank_name') %}Bank Info: {{ settings.get('bank_name') }}<br>{% endif %}
+        {% if settings.get('bank_address') %}{{ settings.get('bank_address') }}<br>{% endif %}
+        {% if settings.get('bank_account') %}Account: {{ settings.get('bank_account') }}<br>{% endif %}
+        {% if settings.get('bank_routing') %}ABA Routing: {{ settings.get('bank_routing') }}<br>{% endif %}
+        {% if settings.get('bank_swift') %}Swift: {{ settings.get('bank_swift') }}{% endif %}
+        {% endif %}
+        {% if so.notes %}<br><em>{{ so.notes }}</em>{% endif %}
+      </td>
+      <td style="width:48%;border:none;vertical-align:top;">
+        <table style="width:100%;">
+          <tr><td>Order Sub Total:</td><td style="text-align:right;">${{ '%.2f'|format(so.total_amount) }}</td></tr>
+          <tr><td>Tax:</td><td style="text-align:right;">${{ '%.2f'|format(so.tax or 0) }}</td></tr>
+          <tr><td>Freight:</td><td style="text-align:right;">${{ '%.2f'|format(so.freight or 0) }}</td></tr>
+          <tr><td>Misc:</td><td style="text-align:right;">${{ '%.2f'|format(so.misc_charges or 0) }}</td></tr>
+          <tr><td>Discount:</td><td style="text-align:right;">-${{ '%.2f'|format(so.discount or 0) }}</td></tr>
+          <tr style="font-weight:bold;font-size:10pt;border-top:2px solid #000;">
+            <td style="border-top:2px solid #000;">Order Total:</td>
+            <td style="text-align:right;border-top:2px solid #000;">
+              ${{ '%.2f'|format((so.total_amount or 0) + (so.tax or 0) + (so.freight or 0) + (so.misc_charges or 0) - (so.discount or 0)) }}
+            </td>
+          </tr>
+          <tr><td colspan="2" style="text-align:right;font-size:8pt;border:none;">Payable in {{ so.currency or 'USD' }}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</div><!-- END SO PRINT DOC -->
+{% endif %}
+
+<div id="soMainContent">
 <div class="row g-3">
   <div class="col-lg-4">
     <div class="card mb-3">
@@ -84,6 +279,54 @@
               <option {% if so and so.currency==c %}selected{% endif %}>{{ c }}</option>
               {% endfor %}
             </select>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label">Customer PO #</label>
+              <input name="customer_po" class="form-control" value="{{ so.customer_po if so else '' }}" placeholder="Customer's PO ref">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Attn (Contact)</label>
+              <input name="attn" class="form-control" value="{{ so.attn if so else '' }}">
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label">Payment Method</label>
+              <input name="payment_method" class="form-control" value="{{ so.payment_method if so else '' }}" placeholder="Wire, Card…">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Ship Via</label>
+              <input name="ship_via" class="form-control" value="{{ so.ship_via if so else '' }}" placeholder="FEDEX, UPS…">
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label">Incoterms</label>
+              <input name="incoterms" class="form-control" value="{{ so.incoterms if so else '' }}" placeholder="EXW, FOB…">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Tracking #</label>
+              <input name="tracking_number" class="form-control" value="{{ so.tracking_number if so else '' }}">
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-4">
+              <label class="form-label">Freight $</label>
+              <input name="freight" type="number" step="0.01" class="form-control" value="{{ so.freight or 0 }}">
+            </div>
+            <div class="col-4">
+              <label class="form-label">Tax $</label>
+              <input name="tax" type="number" step="0.01" class="form-control" value="{{ so.tax or 0 }}">
+            </div>
+            <div class="col-4">
+              <label class="form-label">Misc $</label>
+              <input name="misc_charges" type="number" step="0.01" class="form-control" value="{{ so.misc_charges or 0 }}">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Discount $</label>
+            <input name="discount" type="number" step="0.01" class="form-control" value="{{ so.discount or 0 }}">
           </div>
           <div class="mb-3">
             <label class="form-label">Notes</label>
@@ -306,4 +549,5 @@
   </div>
   {% endif %}
 </div>
+</div>{# end soMainContent #}
 {% endblock %}
