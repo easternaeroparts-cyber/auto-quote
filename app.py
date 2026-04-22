@@ -925,6 +925,8 @@ def fetch_email_rfqs():
 
 
 def _fetch_imap(settings):
+    import socket
+    socket.setdefaulttimeout(30)  # 30s timeout per IMAP operation
     mail = imaplib.IMAP4_SSL(
         settings.get('imap_host', 'imap.gmail.com'),
         int(settings.get('imap_port', 993)))
@@ -937,8 +939,8 @@ def _fetch_imap(settings):
     count = 0
 
     all_ids = ids[0].split()
-    # Process newest first, limit to last 500 to avoid timeout
-    all_ids = list(reversed(all_ids))[:500]
+    # Process newest first, limit to last 50 per run to avoid timeout
+    all_ids = list(reversed(all_ids))[:50]
 
     for mid in all_ids:
         try:
