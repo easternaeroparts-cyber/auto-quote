@@ -1754,7 +1754,7 @@ def api_last_quote_for_pn():
                q.quote_number, q.created_at
         FROM quote_items qi
         JOIN quotes q ON qi.quote_id = q.id
-        WHERE qi.part_number = ? AND q.id != ?
+        WHERE qi.part_number = ? AND q.id != ? AND q.status = 'sent'
         ORDER BY q.created_at DESC LIMIT 1
     ''', (pn, exclude_qid)).fetchone()
     conn.close()

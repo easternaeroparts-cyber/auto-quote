@@ -367,8 +367,20 @@ function applySuggestion() {
   for (let o of sel.options) o.selected = (o.value === (_pnSugData.price_type || 'Outright'));
   const csel = document.getElementById('editCondition');
   for (let o of csel.options) o.selected = (o.value === (_pnSugData.condition || 'SV'));
+  _dismissSuggestion();
+}
+
+function _dismissSuggestion() {
+  _pnSugData = null;
   document.getElementById('pnSuggestion').classList.add('d-none');
 }
+
+// Dismiss suggestion when user manually edits the price field
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('editPrice').addEventListener('input', function() {
+    if (_pnSugData) _dismissSuggestion();
+  });
+});
 
 async function saveItem() {
   const id       = document.getElementById('editItemId').value;
