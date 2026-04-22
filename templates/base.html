@@ -38,6 +38,7 @@
     .btn-gold:hover{background:#d99f1f;color:#1a1a1a;}
     .alert{border-radius:8px;}
     .flash-wrap{position:fixed;top:16px;right:16px;z-index:9999;min-width:300px;}
+
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -135,5 +136,7 @@
   // Auto-dismiss flash messages after 4s
   setTimeout(()=>{document.querySelectorAll('.alert').forEach(a=>{bootstrap.Alert.getOrCreateInstance(a).close();});},4000);
 </script>
+
+
 </body>
 </html>

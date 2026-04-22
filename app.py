@@ -227,7 +227,7 @@ def init_db():
         'smtp_port':       '587',
         'smtp_user':       'easternaeroparts@gmail.com',
         'smtp_pass':       '',
-        'resend_api_key':  '',
+        'resend_api_key':    '',
     }
     for k, v in defaults.items():
         conn.execute('INSERT OR IGNORE INTO settings VALUES (?,?)', (k, v))
@@ -2514,6 +2514,7 @@ def _fetch_imap(settings):
 
 
 # ─── Routes: API / Settings ──────────────────────────────────────────────────
+
 
 @app.route('/api/parse-text', methods=['POST'])
 @login_required
