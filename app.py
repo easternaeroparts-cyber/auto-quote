@@ -1185,30 +1185,60 @@ def send_quote(quote_id):
             settings.get('resend_api_key', '')
         ).strip()
 
+        company = settings.get('company_name', 'Eastern Aero Parts')
+        raw_from = smtp_user or 'sales@eastern-aero.com'
+        from_addr = f"{company} <{raw_from}>"
+        subject_line = f"Quotation {quote['quote_number']} — {company}"
+
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject_line
+        msg['From']    = from_addr
+        msg['To']      = to_email
+        msg.attach(MIMEText(html, 'html'))
+
         if resend_key:
-            try:
-                # Build "Display Name <email>" format
-                company = settings.get('company_name', 'Eastern Aero Parts')
-                raw_from = smtp_user or 'sales@eastern-aero.com'
-                from_addr = f"{company} <{raw_from}>"
-                subj = f"Quotation {quote['quote_number']} — {company}"
-                print(f'[Email] Trying Resend from={from_addr} to={to_email}')
-                email_id = send_via_resend(resend_key, from_addr, to_email, subj, html)
-                if email_id:
+            # ── 1. Resend SMTP relay — use non-standard ports (2465/2587)
+            #       that Railway does not block, authenticated with API key
+            resend_attempts = [
+                ('ssl',      'smtp.resend.com', 2465),
+                ('starttls', 'smtp.resend.com', 2587),
+                ('ssl',      'smtp.resend.com', 465),
+                ('starttls', 'smtp.resend.com', 587),
+            ]
+            for mode, host, port in resend_attempts:
+                try:
+                    print(f'[Email] Trying Resend SMTP {mode}:{port}')
+                    if mode == 'ssl':
+                        with smtplib.SMTP_SSL(host, port, timeout=15) as srv:
+                            srv.login('resend', resend_key)
+                            srv.send_message(msg)
+                    else:
+                        with smtplib.SMTP(host, port, timeout=15) as srv:
+                            srv.ehlo(); srv.starttls(); srv.ehlo()
+                            srv.login('resend', resend_key)
+                            srv.send_message(msg)
                     sent = True
-                    print(f'[Email] Sent via Resend. ID={email_id}')
-            except Exception as e:
-                last_err = e
-                print(f'[Email] Resend failed: {e}')
+                    print(f'[Email] Sent via Resend SMTP {mode}:{port}')
+                    break
+                except Exception as e:
+                    last_err = e
+                    print(f'[Email] Resend SMTP {mode}:{port} failed: {e}')
+                    continue
 
-        # ── 2. Fall back to SMTP if Resend not configured or failed ─────────────
+            # ── 1b. Try Resend REST API as fallback
+            if not sent:
+                try:
+                    print(f'[Email] Trying Resend API from={from_addr} to={to_email}')
+                    email_id = send_via_resend(resend_key, from_addr, to_email, subject_line, html)
+                    if email_id:
+                        sent = True
+                        print(f'[Email] Sent via Resend API. ID={email_id}')
+                except Exception as e:
+                    last_err = e
+                    print(f'[Email] Resend API failed: {e}')
+
+        # ── 2. Fall back to your own SMTP if Resend not configured or failed ────
         if not sent and smtp_user and smtp_pass:
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = f"Quotation {quote['quote_number']} — {settings['company_name']}"
-            msg['From']    = smtp_user
-            msg['To']      = to_email
-            msg.attach(MIMEText(html, 'html'))
-
             attempts = []
             if smtp_port == 465:
                 attempts = [('ssl', smtp_host, 465), ('starttls', smtp_host, 587)]
