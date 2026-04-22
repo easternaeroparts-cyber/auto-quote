@@ -1351,10 +1351,15 @@ def send_quote(quote_id):
         from_addr = f"{company} <sales@eastern-aero.com>"
         subject_line = f"Quotation {quote_d['quote_number']} — {company}"
 
+        # Always BCC a copy to sales@eastern-aero.com
+        internal_bcc = 'sales@eastern-aero.com'
+        all_recipients = [to_email, internal_bcc]
+
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject_line
         msg['From']    = from_addr
         msg['To']      = to_email
+        msg['Bcc']     = internal_bcc   # hidden copy to sales
         msg.attach(MIMEText(html, 'html'))
 
         if resend_key:
@@ -1372,25 +1377,28 @@ def send_quote(quote_id):
                     if mode == 'ssl':
                         with smtplib.SMTP_SSL(host, port, timeout=15) as srv:
                             srv.login('resend', resend_key)
-                            srv.send_message(msg)
+                            # sendmail with explicit recipient list delivers BCC
+                            srv.sendmail(from_addr, all_recipients, msg.as_string())
                     else:
                         with smtplib.SMTP(host, port, timeout=15) as srv:
                             srv.ehlo(); srv.starttls(); srv.ehlo()
                             srv.login('resend', resend_key)
-                            srv.send_message(msg)
+                            srv.sendmail(from_addr, all_recipients, msg.as_string())
                     sent = True
-                    print(f'[Email] Sent via Resend SMTP {mode}:{port}')
+                    print(f'[Email] Sent via Resend SMTP {mode}:{port} (BCC: {internal_bcc})')
                     break
                 except Exception as e:
                     last_err = e
                     print(f'[Email] Resend SMTP {mode}:{port} failed: {e}')
                     continue
 
-            # ── 1b. Try Resend REST API as fallback
+            # ── 1b. Try Resend REST API as fallback (supports bcc natively)
             if not sent:
                 try:
                     print(f'[Email] Trying Resend API from={from_addr} to={to_email}')
-                    email_id = send_via_resend(resend_key, from_addr, to_email, subject_line, html)
+                    email_id = send_via_resend(
+                        resend_key, from_addr, to_email, subject_line, html,
+                        bcc=internal_bcc)
                     if email_id:
                         sent = True
                         print(f'[Email] Sent via Resend API. ID={email_id}')
@@ -1411,14 +1419,14 @@ def send_quote(quote_id):
                     if mode == 'ssl':
                         with smtplib.SMTP_SSL(host, port, timeout=15) as srv:
                             srv.login(smtp_user, smtp_pass)
-                            srv.send_message(msg)
+                            srv.sendmail(from_addr, all_recipients, msg.as_string())
                     else:
                         with smtplib.SMTP(host, port, timeout=15) as srv:
                             srv.ehlo(); srv.starttls(); srv.ehlo()
                             srv.login(smtp_user, smtp_pass)
-                            srv.send_message(msg)
+                            srv.sendmail(from_addr, all_recipients, msg.as_string())
                     sent = True
-                    print(f'[Email] Sent via SMTP {mode}:{port}')
+                    print(f'[Email] Sent via SMTP {mode}:{port} (BCC: {internal_bcc})')
                     break
                 except Exception as e:
                     last_err = e
@@ -1440,19 +1448,22 @@ def send_quote(quote_id):
     return redirect(url_for('quote_view', quote_id=quote_id))
 
 
-def send_via_resend(api_key, from_addr, to_addr, subject, html_body):
+def send_via_resend(api_key, from_addr, to_addr, subject, html_body, bcc=None):
     """
     Send email via Resend HTTP API.
     Works on Railway (no SMTP port restrictions).
     Docs: https://resend.com/docs/api-reference/emails/send-email
     """
     import urllib.error
-    payload = json.dumps({
+    payload_dict = {
         'from': from_addr,
         'to': [to_addr],
         'subject': subject,
         'html': html_body,
-    }).encode('utf-8')
+    }
+    if bcc:
+        payload_dict['bcc'] = [bcc] if isinstance(bcc, str) else bcc
+    payload = json.dumps(payload_dict).encode('utf-8')
     req = urllib.request.Request(
         'https://api.resend.com/emails',
         data=payload,
