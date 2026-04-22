@@ -1083,6 +1083,16 @@ def create_quote(rfq_id):
     conn     = get_db()
     settings = get_settings()
     rfq      = conn.execute('SELECT * FROM rfqs WHERE id=?', (rfq_id,)).fetchone()
+
+    # ── Guard: if a quote already exists for this RFQ, go there — don't duplicate ──
+    existing = conn.execute(
+        'SELECT id FROM quotes WHERE rfq_id=? ORDER BY created_at DESC LIMIT 1',
+        (rfq_id,)).fetchone()
+    if existing:
+        conn.close()
+        flash('A quote already exists for this RFQ. Redirected to it.', 'info')
+        return redirect(url_for('quote_view', quote_id=existing['id']))
+
     items    = conn.execute('SELECT * FROM rfq_items WHERE rfq_id=?', (rfq_id,)).fetchall()
 
     markup     = float(request.form.get('markup', settings.get('default_markup', 30)))

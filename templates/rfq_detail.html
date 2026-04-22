@@ -37,17 +37,27 @@
       </div>
     </div>
 
-    <!-- Create quote panel -->
+    <!-- Create / View quote panel -->
     <div class="card">
       <div class="card-body">
-        <form method="post" action="{{ url_for('create_quote', rfq_id=rfq.id) }}">
-          <input type="hidden" name="markup" value="{{ settings.get('default_markup', 30) }}">
-          <input type="hidden" name="valid_days" value="{{ settings.get('quote_valid_days', 30) }}">
-          <input type="hidden" name="currency" value="USD">
-          <button type="submit" class="btn btn-gold w-100 fw-semibold">
-            <i class="bi bi-magic"></i> Generate Quote
-          </button>
-        </form>
+        {% if quotes %}
+          {# Quote already exists — link directly to the most recent one #}
+          <a href="{{ url_for('quote_view', quote_id=quotes[0].id) }}" class="btn btn-navy w-100 fw-semibold">
+            <i class="bi bi-file-earmark-text"></i> View Quote
+          </a>
+          {% if quotes|length > 1 %}
+          <small class="d-block text-center text-muted mt-1">{{ quotes|length }} quotes — see table below</small>
+          {% endif %}
+        {% else %}
+          <form method="post" action="{{ url_for('create_quote', rfq_id=rfq.id) }}">
+            <input type="hidden" name="markup" value="{{ settings.get('default_markup', 30) }}">
+            <input type="hidden" name="valid_days" value="{{ settings.get('quote_valid_days', 30) }}">
+            <input type="hidden" name="currency" value="USD">
+            <button type="submit" class="btn btn-gold w-100 fw-semibold">
+              <i class="bi bi-magic"></i> Generate Quote
+            </button>
+          </form>
+        {% endif %}
       </div>
     </div>
   </div>
