@@ -206,6 +206,47 @@ def get_settings():
     return {r['key']: r['value'] for r in rows}
 
 
+# ─── Forwarded Email Parser ──────────────────────────────────────────────────
+
+def extract_forwarded_content(body):
+    """
+    Detect if an email is a forwarded message and extract:
+    - The original sender's name and email
+    - The original body content
+    Returns (original_name, original_email, original_body) or (None, None, body)
+    """
+    # Common forwarded message markers
+    fwd_markers = [
+        r'[-]+\s*Forwarded [Mm]essage\s*[-]+',
+        r'[-]+\s*Original [Mm]essage\s*[-]+',
+        r'Begin forwarded message:',
+        r'[-]+\s*Forwarded by',
+    ]
+
+    fwd_start = None
+    for marker in fwd_markers:
+        m = re.search(marker, body)
+        if m:
+            fwd_start = m.start()
+            break
+
+    if fwd_start is None:
+        return None, None, body  # Not a forwarded email
+
+    fwd_content = body[fwd_start:]
+
+    # Extract original From
+    from_match = re.search(r'From:\s*([^\n<]+?)?\s*[<]?([\w.+\-]+@[\w\-]+\.[a-zA-Z]+)[>]?', fwd_content, re.I)
+    orig_name  = from_match.group(1).strip().strip('"') if from_match and from_match.group(1) else ''
+    orig_email = from_match.group(2).strip() if from_match else ''
+
+    # Get the body after the forwarded header block (skip To/Date/Subject lines)
+    header_end = re.search(r'\n\s*\n', fwd_content)
+    orig_body  = fwd_content[header_end.end():] if header_end else fwd_content
+
+    return orig_name, orig_email, orig_body
+
+
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def gen_rfq_number():
@@ -931,19 +972,37 @@ def _fetch_imap(settings):
         else:
             body = msg.get_payload(decode=True).decode('utf-8', errors='ignore') or ''
 
+        # Handle forwarded emails — extract original sender and content
+        fwd_name, fwd_email, parse_body = extract_forwarded_content(body)
+        is_forwarded = fwd_name is not None
+
+        if is_forwarded:
+            # Use original sender info if available
+            if fwd_email:
+                cust_email = fwd_email
+            if fwd_name:
+                cust_name = fwd_name
+            # Add forwarded note to subject
+            if not subject.lower().startswith('fwd') and not subject.lower().startswith('fw'):
+                subject = f'[Forwarded] {subject}'
+        else:
+            parse_body = body
+
         # Decide if it looks like an RFQ
-        combined = (subject + ' ' + body).lower()
+        combined = (subject + ' ' + parse_body).lower()
         is_rfq   = any(kw in combined for kw in [
             'rfq', 'request for quote', 'request for quotation',
             'part number', 'p/n', 'parts needed', 'quote request',
-            'availability', 'aircraft part', 'aviation part', 'aog'])
-        parsed   = parse_rfq_text(body)
+            'availability', 'aircraft part', 'aviation part', 'aog',
+            'part #', 'pn:', 'p/n:', 'nsn'])
+        parsed   = parse_rfq_text(parse_body)
 
         if parsed or is_rfq:
             rfq_no = gen_rfq_number()
+            source = 'email-forwarded' if is_forwarded else 'email'
             conn.execute(
                 'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,source,notes,raw_email) VALUES (?,?,?,?,?,?,?)',
-                (rfq_no, cust_name, cust_email, '', 'email', subject, body[:6000]))
+                (rfq_no, cust_name, cust_email, '', source, subject, body[:6000]))
             rfq_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
             for item in parsed:
