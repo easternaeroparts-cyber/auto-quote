@@ -63,6 +63,14 @@ def admin_required(f):
 def inject_now():
     return {'now': datetime.now()}
 
+@app.template_filter('clean_desc')
+def clean_desc_filter(s):
+    """Strip 'Quantity: X' bleed-through from parsed descriptions."""
+    if not s:
+        return '—'
+    cleaned = re.sub(r'\s*\bQuantity[\s:]+\d+\b.*$', '', s, flags=re.I).strip()
+    return cleaned or '—'
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Use persistent volume path on Railway (set DB_PATH env var), fallback to local
@@ -1311,10 +1319,27 @@ def send_via_resend(api_key, from_addr, to_addr, subject, html_body):
         raise Exception(f"Resend HTTP {e.code}: {body}")
 
 
+def _fetch_logo_b64(url):
+    """Fetch a logo image and return a base64 data URI, or None on failure."""
+    try:
+        import base64
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = resp.read()
+            ct   = resp.headers.get_content_type() or 'image/png'
+            return f"data:{ct};base64,{base64.b64encode(data).decode('ascii')}"
+    except Exception:
+        return None
+
+
 def build_quote_email(quote, rfq, items, settings):
     currency = quote['currency'] if quote['currency'] else 'USD'
     td  = 'padding:9px 12px;border-bottom:1px solid #e5e7eb;'
     thd = f'padding:9px 12px;text-align:left;font-weight:600;color:#374151;border-bottom:2px solid #d1d5db;'
+
+    # Embed logo as base64 so it always displays regardless of email client blocking
+    logo_url_raw = 'https://www.eastern-aero.com/wp-content/uploads/2021/03/Eastern-Aero-Logo.png'
+    logo_src = _fetch_logo_b64(logo_url_raw) or logo_url_raw
 
     item_blocks = ''
     for it in items:
@@ -1328,7 +1353,10 @@ def build_quote_email(quote, rfq, items, settings):
         unit_p   = f"${it['unit_price']:,.2f}"
         line_t   = f"${it['extended_price']:,.2f}"
 
-        desc_short = (it['description'] or '—')[:60]
+        # Clean description: strip trailing "Quantity: X" bleed-through from parser
+        desc_raw   = (it['description'] or '—')
+        desc_clean = re.sub(r'\s*\bQuantity[\s:]+\d+\b.*$', '', desc_raw, flags=re.I).strip() or '—'
+        desc_short = desc_clean[:60]
         item_blocks += f"""
 <table width="100%" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px;font-size:14px">
   <thead>
@@ -1360,7 +1388,6 @@ def build_quote_email(quote, rfq, items, settings):
     <tr>
       <td colspan="6" style="padding:0 12px 14px">
         <table cellspacing="0" style="font-size:13px;color:#374151">
-          <tr><td style="padding:2px 16px 2px 0;width:120px;color:#6b7280">Condition:</td><td>{it['condition'] or 'SV'}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Warranty:</td><td>{warranty}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Trace To:</td><td>{trace}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tag Type:</td><td>{tag_type}</td></tr>
@@ -1379,9 +1406,8 @@ def build_quote_email(quote, rfq, items, settings):
 <table width="100%" cellspacing="0" style="margin-bottom:20px">
   <tr>
     <td>
-      <img src="https://www.eastern-aero.com/wp-content/uploads/2021/03/Eastern-Aero-Logo.png"
+      <img src="{logo_src}"
            alt="Eastern Aero" height="60"
-           onerror="this.style.display='none'"
            style="height:60px;max-width:220px;object-fit:contain">
     </td>
     <td style="text-align:right;vertical-align:middle">
@@ -1396,7 +1422,7 @@ def build_quote_email(quote, rfq, items, settings):
   Quote from <span style="background:#fef08a;padding:0 4px">Eastern Aero Pty Ltd</span> for RFQ # {rfq['rfq_number']}
 </h1>
 <p style="color:#6b7280;font-size:13px;margin-top:0">
-  To: {rfq['customer_name'] or ''}{(' — ' + rfq['company']) if rfq['company'] else ''}
+  To: {rfq['customer_name'] or ''}{(' &mdash; ' + rfq['company']) if rfq.get('company','').strip() else ''}
 </p>
 
 <hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
@@ -1422,9 +1448,8 @@ def build_quote_email(quote, rfq, items, settings):
       <div style="border-top:3px solid #1a3c6e;padding-top:10px">
         <p style="margin:0 0 2px;font-weight:700;font-size:15px">James Cook</p>
         <p style="margin:0 0 10px;color:#555;font-size:13px">Sales Manager</p>
-        <img src="https://www.eastern-aero.com/wp-content/uploads/2021/03/Eastern-Aero-Logo.png"
+        <img src="{logo_src}"
              alt="Eastern Aero" height="40"
-             onerror="this.style.display='none'"
              style="height:40px;max-width:160px;object-fit:contain;margin-bottom:10px;display:block">
         <p style="margin:4px 0;font-size:13px">
           <strong style="color:#1a3c6e">Office:</strong>
@@ -1642,9 +1667,24 @@ def _fetch_imap(settings):
         if parsed or is_rfq:
             rfq_no = gen_rfq_number()
             source = 'email-forwarded' if is_forwarded else 'email'
+
+            # Try to extract company name from email body (looks for names ending in Ltd/LLC/Inc etc.)
+            COMPANY_RE = re.compile(
+                r'\b([A-Z][A-Za-z0-9\s&\.\-]{1,50}?)\s+'
+                r'(Pty\.?\s*Ltd\.?|Ltd\.?|LLC\.?|Inc\.?|Corp\.?|GmbH|SAS|BV|PLC|Co\.?|Limited|Incorporated)\b',
+                re.I
+            )
+            cust_company = ''
+            cm = COMPANY_RE.search(parse_body[:3000])
+            if cm:
+                cust_company = (cm.group(1).strip() + ' ' + cm.group(2).strip()).strip()
+                # Sanity: skip if it looks like a generic phrase (less than 3 chars in company part)
+                if len(cm.group(1).strip()) < 3:
+                    cust_company = ''
+
             conn.execute(
                 'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,source,notes,raw_email,email_message_id) VALUES (?,?,?,?,?,?,?,?)',
-                (rfq_no, cust_name, cust_email, '', source, subject, body[:6000], message_id))
+                (rfq_no, cust_name, cust_email, cust_company, source, subject, body[:6000], message_id))
             rfq_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
             for item in parsed:

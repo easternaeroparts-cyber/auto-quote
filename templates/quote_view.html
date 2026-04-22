@@ -121,7 +121,7 @@
       <tbody>
         <tr>
           <td class="fw-bold"><code>{{ it.part_number }}</code></td>
-          <td class="text-muted small">{{ it.description or '—' }}</td>
+          <td class="text-muted small">{{ (it.description or '—') | clean_desc }}</td>
           <td id="qty-{{ it.id }}">{{ it.quantity_requested }} EA</td>
           <td><span class="badge text-bg-secondary">{{ it.condition or 'SV' }}</span></td>
           <td id="lead-{{ it.id }}">{{ it.lead_time or 'Stock' }}</td>
