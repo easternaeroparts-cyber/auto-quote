@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}{% if inv %}Edit {{ inv.invoice_number }}{% else %}New Invoice{% endif %}{% endblock %}
+{% block page_title %}{% if inv %}Edit {{ inv.invoice_number }}{% else %}New Invoice{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+{% if inv %}
+<a href="{{ url_for('invoice_view', inv_id=inv.id) }}" class="btn btn-outline-secondary btn-sm">
+  <i class="bi bi-eye"></i> View / Print
+</a>
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<style>
+  .item-row td { vertical-align: middle; padding: 6px 4px; }
+  .item-row input { font-size:.85rem; }
+  .lbl { font-size:.78rem; font-weight:600; color:#666; text-transform:uppercase; letter-spacing:.4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="invForm">
+
+<!-- Header Meta -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-4">
+        <label class="lbl">Invoice For (Customer / Company)</label>
+        <input name="invoice_for" class="form-control form-control-sm"
+          value="{{ inv.invoice_for if inv else '' }}" placeholder="Company name or person">
+      </div>
+      <div class="col-md-3">
+        <label class="lbl">Reference</label>
+        <input name="reference" class="form-control form-control-sm"
+          value="{{ inv.reference if inv else '' }}" placeholder="PO#, RFQ#, etc.">
+      </div>
+      <div class="col-md-2">
+        <label class="lbl">Due Date</label>
+        <input type="date" name="due_date" class="form-control form-control-sm"
+          value="{{ inv.due_date if inv else '' }}">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Customer Block -->
+<div class="card mb-3">
+  <div class="card-header bg-white py-2"><strong><i class="bi bi-person"></i> Customer Details</strong></div>
+  <div class="card-body">
+    <div class="row g-2">
+      <div class="col-md-4">
+        <label class="lbl">Customer Name</label>
+        <input name="customer_name" class="form-control form-control-sm"
+          value="{{ inv.customer_name if inv else '' }}">
+      </div>
+      <div class="col-md-8">
+        <label class="lbl">Customer Address</label>
+        <textarea name="customer_address" class="form-control form-control-sm" rows="2"
+          >{{ inv.customer_address if inv else '' }}</textarea>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Line Items -->
+<div class="card mb-3">
+  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+    <strong>Line Items</strong>
+    <button type="button" class="btn btn-sm btn-outline-navy" onclick="addRow()">
+      <i class="bi bi-plus"></i> Add Row
+    </button>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0" id="itemsTable">
+      <thead>
+        <tr>
+          <th style="width:14%">Part Number</th>
+          <th style="width:38%">Description</th>
+          <th style="width:8%">Cond</th>
+          <th style="width:7%">Qty</th>
+          <th style="width:12%">Unit Price</th>
+          <th style="width:12%">Total Price</th>
+          <th style="width:5%"></th>
+        </tr>
+      </thead>
+      <tbody id="itemsTbody">
+        {% for item in items %}
+        <tr class="item-row">
+          <td><input name="pn[]" class="form-control form-control-sm" value="{{ item.part_number }}"></td>
+          <td><input name="desc[]" class="form-control form-control-sm" value="{{ item.description }}"></td>
+          <td><input name="cond[]" class="form-control form-control-sm" value="{{ item.condition }}" placeholder="NE"></td>
+          <td><input name="qty[]" type="number" step="any" class="form-control form-control-sm qty" value="{{ item.quantity }}"></td>
+          <td><input name="unit_price[]" type="number" step="0.01" class="form-control form-control-sm up" value="{{ item.unit_price }}"></td>
+          <td><input name="total_price[]" type="number" step="0.01" class="form-control form-control-sm tp" value="{{ item.total_price }}" readonly></td>
+          <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="bi bi-x"></i></button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Totals + Notes -->
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-white py-2"><strong>Notes</strong></div>
+      <div class="card-body">
+        <textarea name="notes" class="form-control form-control-sm" rows="4"
+          >{{ inv.notes if inv else '' }}</textarea>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted small">Subtotal</span>
+          <input name="subtotal" type="number" step="0.01" class="form-control form-control-sm w-50 text-end"
+            id="subtotalField" value="{{ '%.2f'|format(inv.subtotal or 0) if inv else '0.00' }}" readonly>
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted small">Adjustments</span>
+          <input name="adjustments" type="number" step="0.01" class="form-control form-control-sm w-50 text-end"
+            id="adjustField" value="{{ '%.2f'|format(inv.adjustments or 0) if inv else '0.00' }}" onchange="recalcTotals()">
+        </div>
+        <hr class="my-2">
+        <div class="d-flex justify-content-between">
+          <strong>Grand Total</strong>
+          <input name="grand_total" type="number" step="0.01" class="form-control form-control-sm w-50 text-end fw-bold"
+            id="grandTotalField" value="{{ '%.2f'|format(inv.grand_total or 0) if inv else '0.00' }}" readonly>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex gap-2 justify-content-end">
+  <a href="{{ url_for('invoice_list') }}" class="btn btn-outline-secondary">Cancel</a>
+  <button type="submit" class="btn btn-navy px-4">
+    <i class="bi bi-save"></i> {% if inv %}Update{% else %}Create{% endif %} Invoice
+  </button>
+</div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addRow() {
+  const tbody = document.getElementById('itemsTbody');
+  const tr = document.createElement('tr');
+  tr.className = 'item-row';
+  tr.innerHTML = `
+    <td><input name="pn[]" class="form-control form-control-sm" placeholder="PN"></td>
+    <td><input name="desc[]" class="form-control form-control-sm" placeholder="Description"></td>
+    <td><input name="cond[]" class="form-control form-control-sm" placeholder="NE"></td>
+    <td><input name="qty[]" type="number" step="any" class="form-control form-control-sm qty" value="1"></td>
+    <td><input name="unit_price[]" type="number" step="0.01" class="form-control form-control-sm up" value="0"></td>
+    <td><input name="total_price[]" type="number" step="0.01" class="form-control form-control-sm tp" value="0" readonly></td>
+    <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="bi bi-x"></i></button></td>
+  `;
+  tbody.appendChild(tr);
+  attachRowListeners(tr);
+}
+
+function removeRow(btn) {
+  btn.closest('tr').remove();
+  recalcTotals();
+}
+
+function attachRowListeners(tr) {
+  const qty = tr.querySelector('.qty');
+  const up  = tr.querySelector('.up');
+  const tp  = tr.querySelector('.tp');
+  function calc() {
+    const q = parseFloat(qty.value)||0;
+    const u = parseFloat(up.value)||0;
+    tp.value = (q*u).toFixed(2);
+    recalcTotals();
+  }
+  qty.addEventListener('input', calc);
+  up.addEventListener('input', calc);
+}
+
+function recalcTotals() {
+  let sub = 0;
+  document.querySelectorAll('.tp').forEach(el => { sub += parseFloat(el.value)||0; });
+  document.getElementById('subtotalField').value = sub.toFixed(2);
+  const adj = parseFloat(document.getElementById('adjustField').value)||0;
+  document.getElementById('grandTotalField').value = (sub + adj).toFixed(2);
+}
+
+document.querySelectorAll('.item-row').forEach(attachRowListeners);
+if (!document.querySelectorAll('.item-row').length) addRow();
+</script>
+{% endblock %}

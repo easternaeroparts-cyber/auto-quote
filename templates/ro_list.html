@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Repair Orders{% endblock %}
+{% block page_title %}Repair Orders{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('ro_new') }}" class="btn btn-navy btn-sm">
+  <i class="bi bi-plus-circle"></i> New Repair Order
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>RO Number</th>
+          <th>Vendor</th>
+          <th>Date</th>
+          <th>Ship Date</th>
+          <th>Terms</th>
+          <th class="text-end">Grand Total</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ro in ros %}
+        <tr>
+          <td><a href="{{ url_for('ro_view', ro_id=ro.id) }}" class="fw-semibold text-decoration-none">{{ ro.ro_number }}</a></td>
+          <td>{{ ro.vendor_name or '—' }}</td>
+          <td>{{ ro.date or '—' }}</td>
+          <td>{{ ro.ship_date or '—' }}</td>
+          <td>{{ ro.terms or '—' }}</td>
+          <td class="text-end">${{ '%.2f'|format(ro.grand_total or 0) }}</td>
+          <td>
+            <span class="badge rounded-pill
+              {% if ro.status == 'draft' %}bg-secondary
+              {% elif ro.status == 'completed' %}bg-success
+              {% elif ro.status == 'sent' %}bg-primary
+              {% else %}bg-warning text-dark{% endif %}">
+              {{ ro.status|title }}
+            </span>
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('ro_view', ro_id=ro.id) }}" class="btn btn-sm btn-outline-secondary me-1"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('ro_edit', ro_id=ro.id) }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
+            <form method="post" action="{{ url_for('ro_delete', ro_id=ro.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete {{ ro.ro_number }}?')">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No repair orders yet. <a href="{{ url_for('ro_new') }}">Create one.</a></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

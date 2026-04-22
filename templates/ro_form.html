@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}{% if ro %}Edit {{ ro.ro_number }}{% else %}New Repair Order{% endif %}{% endblock %}
+{% block page_title %}{% if ro %}Edit {{ ro.ro_number }}{% else %}New Repair Order{% endif %}{% endblock %}
+
+{% block topbar_actions %}
+{% if ro %}
+<a href="{{ url_for('ro_view', ro_id=ro.id) }}" class="btn btn-outline-secondary btn-sm">
+  <i class="bi bi-eye"></i> View / Print
+</a>
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<style>
+  .item-row td { vertical-align: middle; padding: 6px 4px; }
+  .item-row input, .item-row select { font-size:.85rem; }
+  .lbl { font-size:.78rem; font-weight:600; color:#666; text-transform:uppercase; letter-spacing:.4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="roForm">
+
+<!-- Meta -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-2">
+        <label class="lbl">Date</label>
+        <input type="date" name="date" class="form-control form-control-sm"
+          value="{{ ro.date if ro else '' }}">
+      </div>
+      <div class="col-md-2">
+        <label class="lbl">Ship Date</label>
+        <input type="date" name="ship_date" class="form-control form-control-sm"
+          value="{{ ro.ship_date if ro else '' }}">
+      </div>
+      <div class="col-md-2">
+        <label class="lbl">Terms</label>
+        <input name="terms" class="form-control form-control-sm"
+          value="{{ ro.terms if ro else 'Net 30' }}">
+      </div>
+      <div class="col-md-2">
+        <label class="lbl">Ship Via</label>
+        <input name="ship_via" class="form-control form-control-sm"
+          value="{{ ro.ship_via if ro else '' }}" placeholder="UPS, FedEx…">
+      </div>
+      <div class="col-md-4">
+        <label class="lbl">Shipping Account</label>
+        <input name="shipping_account" class="form-control form-control-sm"
+          value="{{ ro.shipping_account if ro else '' }}">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Vendor / Ship To -->
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-white py-2"><strong><i class="bi bi-building"></i> Vendor / Repair Station</strong></div>
+      <div class="card-body">
+        <div class="mb-2">
+          <label class="lbl">Vendor Name</label>
+          <input name="vendor_name" class="form-control form-control-sm"
+            value="{{ ro.vendor_name if ro else '' }}">
+        </div>
+        <div>
+          <label class="lbl">Vendor Address</label>
+          <textarea name="vendor_address" class="form-control form-control-sm" rows="3"
+            >{{ ro.vendor_address if ro else '' }}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-white py-2"><strong><i class="bi bi-geo-alt"></i> Return Ship To</strong></div>
+      <div class="card-body">
+        <div class="mb-2">
+          <label class="lbl">Name</label>
+          <input name="ship_to_name" class="form-control form-control-sm"
+            value="{{ ro.ship_to_name if ro else 'Eastern Aero Parts' }}">
+        </div>
+        <div>
+          <label class="lbl">Address</label>
+          <textarea name="ship_to_address" class="form-control form-control-sm" rows="3"
+            >{{ ro.ship_to_address if ro else '11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987' }}</textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Line Items -->
+<div class="card mb-3">
+  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+    <strong>Items for Repair</strong>
+    <button type="button" class="btn btn-sm btn-outline-navy" onclick="addRow()">
+      <i class="bi bi-plus"></i> Add Row
+    </button>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead>
+        <tr>
+          <th style="width:13%">Part Number</th>
+          <th style="width:25%">Description</th>
+          <th style="width:10%">Serial #</th>
+          <th style="width:5%">Qty</th>
+          <th style="width:16%">Work Requested</th>
+          <th style="width:12%">Avg. Cost</th>
+          <th style="width:12%">Total</th>
+          <th style="width:5%"></th>
+        </tr>
+      </thead>
+      <tbody id="itemsTbody">
+        {% for item in items %}
+        <tr class="item-row">
+          <td><input name="pn[]" class="form-control form-control-sm" value="{{ item.part_number }}"></td>
+          <td><input name="desc[]" class="form-control form-control-sm" value="{{ item.description }}"></td>
+          <td><input name="sn[]" class="form-control form-control-sm" value="{{ item.serial_number }}" placeholder="N/A"></td>
+          <td><input name="qty[]" type="number" step="any" class="form-control form-control-sm qty" value="{{ item.quantity }}"></td>
+          <td>
+            <select name="work[]" class="form-select form-select-sm">
+              <option {% if item.work_requested=='Repair' %}selected{% endif %}>Repair</option>
+              <option {% if item.work_requested=='Overhaul' %}selected{% endif %}>Overhaul</option>
+              <option {% if item.work_requested=='Inspect' %}selected{% endif %}>Inspect</option>
+              <option {% if item.work_requested=='Test' %}selected{% endif %}>Test</option>
+              <option {% if item.work_requested=='Calibrate' %}selected{% endif %}>Calibrate</option>
+            </select>
+          </td>
+          <td><input name="cost[]" type="number" step="0.01" class="form-control form-control-sm up" value="{{ item.avg_cost }}"></td>
+          <td><input name="total_price[]" type="number" step="0.01" class="form-control form-control-sm tp" value="{{ item.total_price }}" readonly></td>
+          <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="bi bi-x"></i></button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Totals + Notes -->
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-white py-2"><strong>Notes</strong></div>
+      <div class="card-body">
+        <textarea name="notes" class="form-control form-control-sm" rows="5"
+          >{{ ro.notes if ro else '' }}</textarea>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-body">
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted small">Subtotal</span>
+          <input name="subtotal" type="number" step="0.01" class="form-control form-control-sm w-50 text-end"
+            id="subtotalField" value="{{ '%.2f'|format(ro.subtotal or 0) if ro else '0.00' }}" readonly>
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted small">Shipping &amp; Handling</span>
+          <input name="shipping" type="number" step="0.01" class="form-control form-control-sm w-50 text-end"
+            id="shippingField" value="{{ '%.2f'|format(ro.shipping or 0) if ro else '0.00' }}" onchange="recalcTotals()">
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted small">Tax Rate (%)</span>
+          <input name="tax_rate" type="number" step="0.01" class="form-control form-control-sm w-50 text-end"
+            id="taxRateField" value="{{ '%.2f'|format(ro.tax_rate or 0) if ro else '0.00' }}" onchange="recalcTotals()">
+        </div>
+        <div class="d-flex justify-content-between mb-2">
+          <span class="text-muted small">Sales Tax</span>
+          <input name="sales_tax" type="number" step="0.01" class="form-control form-control-sm w-50 text-end"
+            id="salesTaxField" value="{{ '%.2f'|format(ro.sales_tax or 0) if ro else '0.00' }}" readonly>
+        </div>
+        <hr class="my-2">
+        <div class="d-flex justify-content-between">
+          <strong>Grand Total</strong>
+          <input name="grand_total" type="number" step="0.01" class="form-control form-control-sm w-50 text-end fw-bold"
+            id="grandTotalField" value="{{ '%.2f'|format(ro.grand_total or 0) if ro else '0.00' }}" readonly>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex gap-2 justify-content-end">
+  <a href="{{ url_for('ro_list') }}" class="btn btn-outline-secondary">Cancel</a>
+  <button type="submit" class="btn btn-navy px-4">
+    <i class="bi bi-save"></i> {% if ro %}Update{% else %}Create{% endif %} Repair Order
+  </button>
+</div>
+
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function addRow() {
+  const tbody = document.getElementById('itemsTbody');
+  const tr = document.createElement('tr');
+  tr.className = 'item-row';
+  tr.innerHTML = `
+    <td><input name="pn[]" class="form-control form-control-sm" placeholder="PN"></td>
+    <td><input name="desc[]" class="form-control form-control-sm" placeholder="Description"></td>
+    <td><input name="sn[]" class="form-control form-control-sm" placeholder="N/A"></td>
+    <td><input name="qty[]" type="number" step="any" class="form-control form-control-sm qty" value="1"></td>
+    <td>
+      <select name="work[]" class="form-select form-select-sm">
+        <option>Repair</option><option>Overhaul</option><option>Inspect</option>
+        <option>Test</option><option>Calibrate</option>
+      </select>
+    </td>
+    <td><input name="cost[]" type="number" step="0.01" class="form-control form-control-sm up" value="0"></td>
+    <td><input name="total_price[]" type="number" step="0.01" class="form-control form-control-sm tp" value="0" readonly></td>
+    <td><button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)"><i class="bi bi-x"></i></button></td>
+  `;
+  tbody.appendChild(tr);
+  attachRowListeners(tr);
+}
+
+function removeRow(btn) {
+  btn.closest('tr').remove();
+  recalcTotals();
+}
+
+function attachRowListeners(tr) {
+  const qty = tr.querySelector('.qty');
+  const up  = tr.querySelector('.up');
+  const tp  = tr.querySelector('.tp');
+  function calc() {
+    const q = parseFloat(qty.value)||0;
+    const u = parseFloat(up.value)||0;
+    tp.value = (q*u).toFixed(2);
+    recalcTotals();
+  }
+  qty.addEventListener('input', calc);
+  up.addEventListener('input', calc);
+}
+
+function recalcTotals() {
+  let sub = 0;
+  document.querySelectorAll('.tp').forEach(el => { sub += parseFloat(el.value)||0; });
+  document.getElementById('subtotalField').value = sub.toFixed(2);
+  const ship = parseFloat(document.getElementById('shippingField').value)||0;
+  const taxR = parseFloat(document.getElementById('taxRateField').value)||0;
+  const tax  = sub * taxR / 100;
+  document.getElementById('salesTaxField').value = tax.toFixed(2);
+  document.getElementById('grandTotalField').value = (sub + ship + tax).toFixed(2);
+}
+
+document.querySelectorAll('.item-row').forEach(attachRowListeners);
+if (!document.querySelectorAll('.item-row').length) addRow();
+</script>
+{% endblock %}

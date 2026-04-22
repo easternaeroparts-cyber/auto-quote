@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Packing Slips{% endblock %}
+{% block page_title %}Packing Slips{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('ps_new') }}" class="btn btn-navy btn-sm">
+  <i class="bi bi-plus-circle"></i> New Packing Slip
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>PS Number</th>
+          <th>Date</th>
+          <th>PO #</th>
+          <th>Invoice #</th>
+          <th>Ship To</th>
+          <th>Ship Via</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for slip in slips %}
+        <tr>
+          <td><a href="{{ url_for('ps_view', ps_id=slip.id) }}" class="fw-semibold text-decoration-none">{{ slip.ps_number }}</a></td>
+          <td>{{ slip.date or '—' }}</td>
+          <td>{{ slip.po_number or '—' }}</td>
+          <td>{{ slip.invoice_number or '—' }}</td>
+          <td>{{ slip.ship_to_name or '—' }}</td>
+          <td>{{ slip.ship_via or '—' }}</td>
+          <td>
+            <span class="badge rounded-pill
+              {% if slip.status == 'draft' %}bg-secondary
+              {% elif slip.status == 'shipped' %}bg-success
+              {% else %}bg-primary{% endif %}">
+              {{ slip.status|title }}
+            </span>
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('ps_view', ps_id=slip.id) }}" class="btn btn-sm btn-outline-secondary me-1"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('ps_edit', ps_id=slip.id) }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
+            <form method="post" action="{{ url_for('ps_delete', ps_id=slip.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete {{ slip.ps_number }}?')">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No packing slips yet. <a href="{{ url_for('ps_new') }}">Create one.</a></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

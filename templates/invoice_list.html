@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Invoices{% endblock %}
+{% block page_title %}Invoices{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('invoice_new') }}" class="btn btn-navy btn-sm">
+  <i class="bi bi-plus-circle"></i> New Invoice
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Invoice #</th>
+          <th>Invoice For</th>
+          <th>Reference</th>
+          <th>Due Date</th>
+          <th class="text-end">Grand Total</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invoices %}
+        <tr>
+          <td><a href="{{ url_for('invoice_view', inv_id=inv.id) }}" class="fw-semibold text-decoration-none">{{ inv.invoice_number }}</a></td>
+          <td>{{ inv.invoice_for or inv.customer_name or '—' }}</td>
+          <td>{{ inv.reference or '—' }}</td>
+          <td>{{ inv.due_date or '—' }}</td>
+          <td class="text-end">${{ '%.2f'|format(inv.grand_total or 0) }}</td>
+          <td>
+            <span class="badge rounded-pill
+              {% if inv.status == 'draft' %}bg-secondary
+              {% elif inv.status == 'paid' %}bg-success
+              {% else %}bg-primary{% endif %}">
+              {{ inv.status|title }}
+            </span>
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('invoice_view', inv_id=inv.id) }}" class="btn btn-sm btn-outline-secondary me-1"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('invoice_edit', inv_id=inv.id) }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
+            <form method="post" action="{{ url_for('invoice_delete', inv_id=inv.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete {{ inv.invoice_number }}?')">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">No invoices yet. <a href="{{ url_for('invoice_new') }}">Create one.</a></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

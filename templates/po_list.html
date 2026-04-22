@@ -3,67 +3,56 @@
 {% block page_title %}Purchase Orders{% endblock %}
 
 {% block topbar_actions %}
-<a href="{{ url_for('po_new') }}" class="btn btn-sm btn-navy"><i class="bi bi-plus-lg me-1"></i>New PO</a>
+<a href="{{ url_for('po_new') }}" class="btn btn-navy btn-sm">
+  <i class="bi bi-plus-circle"></i> New Purchase Order
+</a>
 {% endblock %}
 
 {% block content %}
-<div class="card mb-3">
-  <div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
-    <form class="d-flex gap-2 flex-wrap align-items-center" method="get">
-      <div class="position-relative">
-        <i class="bi bi-search position-absolute" style="left:.6rem;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.8rem;"></i>
-        <input name="q" value="{{ q }}" class="form-control form-control-sm" style="padding-left:1.8rem;min-width:200px;" placeholder="PO# or vendor…">
-      </div>
-      <div class="d-flex gap-1 flex-wrap">
-        {% for s in [('','All'),('draft','Draft'),('sent','Sent'),('partial','Partial'),('received','Received'),('closed','Closed')] %}
-        <a href="{{ url_for('po_list', status=s[0], q=q) }}"
-           class="btn btn-sm {{ 'btn-navy' if status==s[0] else 'btn-outline-secondary' }}">{{ s[1] }}</a>
-        {% endfor %}
-      </div>
-    </form>
-  </div>
-</div>
-
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-clickable mb-0">
+    <table class="table table-hover mb-0">
       <thead>
         <tr>
-          <th class="ps-3">PO #</th>
+          <th>PO Number</th>
           <th>Vendor</th>
+          <th>Date</th>
+          <th>Ship Date</th>
+          <th>Terms</th>
+          <th class="text-end">Grand Total</th>
           <th>Status</th>
-          <th>Order Date</th>
-          <th>Expected</th>
-          <th class="text-end">Landed Total</th>
-          <th class="pe-3 text-end">AP</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
-      {% for p in pos %}
-      <tr onclick="location.href='{{ url_for('po_detail', pid=p.id) }}'">
-        <td class="ps-3"><code class="fw-bold">{{ p.po_number }}</code></td>
-        <td>{{ p.vendor_name or '—' }}</td>
-        <td><span class="badge badge-{{ p.status }}">{{ p.status }}</span></td>
-        <td><small class="text-muted">{{ p.order_date or '—' }}</small></td>
-        <td><small class="text-muted">{{ p.expected_date or '—' }}</small></td>
-        <td class="text-end fw-bold">${{ '{:,.2f}'.format(p.total_amount) }}</td>
-        <td class="pe-3 text-end">
-          {% if p.status == 'received' %}
-          <span class="badge badge-received"><i class="bi bi-check-circle me-1"></i>AP Created</span>
-          {% else %}
-          <span class="text-muted" style="font-size:.75rem">On receive</span>
-          {% endif %}
-        </td>
-      </tr>
-      {% else %}
-      <tr><td colspan="7">
-        <div class="empty-state py-5">
-          <i class="bi bi-bag"></i>
-          <p class="mb-2">No purchase orders yet.</p>
-          <a href="{{ url_for('po_new') }}" class="btn btn-sm btn-navy">Create your first PO</a>
-        </div>
-      </td></tr>
-      {% endfor %}
+        {% for po in pos %}
+        <tr>
+          <td><a href="{{ url_for('po_view', po_id=po.id) }}" class="fw-semibold text-decoration-none">{{ po.po_number }}</a></td>
+          <td>{{ po.vendor_name or '—' }}</td>
+          <td>{{ po.date or '—' }}</td>
+          <td>{{ po.ship_date or '—' }}</td>
+          <td>{{ po.terms or '—' }}</td>
+          <td class="text-end">${{ '%.2f'|format(po.grand_total or 0) }}</td>
+          <td>
+            <span class="badge rounded-pill
+              {% if po.status == 'draft' %}bg-secondary
+              {% elif po.status == 'sent' %}bg-success
+              {% else %}bg-primary{% endif %}">
+              {{ po.status|title }}
+            </span>
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('po_view', po_id=po.id) }}" class="btn btn-sm btn-outline-secondary me-1"><i class="bi bi-eye"></i></a>
+            <a href="{{ url_for('po_edit', po_id=po.id) }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a>
+            <form method="post" action="{{ url_for('po_delete', po_id=po.id) }}" class="d-inline"
+                  onsubmit="return confirm('Delete {{ po.po_number }}?')">
+              <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No purchase orders yet. <a href="{{ url_for('po_new') }}">Create one.</a></td></tr>
+        {% endfor %}
       </tbody>
     </table>
   </div>

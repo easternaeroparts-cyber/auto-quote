@@ -209,6 +209,146 @@ def init_db():
             active        INTEGER DEFAULT 1,
             created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS vendors (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            name       TEXT NOT NULL,
+            contact    TEXT,
+            email      TEXT,
+            phone      TEXT,
+            address    TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS purchase_orders (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            po_number        TEXT UNIQUE,
+            vendor_name      TEXT,
+            vendor_address   TEXT,
+            ship_to_name     TEXT DEFAULT 'Eastern Aero Parts',
+            ship_to_address  TEXT DEFAULT '11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987',
+            date             TEXT,
+            ship_date        TEXT,
+            terms            TEXT DEFAULT 'Net 30',
+            ship_via         TEXT,
+            shipping_account TEXT,
+            subtotal         REAL DEFAULT 0,
+            shipping         REAL DEFAULT 0,
+            tax_rate         REAL DEFAULT 0,
+            sales_tax        REAL DEFAULT 0,
+            grand_total      REAL DEFAULT 0,
+            notes            TEXT,
+            status           TEXT DEFAULT 'draft',
+            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS po_items (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            po_id       INTEGER,
+            part_number TEXT,
+            description TEXT,
+            condition   TEXT,
+            quantity    REAL DEFAULT 1,
+            unit_price  REAL DEFAULT 0,
+            total_price REAL DEFAULT 0,
+            FOREIGN KEY (po_id) REFERENCES purchase_orders(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS invoices (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_number   TEXT UNIQUE,
+            invoice_for      TEXT,
+            customer_name    TEXT,
+            customer_address TEXT,
+            reference        TEXT,
+            due_date         TEXT,
+            subtotal         REAL DEFAULT 0,
+            adjustments      REAL DEFAULT 0,
+            grand_total      REAL DEFAULT 0,
+            notes            TEXT,
+            status           TEXT DEFAULT 'draft',
+            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS invoice_items (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            invoice_id  INTEGER,
+            part_number TEXT,
+            description TEXT,
+            condition   TEXT,
+            quantity    REAL DEFAULT 1,
+            unit_price  REAL DEFAULT 0,
+            total_price REAL DEFAULT 0,
+            FOREIGN KEY (invoice_id) REFERENCES invoices(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS packing_slips (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            ps_number        TEXT UNIQUE,
+            date             TEXT,
+            terms            TEXT,
+            po_number        TEXT,
+            invoice_number   TEXT,
+            ship_date        TEXT,
+            ship_via         TEXT,
+            shipping_account TEXT,
+            vendor_name      TEXT,
+            vendor_address   TEXT,
+            ship_to_name     TEXT,
+            ship_to_address  TEXT,
+            notes            TEXT,
+            pallet_dims      TEXT,
+            weight_lbs       REAL DEFAULT 0,
+            status           TEXT DEFAULT 'draft',
+            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS ps_items (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            ps_id             INTEGER,
+            part_number       TEXT,
+            description       TEXT,
+            serial_number     TEXT,
+            quantity          REAL DEFAULT 1,
+            country_of_origin TEXT DEFAULT 'USA',
+            hs_code           TEXT,
+            FOREIGN KEY (ps_id) REFERENCES packing_slips(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS repair_orders (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            ro_number        TEXT UNIQUE,
+            vendor_name      TEXT,
+            vendor_address   TEXT,
+            ship_to_name     TEXT DEFAULT 'Eastern Aero Parts',
+            ship_to_address  TEXT DEFAULT '11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987',
+            date             TEXT,
+            ship_date        TEXT,
+            terms            TEXT DEFAULT 'Net 30',
+            ship_via         TEXT,
+            shipping_account TEXT,
+            subtotal         REAL DEFAULT 0,
+            shipping         REAL DEFAULT 0,
+            tax_rate         REAL DEFAULT 0,
+            sales_tax        REAL DEFAULT 0,
+            grand_total      REAL DEFAULT 0,
+            notes            TEXT,
+            status           TEXT DEFAULT 'draft',
+            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS ro_items (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            ro_id          INTEGER,
+            part_number    TEXT,
+            description    TEXT,
+            serial_number  TEXT,
+            quantity       REAL DEFAULT 1,
+            work_requested TEXT,
+            avg_cost       REAL DEFAULT 0,
+            total_price    REAL DEFAULT 0,
+            FOREIGN KEY (ro_id) REFERENCES repair_orders(id)
+        );
     ''')
 
     defaults = {
@@ -2655,6 +2795,637 @@ def settings_page():
         flash('Settings saved.', 'success')
         return redirect(url_for('settings_page'))
     return render_template('settings.html', s=get_settings())
+
+
+# ─── ERP: Helpers ────────────────────────────────────────────────────────────
+
+def _next_erp_number(prefix, table, col):
+    """Generate next sequential document number like PO-2024-0001."""
+    year = datetime.now().year
+    conn = get_db()
+    pattern = f'{prefix}-{year}-%'
+    row = conn.execute(
+        f"SELECT {col} FROM {table} WHERE {col} LIKE ? ORDER BY {col} DESC LIMIT 1",
+        (pattern,)
+    ).fetchone()
+    conn.close()
+    if row and row[0]:
+        try:
+            seq = int(row[0].split('-')[-1]) + 1
+        except Exception:
+            seq = 1
+    else:
+        seq = 1
+    return f'{prefix}-{year}-{seq:04d}'
+
+
+# ─── ERP: Purchase Orders ─────────────────────────────────────────────────────
+
+@app.route('/purchase-orders')
+@login_required
+def po_list():
+    conn  = get_db()
+    pos   = conn.execute('SELECT * FROM purchase_orders ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return render_template('po_list.html', pos=pos)
+
+
+@app.route('/purchase-orders/new', methods=['GET', 'POST'])
+@login_required
+def po_new():
+    if request.method == 'POST':
+        po_number = _next_erp_number('PO', 'purchase_orders', 'po_number')
+        conn = get_db()
+        cur = conn.execute('''
+            INSERT INTO purchase_orders
+              (po_number, vendor_name, vendor_address, ship_to_name, ship_to_address,
+               date, ship_date, terms, ship_via, shipping_account,
+               subtotal, shipping, tax_rate, sales_tax, grand_total, notes, status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ''', (
+            po_number,
+            request.form.get('vendor_name',''),
+            request.form.get('vendor_address',''),
+            request.form.get('ship_to_name','Eastern Aero Parts'),
+            request.form.get('ship_to_address','11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987'),
+            request.form.get('date', datetime.now().strftime('%Y-%m-%d')),
+            request.form.get('ship_date',''),
+            request.form.get('terms','Net 30'),
+            request.form.get('ship_via',''),
+            request.form.get('shipping_account',''),
+            float(request.form.get('subtotal',0) or 0),
+            float(request.form.get('shipping',0) or 0),
+            float(request.form.get('tax_rate',0) or 0),
+            float(request.form.get('sales_tax',0) or 0),
+            float(request.form.get('grand_total',0) or 0),
+            request.form.get('notes',''),
+            'draft'
+        ))
+        po_id = cur.lastrowid
+        # Save line items
+        pns   = request.form.getlist('pn[]')
+        descs = request.form.getlist('desc[]')
+        conds = request.form.getlist('cond[]')
+        qtys  = request.form.getlist('qty[]')
+        ups   = request.form.getlist('unit_price[]')
+        tots  = request.form.getlist('total_price[]')
+        for i, pn in enumerate(pns):
+            if not pn.strip():
+                continue
+            conn.execute(
+                'INSERT INTO po_items (po_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                (po_id, pn.strip(), descs[i] if i < len(descs) else '',
+                 conds[i] if i < len(conds) else '',
+                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
+                 float(ups[i]) if i < len(ups) and ups[i] else 0,
+                 float(tots[i]) if i < len(tots) and tots[i] else 0)
+            )
+        conn.commit()
+        conn.close()
+        flash(f'Purchase Order {po_number} created.', 'success')
+        return redirect(url_for('po_view', po_id=po_id))
+    return render_template('po_form.html', po=None, items=[])
+
+
+@app.route('/purchase-orders/<int:po_id>')
+@login_required
+def po_view(po_id):
+    conn  = get_db()
+    po    = conn.execute('SELECT * FROM purchase_orders WHERE id=?', (po_id,)).fetchone()
+    items = conn.execute('SELECT * FROM po_items WHERE po_id=?', (po_id,)).fetchall()
+    conn.close()
+    if not po:
+        flash('Purchase Order not found.', 'error')
+        return redirect(url_for('po_list'))
+    s = get_settings()
+    return render_template('po_view.html', po=po, items=items, s=s)
+
+
+@app.route('/purchase-orders/<int:po_id>/edit', methods=['GET', 'POST'])
+@login_required
+def po_edit(po_id):
+    conn = get_db()
+    po   = conn.execute('SELECT * FROM purchase_orders WHERE id=?', (po_id,)).fetchone()
+    if not po:
+        conn.close()
+        flash('Purchase Order not found.', 'error')
+        return redirect(url_for('po_list'))
+    if request.method == 'POST':
+        conn.execute('''
+            UPDATE purchase_orders SET
+              vendor_name=?, vendor_address=?, ship_to_name=?, ship_to_address=?,
+              date=?, ship_date=?, terms=?, ship_via=?, shipping_account=?,
+              subtotal=?, shipping=?, tax_rate=?, sales_tax=?, grand_total=?, notes=?
+            WHERE id=?
+        ''', (
+            request.form.get('vendor_name',''),
+            request.form.get('vendor_address',''),
+            request.form.get('ship_to_name',''),
+            request.form.get('ship_to_address',''),
+            request.form.get('date',''),
+            request.form.get('ship_date',''),
+            request.form.get('terms','Net 30'),
+            request.form.get('ship_via',''),
+            request.form.get('shipping_account',''),
+            float(request.form.get('subtotal',0) or 0),
+            float(request.form.get('shipping',0) or 0),
+            float(request.form.get('tax_rate',0) or 0),
+            float(request.form.get('sales_tax',0) or 0),
+            float(request.form.get('grand_total',0) or 0),
+            request.form.get('notes',''),
+            po_id
+        ))
+        conn.execute('DELETE FROM po_items WHERE po_id=?', (po_id,))
+        pns   = request.form.getlist('pn[]')
+        descs = request.form.getlist('desc[]')
+        conds = request.form.getlist('cond[]')
+        qtys  = request.form.getlist('qty[]')
+        ups   = request.form.getlist('unit_price[]')
+        tots  = request.form.getlist('total_price[]')
+        for i, pn in enumerate(pns):
+            if not pn.strip():
+                continue
+            conn.execute(
+                'INSERT INTO po_items (po_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                (po_id, pn.strip(), descs[i] if i < len(descs) else '',
+                 conds[i] if i < len(conds) else '',
+                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
+                 float(ups[i]) if i < len(ups) and ups[i] else 0,
+                 float(tots[i]) if i < len(tots) and tots[i] else 0)
+            )
+        conn.commit()
+        conn.close()
+        flash('Purchase Order updated.', 'success')
+        return redirect(url_for('po_view', po_id=po_id))
+    items = conn.execute('SELECT * FROM po_items WHERE po_id=?', (po_id,)).fetchall()
+    conn.close()
+    return render_template('po_form.html', po=po, items=items)
+
+
+@app.route('/purchase-orders/<int:po_id>/delete', methods=['POST'])
+@login_required
+def po_delete(po_id):
+    conn = get_db()
+    conn.execute('DELETE FROM po_items WHERE po_id=?', (po_id,))
+    conn.execute('DELETE FROM purchase_orders WHERE id=?', (po_id,))
+    conn.commit()
+    conn.close()
+    flash('Purchase Order deleted.', 'success')
+    return redirect(url_for('po_list'))
+
+
+# ─── ERP: Invoices ────────────────────────────────────────────────────────────
+
+@app.route('/invoices')
+@login_required
+def invoice_list():
+    conn     = get_db()
+    invoices = conn.execute('SELECT * FROM invoices ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return render_template('invoice_list.html', invoices=invoices)
+
+
+@app.route('/invoices/new', methods=['GET', 'POST'])
+@login_required
+def invoice_new():
+    if request.method == 'POST':
+        inv_number = _next_erp_number('INV', 'invoices', 'invoice_number')
+        conn = get_db()
+        cur = conn.execute('''
+            INSERT INTO invoices
+              (invoice_number, invoice_for, customer_name, customer_address,
+               reference, due_date, subtotal, adjustments, grand_total, notes, status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
+        ''', (
+            inv_number,
+            request.form.get('invoice_for',''),
+            request.form.get('customer_name',''),
+            request.form.get('customer_address',''),
+            request.form.get('reference',''),
+            request.form.get('due_date',''),
+            float(request.form.get('subtotal',0) or 0),
+            float(request.form.get('adjustments',0) or 0),
+            float(request.form.get('grand_total',0) or 0),
+            request.form.get('notes',''),
+            'draft'
+        ))
+        inv_id = cur.lastrowid
+        pns   = request.form.getlist('pn[]')
+        descs = request.form.getlist('desc[]')
+        conds = request.form.getlist('cond[]')
+        qtys  = request.form.getlist('qty[]')
+        ups   = request.form.getlist('unit_price[]')
+        tots  = request.form.getlist('total_price[]')
+        for i, pn in enumerate(pns):
+            if not pn.strip():
+                continue
+            conn.execute(
+                'INSERT INTO invoice_items (invoice_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                (inv_id, pn.strip(), descs[i] if i < len(descs) else '',
+                 conds[i] if i < len(conds) else '',
+                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
+                 float(ups[i]) if i < len(ups) and ups[i] else 0,
+                 float(tots[i]) if i < len(tots) and tots[i] else 0)
+            )
+        conn.commit()
+        conn.close()
+        flash(f'Invoice {inv_number} created.', 'success')
+        return redirect(url_for('invoice_view', inv_id=inv_id))
+    return render_template('invoice_form.html', inv=None, items=[])
+
+
+@app.route('/invoices/<int:inv_id>')
+@login_required
+def invoice_view(inv_id):
+    conn  = get_db()
+    inv   = conn.execute('SELECT * FROM invoices WHERE id=?', (inv_id,)).fetchone()
+    items = conn.execute('SELECT * FROM invoice_items WHERE invoice_id=?', (inv_id,)).fetchall()
+    conn.close()
+    if not inv:
+        flash('Invoice not found.', 'error')
+        return redirect(url_for('invoice_list'))
+    s = get_settings()
+    return render_template('invoice_view.html', inv=inv, items=items, s=s)
+
+
+@app.route('/invoices/<int:inv_id>/edit', methods=['GET', 'POST'])
+@login_required
+def invoice_edit(inv_id):
+    conn = get_db()
+    inv  = conn.execute('SELECT * FROM invoices WHERE id=?', (inv_id,)).fetchone()
+    if not inv:
+        conn.close()
+        flash('Invoice not found.', 'error')
+        return redirect(url_for('invoice_list'))
+    if request.method == 'POST':
+        conn.execute('''
+            UPDATE invoices SET
+              invoice_for=?, customer_name=?, customer_address=?,
+              reference=?, due_date=?, subtotal=?, adjustments=?, grand_total=?, notes=?
+            WHERE id=?
+        ''', (
+            request.form.get('invoice_for',''),
+            request.form.get('customer_name',''),
+            request.form.get('customer_address',''),
+            request.form.get('reference',''),
+            request.form.get('due_date',''),
+            float(request.form.get('subtotal',0) or 0),
+            float(request.form.get('adjustments',0) or 0),
+            float(request.form.get('grand_total',0) or 0),
+            request.form.get('notes',''),
+            inv_id
+        ))
+        conn.execute('DELETE FROM invoice_items WHERE invoice_id=?', (inv_id,))
+        pns   = request.form.getlist('pn[]')
+        descs = request.form.getlist('desc[]')
+        conds = request.form.getlist('cond[]')
+        qtys  = request.form.getlist('qty[]')
+        ups   = request.form.getlist('unit_price[]')
+        tots  = request.form.getlist('total_price[]')
+        for i, pn in enumerate(pns):
+            if not pn.strip():
+                continue
+            conn.execute(
+                'INSERT INTO invoice_items (invoice_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                (inv_id, pn.strip(), descs[i] if i < len(descs) else '',
+                 conds[i] if i < len(conds) else '',
+                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
+                 float(ups[i]) if i < len(ups) and ups[i] else 0,
+                 float(tots[i]) if i < len(tots) and tots[i] else 0)
+            )
+        conn.commit()
+        conn.close()
+        flash('Invoice updated.', 'success')
+        return redirect(url_for('invoice_view', inv_id=inv_id))
+    items = conn.execute('SELECT * FROM invoice_items WHERE invoice_id=?', (inv_id,)).fetchall()
+    conn.close()
+    return render_template('invoice_form.html', inv=inv, items=items)
+
+
+@app.route('/invoices/<int:inv_id>/delete', methods=['POST'])
+@login_required
+def invoice_delete(inv_id):
+    conn = get_db()
+    conn.execute('DELETE FROM invoice_items WHERE invoice_id=?', (inv_id,))
+    conn.execute('DELETE FROM invoices WHERE id=?', (inv_id,))
+    conn.commit()
+    conn.close()
+    flash('Invoice deleted.', 'success')
+    return redirect(url_for('invoice_list'))
+
+
+# ─── ERP: Packing Slips ───────────────────────────────────────────────────────
+
+@app.route('/packing-slips')
+@login_required
+def ps_list():
+    conn = get_db()
+    slips = conn.execute('SELECT * FROM packing_slips ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return render_template('ps_list.html', slips=slips)
+
+
+@app.route('/packing-slips/new', methods=['GET', 'POST'])
+@login_required
+def ps_new():
+    if request.method == 'POST':
+        ps_number = _next_erp_number('PS', 'packing_slips', 'ps_number')
+        conn = get_db()
+        cur = conn.execute('''
+            INSERT INTO packing_slips
+              (ps_number, date, terms, po_number, invoice_number, ship_date, ship_via,
+               shipping_account, vendor_name, vendor_address, ship_to_name, ship_to_address,
+               notes, pallet_dims, weight_lbs, status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ''', (
+            ps_number,
+            request.form.get('date', datetime.now().strftime('%Y-%m-%d')),
+            request.form.get('terms',''),
+            request.form.get('po_number',''),
+            request.form.get('invoice_number',''),
+            request.form.get('ship_date',''),
+            request.form.get('ship_via',''),
+            request.form.get('shipping_account',''),
+            request.form.get('vendor_name',''),
+            request.form.get('vendor_address',''),
+            request.form.get('ship_to_name',''),
+            request.form.get('ship_to_address',''),
+            request.form.get('notes',''),
+            request.form.get('pallet_dims',''),
+            float(request.form.get('weight_lbs',0) or 0),
+            'draft'
+        ))
+        ps_id = cur.lastrowid
+        pns   = request.form.getlist('pn[]')
+        descs = request.form.getlist('desc[]')
+        sns   = request.form.getlist('sn[]')
+        qtys  = request.form.getlist('qty[]')
+        coos  = request.form.getlist('coo[]')
+        hss   = request.form.getlist('hs[]')
+        for i, pn in enumerate(pns):
+            if not pn.strip():
+                continue
+            conn.execute(
+                'INSERT INTO ps_items (ps_id,part_number,description,serial_number,quantity,country_of_origin,hs_code) VALUES (?,?,?,?,?,?,?)',
+                (ps_id, pn.strip(),
+                 descs[i] if i < len(descs) else '',
+                 sns[i] if i < len(sns) else '',
+                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
+                 coos[i] if i < len(coos) else 'USA',
+                 hss[i] if i < len(hss) else '')
+            )
+        conn.commit()
+        conn.close()
+        flash(f'Packing Slip {ps_number} created.', 'success')
+        return redirect(url_for('ps_view', ps_id=ps_id))
+    return render_template('ps_form.html', ps=None, items=[])
+
+
+@app.route('/packing-slips/<int:ps_id>')
+@login_required
+def ps_view(ps_id):
+    conn  = get_db()
+    ps    = conn.execute('SELECT * FROM packing_slips WHERE id=?', (ps_id,)).fetchone()
+    items = conn.execute('SELECT * FROM ps_items WHERE ps_id=?', (ps_id,)).fetchall()
+    conn.close()
+    if not ps:
+        flash('Packing Slip not found.', 'error')
+        return redirect(url_for('ps_list'))
+    s = get_settings()
+    return render_template('ps_view.html', ps=ps, items=items, s=s)
+
+
+@app.route('/packing-slips/<int:ps_id>/edit', methods=['GET', 'POST'])
+@login_required
+def ps_edit(ps_id):
+    conn = get_db()
+    ps   = conn.execute('SELECT * FROM packing_slips WHERE id=?', (ps_id,)).fetchone()
+    if not ps:
+        conn.close()
+        flash('Packing Slip not found.', 'error')
+        return redirect(url_for('ps_list'))
+    if request.method == 'POST':
+        conn.execute('''
+            UPDATE packing_slips SET
+              date=?, terms=?, po_number=?, invoice_number=?, ship_date=?, ship_via=?,
+              shipping_account=?, vendor_name=?, vendor_address=?, ship_to_name=?,
+              ship_to_address=?, notes=?, pallet_dims=?, weight_lbs=?
+            WHERE id=?
+        ''', (
+            request.form.get('date',''),
+            request.form.get('terms',''),
+            request.form.get('po_number',''),
+            request.form.get('invoice_number',''),
+            request.form.get('ship_date',''),
+            request.form.get('ship_via',''),
+            request.form.get('shipping_account',''),
+            request.form.get('vendor_name',''),
+            request.form.get('vendor_address',''),
+            request.form.get('ship_to_name',''),
+            request.form.get('ship_to_address',''),
+            request.form.get('notes',''),
+            request.form.get('pallet_dims',''),
+            float(request.form.get('weight_lbs',0) or 0),
+            ps_id
+        ))
+        conn.execute('DELETE FROM ps_items WHERE ps_id=?', (ps_id,))
+        pns   = request.form.getlist('pn[]')
+        descs = request.form.getlist('desc[]')
+        sns   = request.form.getlist('sn[]')
+        qtys  = request.form.getlist('qty[]')
+        coos  = request.form.getlist('coo[]')
+        hss   = request.form.getlist('hs[]')
+        for i, pn in enumerate(pns):
+            if not pn.strip():
+                continue
+            conn.execute(
+                'INSERT INTO ps_items (ps_id,part_number,description,serial_number,quantity,country_of_origin,hs_code) VALUES (?,?,?,?,?,?,?)',
+                (ps_id, pn.strip(),
+                 descs[i] if i < len(descs) else '',
+                 sns[i] if i < len(sns) else '',
+                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
+                 coos[i] if i < len(coos) else 'USA',
+                 hss[i] if i < len(hss) else '')
+            )
+        conn.commit()
+        conn.close()
+        flash('Packing Slip updated.', 'success')
+        return redirect(url_for('ps_view', ps_id=ps_id))
+    items = conn.execute('SELECT * FROM ps_items WHERE ps_id=?', (ps_id,)).fetchall()
+    conn.close()
+    return render_template('ps_form.html', ps=ps, items=items)
+
+
+@app.route('/packing-slips/<int:ps_id>/delete', methods=['POST'])
+@login_required
+def ps_delete(ps_id):
+    conn = get_db()
+    conn.execute('DELETE FROM ps_items WHERE ps_id=?', (ps_id,))
+    conn.execute('DELETE FROM packing_slips WHERE id=?', (ps_id,))
+    conn.commit()
+    conn.close()
+    flash('Packing Slip deleted.', 'success')
+    return redirect(url_for('ps_list'))
+
+
+# ─── ERP: Repair Orders ───────────────────────────────────────────────────────
+
+@app.route('/repair-orders')
+@login_required
+def ro_list():
+    conn = get_db()
+    ros  = conn.execute('SELECT * FROM repair_orders ORDER BY created_at DESC').fetchall()
+    conn.close()
+    return render_template('ro_list.html', ros=ros)
+
+
+@app.route('/repair-orders/new', methods=['GET', 'POST'])
+@login_required
+def ro_new():
+    if request.method == 'POST':
+        ro_number = _next_erp_number('RO', 'repair_orders', 'ro_number')
+        conn = get_db()
+        cur = conn.execute('''
+            INSERT INTO repair_orders
+              (ro_number, vendor_name, vendor_address, ship_to_name, ship_to_address,
+               date, ship_date, terms, ship_via, shipping_account,
+               subtotal, shipping, tax_rate, sales_tax, grand_total, notes, status)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ''', (
+            ro_number,
+            request.form.get('vendor_name',''),
+            request.form.get('vendor_address',''),
+            request.form.get('ship_to_name','Eastern Aero Parts'),
+            request.form.get('ship_to_address','11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987'),
+            request.form.get('date', datetime.now().strftime('%Y-%m-%d')),
+            request.form.get('ship_date',''),
+            request.form.get('terms','Net 30'),
+            request.form.get('ship_via',''),
+            request.form.get('shipping_account',''),
+            float(request.form.get('subtotal',0) or 0),
+            float(request.form.get('shipping',0) or 0),
+            float(request.form.get('tax_rate',0) or 0),
+            float(request.form.get('sales_tax',0) or 0),
+            float(request.form.get('grand_total',0) or 0),
+            request.form.get('notes',''),
+            'draft'
+        ))
+        ro_id = cur.lastrowid
+        pns   = request.form.getlist('pn[]')
+        descs = request.form.getlist('desc[]')
+        sns   = request.form.getlist('sn[]')
+        qtys  = request.form.getlist('qty[]')
+        works = request.form.getlist('work[]')
+        costs = request.form.getlist('cost[]')
+        tots  = request.form.getlist('total_price[]')
+        for i, pn in enumerate(pns):
+            if not pn.strip():
+                continue
+            conn.execute(
+                'INSERT INTO ro_items (ro_id,part_number,description,serial_number,quantity,work_requested,avg_cost,total_price) VALUES (?,?,?,?,?,?,?,?)',
+                (ro_id, pn.strip(),
+                 descs[i] if i < len(descs) else '',
+                 sns[i] if i < len(sns) else '',
+                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
+                 works[i] if i < len(works) else '',
+                 float(costs[i]) if i < len(costs) and costs[i] else 0,
+                 float(tots[i]) if i < len(tots) and tots[i] else 0)
+            )
+        conn.commit()
+        conn.close()
+        flash(f'Repair Order {ro_number} created.', 'success')
+        return redirect(url_for('ro_view', ro_id=ro_id))
+    return render_template('ro_form.html', ro=None, items=[])
+
+
+@app.route('/repair-orders/<int:ro_id>')
+@login_required
+def ro_view(ro_id):
+    conn  = get_db()
+    ro    = conn.execute('SELECT * FROM repair_orders WHERE id=?', (ro_id,)).fetchone()
+    items = conn.execute('SELECT * FROM ro_items WHERE ro_id=?', (ro_id,)).fetchall()
+    conn.close()
+    if not ro:
+        flash('Repair Order not found.', 'error')
+        return redirect(url_for('ro_list'))
+    s = get_settings()
+    return render_template('ro_view.html', ro=ro, items=items, s=s)
+
+
+@app.route('/repair-orders/<int:ro_id>/edit', methods=['GET', 'POST'])
+@login_required
+def ro_edit(ro_id):
+    conn = get_db()
+    ro   = conn.execute('SELECT * FROM repair_orders WHERE id=?', (ro_id,)).fetchone()
+    if not ro:
+        conn.close()
+        flash('Repair Order not found.', 'error')
+        return redirect(url_for('ro_list'))
+    if request.method == 'POST':
+        conn.execute('''
+            UPDATE repair_orders SET
+              vendor_name=?, vendor_address=?, ship_to_name=?, ship_to_address=?,
+              date=?, ship_date=?, terms=?, ship_via=?, shipping_account=?,
+              subtotal=?, shipping=?, tax_rate=?, sales_tax=?, grand_total=?, notes=?
+            WHERE id=?
+        ''', (
+            request.form.get('vendor_name',''),
+            request.form.get('vendor_address',''),
+            request.form.get('ship_to_name',''),
+            request.form.get('ship_to_address',''),
+            request.form.get('date',''),
+            request.form.get('ship_date',''),
+            request.form.get('terms','Net 30'),
+            request.form.get('ship_via',''),
+            request.form.get('shipping_account',''),
+            float(request.form.get('subtotal',0) or 0),
+            float(request.form.get('shipping',0) or 0),
+            float(request.form.get('tax_rate',0) or 0),
+            float(request.form.get('sales_tax',0) or 0),
+            float(request.form.get('grand_total',0) or 0),
+            request.form.get('notes',''),
+            ro_id
+        ))
+        conn.execute('DELETE FROM ro_items WHERE ro_id=?', (ro_id,))
+        pns   = request.form.getlist('pn[]')
+        descs = request.form.getlist('desc[]')
+        sns   = request.form.getlist('sn[]')
+        qtys  = request.form.getlist('qty[]')
+        works = request.form.getlist('work[]')
+        costs = request.form.getlist('cost[]')
+        tots  = request.form.getlist('total_price[]')
+        for i, pn in enumerate(pns):
+            if not pn.strip():
+                continue
+            conn.execute(
+                'INSERT INTO ro_items (ro_id,part_number,description,serial_number,quantity,work_requested,avg_cost,total_price) VALUES (?,?,?,?,?,?,?,?)',
+                (ro_id, pn.strip(),
+                 descs[i] if i < len(descs) else '',
+                 sns[i] if i < len(sns) else '',
+                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
+                 works[i] if i < len(works) else '',
+                 float(costs[i]) if i < len(costs) and costs[i] else 0,
+                 float(tots[i]) if i < len(tots) and tots[i] else 0)
+            )
+        conn.commit()
+        conn.close()
+        flash('Repair Order updated.', 'success')
+        return redirect(url_for('ro_view', ro_id=ro_id))
+    items = conn.execute('SELECT * FROM ro_items WHERE ro_id=?', (ro_id,)).fetchall()
+    conn.close()
+    return render_template('ro_form.html', ro=ro, items=items)
+
+
+@app.route('/repair-orders/<int:ro_id>/delete', methods=['POST'])
+@login_required
+def ro_delete(ro_id):
+    conn = get_db()
+    conn.execute('DELETE FROM ro_items WHERE ro_id=?', (ro_id,))
+    conn.execute('DELETE FROM repair_orders WHERE id=?', (ro_id,))
+    conn.commit()
+    conn.close()
+    flash('Repair Order deleted.', 'success')
+    return redirect(url_for('ro_list'))
 
 
 # ─── Main ────────────────────────────────────────────────────────────────────

@@ -72,6 +72,20 @@
       <i class="bi bi-box-seam"></i> Parts
     </a>
 
+    <div class="sidebar-section">Documents</div>
+    <a href="{{ url_for('po_list') }}" class="nav-link {% if 'po_' in request.endpoint %}active{% endif %}">
+      <i class="bi bi-cart3"></i> Purchase Orders
+    </a>
+    <a href="{{ url_for('invoice_list') }}" class="nav-link {% if 'invoice_' in request.endpoint %}active{% endif %}">
+      <i class="bi bi-receipt"></i> Invoices
+    </a>
+    <a href="{{ url_for('ps_list') }}" class="nav-link {% if 'ps_' in request.endpoint %}active{% endif %}">
+      <i class="bi bi-box2"></i> Packing Slips
+    </a>
+    <a href="{{ url_for('ro_list') }}" class="nav-link {% if 'ro_' in request.endpoint %}active{% endif %}">
+      <i class="bi bi-tools"></i> Repair Orders
+    </a>
+
     <div class="sidebar-section">Config</div>
     {% if current_user.is_authenticated and current_user.is_admin %}
     <a href="{{ url_for('settings_page') }}" class="nav-link {% if request.endpoint=='settings_page' %}active{% endif %}">
