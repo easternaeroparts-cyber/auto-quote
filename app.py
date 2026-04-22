@@ -62,8 +62,13 @@ def inject_now():
     return {'now': datetime.now()}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE  = os.path.join(BASE_DIR, 'quotes.db')
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+
+# Use persistent volume path on Railway (set DB_PATH env var), fallback to local
+_db_dir  = os.environ.get('DB_PATH', os.path.join(BASE_DIR, 'data'))
+os.makedirs(_db_dir, exist_ok=True)
+DATABASE  = os.path.join(_db_dir, 'quotes.db')
+
+UPLOAD_FOLDER = os.path.join(_db_dir, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
