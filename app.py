@@ -165,6 +165,12 @@ def init_db():
             extended_price     REAL DEFAULT 0,
             matched            INTEGER DEFAULT 0,
             notes              TEXT,
+            lead_time          TEXT DEFAULT 'Stock',
+            price_type         TEXT DEFAULT 'Outright',
+            warranty           TEXT DEFAULT '3 Months',
+            trace_to           TEXT,
+            tag_type           TEXT,
+            tagged_by          TEXT,
             FOREIGN KEY (quote_id) REFERENCES quotes(id)
         );
 
@@ -245,6 +251,12 @@ def init_db():
         "ALTER TABLE quotes ADD COLUMN periodic_billing_amt REAL DEFAULT 0",
         "ALTER TABLE quotes ADD COLUMN cogs_percent REAL DEFAULT 0",
         "ALTER TABLE quotes ADD COLUMN cogs_amount REAL DEFAULT 0",
+        "ALTER TABLE quote_items ADD COLUMN lead_time TEXT DEFAULT 'Stock'",
+        "ALTER TABLE quote_items ADD COLUMN price_type TEXT DEFAULT 'Outright'",
+        "ALTER TABLE quote_items ADD COLUMN warranty TEXT DEFAULT '3 Months'",
+        "ALTER TABLE quote_items ADD COLUMN trace_to TEXT",
+        "ALTER TABLE quote_items ADD COLUMN tag_type TEXT",
+        "ALTER TABLE quote_items ADD COLUMN tagged_by TEXT",
     ]
     for sql in migrations:
         try:
@@ -1069,9 +1081,18 @@ def update_quote_item(quote_id):
     ext   = round(price * qty, 2)
 
     conn = get_db()
-    conn.execute(
-        'UPDATE quote_items SET unit_price=?,quantity_requested=?,extended_price=?,notes=? WHERE id=? AND quote_id=?',
-        (price, qty, ext, notes, iid, quote_id))
+    conn.execute('''UPDATE quote_items SET
+        unit_price=?, quantity_requested=?, extended_price=?, notes=?,
+        lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?
+        WHERE id=? AND quote_id=?''',
+        (price, qty, ext, notes,
+         data.get('lead_time', 'Stock'),
+         data.get('price_type', 'Outright'),
+         data.get('warranty', '3 Months'),
+         data.get('trace_to', ''),
+         data.get('tag_type', ''),
+         data.get('tagged_by', ''),
+         iid, quote_id))
     total = conn.execute('SELECT COALESCE(SUM(extended_price),0) FROM quote_items WHERE quote_id=?', (quote_id,)).fetchone()[0]
     conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (total, quote_id))
     conn.commit()
@@ -1119,49 +1140,113 @@ def send_quote(quote_id):
 
 
 def build_quote_email(quote, rfq, items, settings):
-    rows = ''
+    currency = quote['currency'] if quote['currency'] else 'USD'
+    td  = 'padding:9px 12px;border-bottom:1px solid #e5e7eb;'
+    thd = f'padding:9px 12px;text-align:left;font-weight:600;color:#374151;border-bottom:2px solid #d1d5db;'
+
+    item_blocks = ''
     for it in items:
-        ok    = bool(it['matched'])
-        color = '#1e7e34' if ok else '#dc3545'
-        stat  = '✓ In Stock' if ok else '✗ Not Available'
-        rows += f"""
-        <tr>
-          <td>{it['part_number']}</td>
-          <td>{it['description'] or '—'}</td>
-          <td style="text-align:center">{it['condition'] or '—'}</td>
-          <td style="text-align:center">{it['quantity_requested']}</td>
-          <td style="text-align:center">{it['quantity_available']}</td>
-          <td style="text-align:right">${it['unit_price']:.2f}</td>
-          <td style="text-align:right"><strong>${it['extended_price']:.2f}</strong></td>
-          <td style="color:{color};font-weight:bold">{stat}</td>
-        </tr>"""
-    td = 'padding:8px 10px;border:1px solid #ddd;'
-    return f"""<html><body style="font-family:Arial,sans-serif;color:#222;max-width:820px;margin:auto">
-<table width="100%" style="background:#1a3c6e;padding:16px;margin-bottom:20px"><tr>
-  <td><span style="color:#fff;font-size:22px;font-weight:bold">✈ {settings['company_name']}</span></td>
-  <td style="text-align:right;color:#aed6f1;font-size:13px">{settings.get('company_email','')}<br>{settings.get('company_phone','')}</td>
-</tr></table>
-<h2 style="color:#1a3c6e;margin-bottom:4px">QUOTATION — {quote['quote_number']}</h2>
-<p style="color:#555;margin-top:4px">Date: {quote['created_at'][:10]} &nbsp;|&nbsp; Valid: {quote['valid_days']} days &nbsp;|&nbsp; Ref: {rfq['rfq_number']}</p>
-<p><strong>To:</strong> {rfq['customer_name'] or ''} — {rfq['company'] or ''}</p>
-<table width="100%" cellspacing="0" style="border-collapse:collapse;margin-top:16px">
-  <thead><tr style="background:#1a3c6e;color:#fff">
-    <th style="{td}">Part Number</th><th style="{td}">Description</th>
-    <th style="{td}">Cond</th><th style="{td}">Qty Req</th><th style="{td}">Qty Avail</th>
-    <th style="{td}">Unit Price</th><th style="{td}">Extended</th><th style="{td}">Status</th>
-  </tr></thead>
-  <tbody style="font-size:14px">{rows}</tbody>
-  <tfoot><tr style="background:#f0f4f8">
-    <td colspan="6" style="{td}text-align:right;font-weight:bold">TOTAL (USD):</td>
-    <td style="{td}text-align:right;font-weight:bold;font-size:16px">${quote['total_amount']:.2f}</td>
-    <td style="{td}"></td>
-  </tr></tfoot>
+        qty_str  = f"{it['quantity_requested']} EA"
+        lead     = it['lead_time'] or 'Stock'
+        ptype    = it['price_type'] or 'Outright'
+        warranty = it['warranty'] or '—'
+        trace    = it['trace_to'] or it['description'] or '—'
+        tag_type = it['tag_type'] or '—'
+        tagged   = it['tagged_by'] or '—'
+        unit_p   = f"${it['unit_price']:,.2f}"
+        line_t   = f"${it['extended_price']:,.2f}"
+
+        item_blocks += f"""
+<table width="100%" cellspacing="0" style="border-collapse:collapse;margin-bottom:24px;font-size:14px">
+  <thead>
+    <tr style="background:#f9fafb">
+      <th style="{thd}">Part</th>
+      <th style="{thd}">CC</th>
+      <th style="{thd}">Qty</th>
+      <th style="{thd}">Lead Time</th>
+      <th style="{thd}text-align:right">Unit Price ({currency})</th>
+      <th style="{thd}text-align:right">Line Total ({currency})</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="{td}font-weight:600">{it['part_number']}</td>
+      <td style="{td}">{it['condition'] or 'SV'}</td>
+      <td style="{td}">{qty_str}</td>
+      <td style="{td}">{lead}</td>
+      <td style="{td}text-align:right">{unit_p}</td>
+      <td style="{td}text-align:right;font-weight:600">{line_t}</td>
+    </tr>
+    <tr>
+      <td colspan="6" style="padding:4px 12px 12px;text-align:right;color:#6b7280;font-size:13px">
+        Price Type: {ptype}
+      </td>
+    </tr>
+    <tr>
+      <td colspan="6" style="padding:0 12px 14px">
+        <table cellspacing="0" style="font-size:13px;color:#374151">
+          <tr><td style="padding:2px 16px 2px 0;width:120px;color:#6b7280">Description:</td><td>{it['description'] or '—'}</td></tr>
+          <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Warranty:</td><td>{warranty}</td></tr>
+          <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Trace To:</td><td>{trace}</td></tr>
+          <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tag Type:</td><td>{tag_type}</td></tr>
+          <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tagged by:</td><td>{tagged}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </tbody>
 </table>
-{f"<p><strong>Notes:</strong> {quote['notes']}</p>" if quote['notes'] else ''}
-<p style="color:#888;font-size:12px;margin-top:30px;border-top:1px solid #ddd;padding-top:12px">
-All prices in USD. Quote valid for {quote['valid_days']} days from date of issue.<br>
-All parts are certified unless otherwise stated. Terms: COD unless prior credit arrangement established.
-</p></body></html>"""
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 16px">"""
+
+    return f"""<!DOCTYPE html>
+<html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;color:#111827;max-width:760px;margin:32px auto;padding:0 16px;background:#fff">
+
+<h1 style="font-size:22px;font-weight:700;margin-bottom:4px">
+  Quote from <span style="background:#fef08a;padding:0 4px">{settings['company_name']}</span> for RFQ # {rfq['rfq_number']}
+</h1>
+<p style="color:#6b7280;font-size:13px;margin-top:0">
+  Date: {quote['created_at'][:10]} &nbsp;·&nbsp; Valid: {quote['valid_days']} days
+  &nbsp;·&nbsp; To: {rfq['customer_name'] or ''}{(' — ' + rfq['company']) if rfq['company'] else ''}
+</p>
+
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:16px 0">
+
+{item_blocks}
+
+<table width="100%" cellspacing="0" style="margin-top:8px">
+  <tr>
+    <td style="text-align:right;font-size:16px;font-weight:700;padding:8px 0">
+      Total: ${quote['total_amount']:,.2f}
+    </td>
+  </tr>
+</table>
+
+{f'<p style="margin-top:16px;color:#374151"><strong>Notes:</strong> {quote["notes"]}</p>' if quote['notes'] else ''}
+
+<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0">
+
+<table width="100%" cellspacing="0" style="font-size:13px">
+  <tr>
+    <td style="vertical-align:top;width:50%">
+      <p style="font-weight:700;margin-bottom:6px">Sent By</p>
+      <p style="margin:0;line-height:1.8">
+        {settings.get('company_name','')}<br>
+        {settings.get('company_address','')}<br>
+        Phone: {settings.get('company_phone','')}<br>
+        <a href="mailto:{settings.get('company_email','')}" style="color:#2563eb">{settings.get('company_email','')}</a>
+      </p>
+    </td>
+    <td style="vertical-align:top;width:50%">
+      <p style="font-weight:700;margin-bottom:6px">Attachments</p>
+      <p style="margin:0;color:#6b7280">No attachments</p>
+    </td>
+  </tr>
+</table>
+
+<p style="margin-top:24px;color:#9ca3af;font-size:11px;text-align:center">
+  All prices in {currency}. Quote valid for {quote['valid_days']} days from date of issue.<br>
+  All parts are certified unless otherwise stated. Terms: COD unless prior credit arrangement established.
+</p>
+</body></html>"""
 
 
 # ─── Routes: RFQ Delete ──────────────────────────────────────────────────────

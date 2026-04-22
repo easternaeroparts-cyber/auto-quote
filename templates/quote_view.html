@@ -6,11 +6,11 @@
 <a href="{{ url_for('rfq_detail', rfq_id=rfq.id) }}" class="btn btn-sm btn-outline-secondary">
   <i class="bi bi-arrow-left"></i> Back to RFQ
 </a>
-<button onclick="window.print()" class="btn btn-sm btn-outline-secondary">
+<button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
   <i class="bi bi-printer"></i> Print / PDF
 </button>
 {% if quote.status != 'sent' %}
-<button class="btn btn-sm btn-gold fw-semibold" data-bs-toggle="modal" data-bs-target="#sendModal">
+<button class="btn btn-sm btn-gold fw-semibold no-print" data-bs-toggle="modal" data-bs-target="#sendModal">
   <i class="bi bi-send"></i> Send to Customer
 </button>
 {% endif %}
@@ -19,19 +19,19 @@
 {% block head %}
 <style>
 @media print {
-  .sidebar, .topbar, .flash-wrap, .no-print { display:none !important; }
-  .main-wrap { margin-left:0 !important; }
-  .content { padding:0 !important; }
-  .card { box-shadow:none !important; border:1px solid #ddd !important; }
+  .sidebar,.topbar,.flash-wrap,.no-print{display:none !important;}
+  .main-wrap{margin-left:0 !important;}
+  .content{padding:0 !important;}
+  .card{box-shadow:none !important;border:1px solid #ddd !important;}
 }
 </style>
 {% endblock %}
 
 {% block content %}
-<!-- Header card -->
+<!-- Header -->
 <div class="card mb-3">
   <div class="card-body">
-    <div class="row align-items-center">
+    <div class="row align-items-start">
       <div class="col-md-6">
         <h4 class="fw-bold mb-0" style="color:var(--navy)">✈ {{ settings.company_name }}</h4>
         <small class="text-muted">{{ settings.company_email }} &nbsp;|&nbsp; {{ settings.company_phone }}</small>
@@ -40,7 +40,7 @@
       <div class="col-md-6 text-md-end mt-3 mt-md-0">
         <h5 class="fw-bold mb-1">QUOTATION</h5>
         <code class="fs-6">{{ quote.quote_number }}</code>
-        <div class="text-muted small">Date: {{ quote.created_at[:10] }} &nbsp;|&nbsp; Valid: {{ quote.valid_days }} days</div>
+        <div class="text-muted small">Date: {{ quote.created_at[:10] }} &nbsp;|&nbsp; Valid: {{ quote.valid_days }} days &nbsp;|&nbsp; Currency: {{ quote.currency or 'USD' }}</div>
         <span class="badge badge-{{ quote.status }} mt-1">{{ quote.status.upper() }}</span>
       </div>
     </div>
@@ -66,86 +66,88 @@
   </div>
 </div>
 
-<!-- Line items -->
+<!-- Line items — Rotabull style -->
 <div class="card mb-3">
   <div class="card-header bg-white d-flex justify-content-between py-3">
     <strong>Line Items</strong>
     <div class="no-print">
-      <span class="badge text-bg-success me-1">
-        {{ items|selectattr('matched')|list|length }} matched
-      </span>
-      <span class="badge text-bg-danger">
-        {{ items|rejectattr('matched')|list|length }} not found
-      </span>
+      <span class="badge text-bg-success me-1">{{ items|selectattr('matched')|list|length }} matched</span>
+      <span class="badge text-bg-danger">{{ items|rejectattr('matched')|list|length }} not found</span>
     </div>
   </div>
-  <div class="card-body p-0">
-    <table class="table mb-0" id="itemsTable">
+  <div class="card-body p-3">
+  {% for it in items %}
+  <div class="border rounded mb-3 overflow-hidden" id="item-block-{{ it.id }}">
+    <!-- Main row -->
+    <table class="table table-sm mb-0">
       <thead class="table-light">
         <tr>
-          <th class="ps-3">#</th>
-          <th>Part Number</th>
-          <th>Description</th>
-          <th>Cond</th>
-          <th>Qty Req</th>
-          <th>Qty Avail</th>
-          <th>Unit Price</th>
-          <th>Extended</th>
-          <th>Status</th>
+          <th>Part</th><th>CC</th><th>Qty</th><th>Lead Time</th>
+          <th class="text-end">Unit Price ({{ quote.currency or 'USD' }})</th>
+          <th class="text-end">Line Total ({{ quote.currency or 'USD' }})</th>
           <th class="no-print"></th>
         </tr>
       </thead>
       <tbody>
-      {% for it in items %}
-      <tr id="item-{{ it.id }}" class="{{ 'table-warning' if not it.matched else '' }}">
-        <td class="ps-3 text-muted">{{ loop.index }}</td>
-        <td><code class="fw-bold">{{ it.part_number }}</code></td>
-        <td>{{ it.description or '—' }}</td>
-        <td><span class="badge text-bg-secondary">{{ it.condition }}</span></td>
-        <td id="qty-{{ it.id }}">{{ it.quantity_requested }}</td>
-        <td>
-          {% if it.matched %}
-            <span class="{% if it.quantity_available >= it.quantity_requested %}text-success{% else %}text-warning{% endif %} fw-semibold">
-              {{ it.quantity_available }}
-            </span>
-          {% else %}—{% endif %}
-        </td>
-        <td id="price-{{ it.id }}">${{ '%.2f'|format(it.unit_price) }}</td>
-        <td id="ext-{{ it.id }}" class="fw-semibold">${{ '%.2f'|format(it.extended_price) }}</td>
-        <td>
-          {% if it.matched %}
-            <span class="badge text-bg-success"><i class="bi bi-check"></i> In Stock</span>
-          {% else %}
-            <span class="badge text-bg-danger">Not Found</span>
-          {% endif %}
-        </td>
-        <td class="no-print">
-          <button class="btn btn-sm btn-outline-secondary py-0"
-            onclick="editItem({{ it.id }}, {{ it.unit_price }}, {{ it.quantity_requested }}, '{{ (it.notes or '')|replace("'","\\'")|replace('"','\\"') }}')">
-            <i class="bi bi-pencil"></i>
-          </button>
-        </td>
-      </tr>
-      {% endfor %}
-      </tbody>
-      <tfoot>
-        <tr class="table-light fw-bold">
-          <td colspan="7" class="text-end ps-3">TOTAL (USD):</td>
-          <td id="grandTotal" class="fs-5" style="color:var(--navy)">${{ '{:,.2f}'.format(quote.total_amount) }}</td>
-          <td colspan="2"></td>
+        <tr>
+          <td class="fw-bold"><code>{{ it.part_number }}</code></td>
+          <td><span class="badge text-bg-secondary">{{ it.condition or 'SV' }}</span></td>
+          <td id="qty-{{ it.id }}">{{ it.quantity_requested }} EA</td>
+          <td id="lead-{{ it.id }}">{{ it.lead_time or 'Stock' }}</td>
+          <td class="text-end" id="price-{{ it.id }}">${{ '%.2f'|format(it.unit_price) }}</td>
+          <td class="text-end fw-bold" id="ext-{{ it.id }}">${{ '%.2f'|format(it.extended_price) }}</td>
+          <td class="text-end no-print">
+            <button class="btn btn-sm btn-outline-secondary py-0"
+              onclick="editItem({{ it.id }}, {{ it.unit_price }}, {{ it.quantity_requested }},
+                '{{ (it.notes or '')|replace("'","\\'") }}',
+                '{{ (it.lead_time or 'Stock')|replace("'","\\'") }}',
+                '{{ (it.price_type or 'Outright')|replace("'","\\'") }}',
+                '{{ (it.warranty or '3 Months')|replace("'","\\'") }}',
+                '{{ (it.trace_to or '')|replace("'","\\'") }}',
+                '{{ (it.tag_type or '')|replace("'","\\'") }}',
+                '{{ (it.tagged_by or '')|replace("'","\\'") }}'
+              )">
+              <i class="bi bi-pencil"></i>
+            </button>
+          </td>
         </tr>
-      </tfoot>
+        <tr>
+          <td colspan="7" class="text-end text-muted small">Price Type: <span id="ptype-{{ it.id }}">{{ it.price_type or 'Outright' }}</span></td>
+        </tr>
+      </tbody>
     </table>
+    <!-- Detail rows -->
+    <div class="px-3 pb-3 pt-1" style="background:#fafafa;font-size:.85rem">
+      <div class="row">
+        <div class="col-md-6">
+          <span class="text-muted">Description:</span> {{ it.description or '—' }}<br>
+          <span class="text-muted">Warranty:</span> <span id="warranty-{{ it.id }}">{{ it.warranty or '—' }}</span><br>
+          <span class="text-muted">Trace To:</span> <span id="trace-{{ it.id }}">{{ it.trace_to or it.description or '—' }}</span>
+        </div>
+        <div class="col-md-6">
+          <span class="text-muted">Tag Type:</span> <span id="tagtype-{{ it.id }}">{{ it.tag_type or '—' }}</span><br>
+          <span class="text-muted">Tagged by:</span> <span id="taggedby-{{ it.id }}">{{ it.tagged_by or '—' }}</span><br>
+          {% if not it.matched %}<span class="badge text-bg-danger">Not in Inventory</span>{% else %}<span class="badge text-bg-success">In Stock ({{ it.quantity_available }} avail)</span>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- Total -->
+  <div class="text-end mt-2">
+    <span class="fs-5 fw-bold" style="color:var(--navy)">Total: $<span id="grandTotal">{{ '{:,.2f}'.format(quote.total_amount) }}</span></span>
+  </div>
   </div>
 </div>
 
 {% if quote.notes %}
-<div class="card mb-3 no-print">
+<div class="card mb-3">
   <div class="card-body"><strong>Notes:</strong> {{ quote.notes }}</div>
 </div>
 {% endif %}
 
-<p class="text-muted small">All prices in USD. Quote valid {{ quote.valid_days }} days from {{ quote.created_at[:10] }}.
+<p class="text-muted small">All prices in {{ quote.currency or 'USD' }}. Quote valid {{ quote.valid_days }} days from {{ quote.created_at[:10] }}.
 All parts certified unless otherwise stated. Terms: COD unless prior credit arrangement established.</p>
 
 <!-- Send Modal -->
@@ -181,27 +183,59 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
 
 <!-- Edit Item Modal -->
 <div class="modal fade" id="editItemModal" tabindex="-1">
-  <div class="modal-dialog modal-sm">
+  <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header"><h6 class="modal-title">Edit Line Item</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <input type="hidden" id="editItemId">
-        <div class="mb-2">
-          <label class="form-label">Unit Price (USD)</label>
-          <input type="number" id="editPrice" step="0.01" class="form-control">
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Qty Requested</label>
-          <input type="number" id="editQty" min="1" class="form-control">
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Notes</label>
-          <input type="text" id="editNotes" class="form-control">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label">Unit Price ({{ quote.currency or 'USD' }})</label>
+            <input type="number" id="editPrice" step="0.01" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Qty Requested</label>
+            <input type="number" id="editQty" min="1" class="form-control">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Lead Time</label>
+            <input type="text" id="editLeadTime" class="form-control" placeholder="e.g. Stock, 2 weeks">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Price Type</label>
+            <select id="editPriceType" class="form-select">
+              <option>Outright</option>
+              <option>Exchange</option>
+              <option>Loan</option>
+              <option>Repair</option>
+              <option>Overhaul</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Warranty</label>
+            <input type="text" id="editWarranty" class="form-control" placeholder="e.g. 3 Months">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Trace To</label>
+            <input type="text" id="editTraceTo" class="form-control">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Tag Type</label>
+            <input type="text" id="editTagType" class="form-control" placeholder="e.g. EASA Form 1;TCCA Form 1">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Tagged By</label>
+            <input type="text" id="editTaggedBy" class="form-control">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notes</label>
+            <input type="text" id="editNotes" class="form-control">
+          </div>
         </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-navy btn-sm" onclick="saveItem()">Save</button>
+        <button class="btn btn-navy btn-sm" onclick="saveItem()">Save Changes</button>
       </div>
     </div>
   </div>
@@ -210,30 +244,50 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
 
 {% block scripts %}
 <script>
-function editItem(id, price, qty, notes) {
-  document.getElementById('editItemId').value = id;
-  document.getElementById('editPrice').value  = price;
-  document.getElementById('editQty').value    = qty;
-  document.getElementById('editNotes').value  = notes;
+function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo, tagType, taggedBy) {
+  document.getElementById('editItemId').value    = id;
+  document.getElementById('editPrice').value     = price;
+  document.getElementById('editQty').value       = qty;
+  document.getElementById('editNotes').value     = notes;
+  document.getElementById('editLeadTime').value  = leadTime;
+  document.getElementById('editWarranty').value  = warranty;
+  document.getElementById('editTraceTo').value   = traceTo;
+  document.getElementById('editTagType').value   = tagType;
+  document.getElementById('editTaggedBy').value  = taggedBy;
+  const sel = document.getElementById('editPriceType');
+  for (let o of sel.options) o.selected = (o.value === priceType);
   new bootstrap.Modal(document.getElementById('editItemModal')).show();
 }
 
 async function saveItem() {
-  const id    = document.getElementById('editItemId').value;
-  const price = parseFloat(document.getElementById('editPrice').value);
-  const qty   = parseInt(document.getElementById('editQty').value);
-  const notes = document.getElementById('editNotes').value;
+  const id       = document.getElementById('editItemId').value;
+  const price    = parseFloat(document.getElementById('editPrice').value);
+  const qty      = parseInt(document.getElementById('editQty').value);
+  const notes    = document.getElementById('editNotes').value;
+  const leadTime = document.getElementById('editLeadTime').value;
+  const ptype    = document.getElementById('editPriceType').value;
+  const warranty = document.getElementById('editWarranty').value;
+  const traceTo  = document.getElementById('editTraceTo').value;
+  const tagType  = document.getElementById('editTagType').value;
+  const taggedBy = document.getElementById('editTaggedBy').value;
 
   const res  = await fetch(`/quotes/{{ quote.id }}/update-item`, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({item_id:id, unit_price:price, quantity_requested:qty, notes})
+    body: JSON.stringify({item_id:id, unit_price:price, quantity_requested:qty, notes,
+      lead_time:leadTime, price_type:ptype, warranty, trace_to:traceTo, tag_type:tagType, tagged_by:taggedBy})
   });
   const data = await res.json();
   if (data.success) {
-    document.getElementById(`price-${id}`).textContent = `$${price.toFixed(2)}`;
-    document.getElementById(`qty-${id}`).textContent   = qty;
-    document.getElementById(`ext-${id}`).textContent   = `$${data.extended.toFixed(2)}`;
-    document.getElementById('grandTotal').textContent  = `$${data.total.toLocaleString('en-US',{minimumFractionDigits:2})}`;
+    document.getElementById(`price-${id}`).textContent    = `$${price.toFixed(2)}`;
+    document.getElementById(`qty-${id}`).textContent      = `${qty} EA`;
+    document.getElementById(`ext-${id}`).textContent      = `$${data.extended.toFixed(2)}`;
+    document.getElementById(`lead-${id}`).textContent     = leadTime;
+    document.getElementById(`ptype-${id}`).textContent    = ptype;
+    document.getElementById(`warranty-${id}`).textContent = warranty;
+    document.getElementById(`trace-${id}`).textContent    = traceTo;
+    document.getElementById(`tagtype-${id}`).textContent  = tagType;
+    document.getElementById(`taggedby-${id}`).textContent = taggedBy;
+    document.getElementById('grandTotal').textContent     = data.total.toLocaleString('en-US',{minimumFractionDigits:2});
     bootstrap.Modal.getInstance(document.getElementById('editItemModal')).hide();
   }
 }
