@@ -137,7 +137,8 @@
                 '{{ (it.trace_to or '')|replace("'","\\'") }}',
                 '{{ (it.tag_type or '')|replace("'","\\'") }}',
                 '{{ (it.tagged_by or '')|replace("'","\\'") }}',
-                '{{ (it.condition or 'SV')|replace("'","\\'") }}'
+                '{{ (it.condition or 'SV')|replace("'","\\'") }}',
+                '{{ it.part_number|replace("'","\\'") }}'
               )">
               <i class="bi bi-pencil"></i>
             </button>
@@ -220,6 +221,30 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
       <div class="modal-header"><h6 class="modal-title">Edit Line Item</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
         <input type="hidden" id="editItemId">
+
+        <!-- Last-quote suggestion banner -->
+        <div id="pnSuggestion" class="alert alert-warning py-2 px-3 mb-3 d-none" style="font-size:.82rem">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <strong><i class="bi bi-clock-history"></i> Last quoted:</strong>
+              <span id="pnSugQuote" class="fw-semibold ms-1"></span>
+              <span class="text-muted ms-1" id="pnSugDate"></span><br>
+              <span class="text-muted">Price:</span> <span id="pnSugPrice" class="fw-semibold"></span>
+              &nbsp;|&nbsp;
+              <span class="text-muted">CC:</span> <span id="pnSugCC"></span>
+              &nbsp;|&nbsp;
+              <span class="text-muted">Lead:</span> <span id="pnSugLead"></span>
+              &nbsp;|&nbsp;
+              <span class="text-muted">Type:</span> <span id="pnSugType"></span>
+              &nbsp;|&nbsp;
+              <span class="text-muted">Warranty:</span> <span id="pnSugWarranty"></span>
+            </div>
+            <button class="btn btn-sm btn-warning fw-semibold ms-3 flex-shrink-0" onclick="applySuggestion()">
+              <i class="bi bi-lightning-fill"></i> Use This
+            </button>
+          </div>
+        </div>
+
         <div class="row g-3">
           <div class="col-md-4">
             <label class="form-label">Unit Price ({{ quote.currency or 'USD' }})</label>
@@ -288,7 +313,9 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
 
 {% block scripts %}
 <script>
-function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo, tagType, taggedBy, condition) {
+let _pnSugData = null;  // holds last-quote data for applySuggestion()
+
+function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo, tagType, taggedBy, condition, partNumber) {
   document.getElementById('editItemId').value    = id;
   document.getElementById('editPrice').value     = price;
   document.getElementById('editQty').value       = qty;
@@ -302,7 +329,45 @@ function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo,
   for (let o of sel.options) o.selected = (o.value === priceType);
   const csel = document.getElementById('editCondition');
   for (let o of csel.options) o.selected = (o.value === (condition || 'SV'));
+
+  // Hide suggestion until we hear back
+  _pnSugData = null;
+  document.getElementById('pnSuggestion').classList.add('d-none');
+
   new bootstrap.Modal(document.getElementById('editItemModal')).show();
+
+  // Fetch last quote for this PN asynchronously
+  if (partNumber) {
+    fetch(`/api/last-quote-for-pn?pn=${encodeURIComponent(partNumber)}&exclude_quote={{ quote.id }}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d.found) return;
+        _pnSugData = d;
+        document.getElementById('pnSugQuote').textContent    = d.quote_number;
+        document.getElementById('pnSugDate').textContent     = '(' + d.date + ')';
+        document.getElementById('pnSugPrice').textContent    = '$' + parseFloat(d.unit_price).toFixed(2);
+        document.getElementById('pnSugCC').textContent       = d.condition || 'SV';
+        document.getElementById('pnSugLead').textContent     = d.lead_time || 'Stock';
+        document.getElementById('pnSugType').textContent     = d.price_type || 'Outright';
+        document.getElementById('pnSugWarranty').textContent = d.warranty || '—';
+        document.getElementById('pnSuggestion').classList.remove('d-none');
+      }).catch(() => {});
+  }
+}
+
+function applySuggestion() {
+  if (!_pnSugData) return;
+  document.getElementById('editPrice').value    = _pnSugData.unit_price;
+  document.getElementById('editLeadTime').value = _pnSugData.lead_time || 'Stock';
+  document.getElementById('editWarranty').value = _pnSugData.warranty || '3 Months';
+  document.getElementById('editTraceTo').value  = _pnSugData.trace_to || '';
+  document.getElementById('editTagType').value  = _pnSugData.tag_type || '';
+  document.getElementById('editTaggedBy').value = _pnSugData.tagged_by || '';
+  const sel = document.getElementById('editPriceType');
+  for (let o of sel.options) o.selected = (o.value === (_pnSugData.price_type || 'Outright'));
+  const csel = document.getElementById('editCondition');
+  for (let o of csel.options) o.selected = (o.value === (_pnSugData.condition || 'SV'));
+  document.getElementById('pnSuggestion').classList.add('d-none');
 }
 
 async function saveItem() {

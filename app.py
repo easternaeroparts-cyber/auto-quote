@@ -1740,6 +1740,41 @@ def api_parse_text():
     return jsonify({'items': items})
 
 
+@app.route('/api/last-quote-for-pn')
+@login_required
+def api_last_quote_for_pn():
+    pn          = request.args.get('pn', '').strip().upper()
+    exclude_qid = request.args.get('exclude_quote', 0, type=int)
+    if not pn:
+        return jsonify({'found': False})
+    conn = get_db()
+    row  = conn.execute('''
+        SELECT qi.unit_price, qi.condition, qi.lead_time, qi.price_type,
+               qi.warranty, qi.trace_to, qi.tag_type, qi.tagged_by,
+               q.quote_number, q.created_at
+        FROM quote_items qi
+        JOIN quotes q ON qi.quote_id = q.id
+        WHERE qi.part_number = ? AND q.id != ?
+        ORDER BY q.created_at DESC LIMIT 1
+    ''', (pn, exclude_qid)).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({'found': False})
+    return jsonify({
+        'found':        True,
+        'quote_number': row['quote_number'],
+        'date':         row['created_at'][:10],
+        'unit_price':   row['unit_price'],
+        'condition':    row['condition'] or 'SV',
+        'lead_time':    row['lead_time'] or 'Stock',
+        'price_type':   row['price_type'] or 'Outright',
+        'warranty':     row['warranty'] or '3 Months',
+        'trace_to':     row['trace_to'] or '',
+        'tag_type':     row['tag_type'] or '',
+        'tagged_by':    row['tagged_by'] or '',
+    })
+
+
 @app.route('/api/test-imap', methods=['POST'])
 @login_required
 def api_test_imap():
