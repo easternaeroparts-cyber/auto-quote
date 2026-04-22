@@ -941,9 +941,14 @@ def _fetch_imap(settings):
     all_ids = list(reversed(all_ids))[:500]
 
     for mid in all_ids:
-        _, data = mail.fetch(mid, '(RFC822 BODY[HEADER.FIELDS (MESSAGE-ID)])')
-        raw_msg = data[0][1]
-        msg = email.message_from_bytes(raw_msg)
+        try:
+            _, data = mail.fetch(mid, '(RFC822)')
+            if not data or not data[0] or not isinstance(data[0], tuple):
+                continue
+            raw_msg = data[0][1]
+            msg = email.message_from_bytes(raw_msg)
+        except Exception:
+            continue
 
         # Get unique message ID to avoid duplicates
         message_id = msg.get('Message-ID', '') or msg.get('Message-Id', '')
@@ -1005,7 +1010,9 @@ def _fetch_imap(settings):
             'rfq', 'request for quote', 'request for quotation',
             'part number', 'p/n', 'parts needed', 'quote request',
             'availability', 'aircraft part', 'aviation part', 'aog',
-            'part #', 'pn:', 'p/n:', 'nsn'])
+            'part #', 'pn:', 'p/n:', 'nsn', 'quote', 'pricing',
+            'price request', 'stock', 'lead time', 'need parts',
+            'looking for', 'do you have', 'quantity', 'qty'])
         parsed   = parse_rfq_text(parse_body)
 
         if parsed or is_rfq:
