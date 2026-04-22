@@ -149,6 +149,11 @@ def init_db():
             value TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS imported_emails (
+            message_id  TEXT PRIMARY KEY,
+            imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS users (
             id            INTEGER PRIMARY KEY AUTOINCREMENT,
             username      TEXT UNIQUE NOT NULL,
@@ -874,13 +879,32 @@ def _fetch_imap(settings):
     mail.login(settings['imap_user'], settings['imap_pass'])
     mail.select(settings.get('imap_folder', 'INBOX'))
 
-    _, ids = mail.search(None, 'UNSEEN')
+    # Search ALL emails (not just unread)
+    _, ids = mail.search(None, 'ALL')
     conn = get_db()
     count = 0
 
-    for mid in ids[0].split():
-        _, data = mail.fetch(mid, '(RFC822)')
-        msg = email.message_from_bytes(data[0][1])
+    all_ids = ids[0].split()
+    # Process newest first, limit to last 500 to avoid timeout
+    all_ids = list(reversed(all_ids))[:500]
+
+    for mid in all_ids:
+        _, data = mail.fetch(mid, '(RFC822 BODY[HEADER.FIELDS (MESSAGE-ID)])')
+        raw_msg = data[0][1]
+        msg = email.message_from_bytes(raw_msg)
+
+        # Get unique message ID to avoid duplicates
+        message_id = msg.get('Message-ID', '') or msg.get('Message-Id', '')
+        if not message_id:
+            # Fallback: use date + from as unique key
+            message_id = f"{msg.get('Date','')}-{msg.get('From','')}"
+        message_id = message_id.strip()
+
+        # Skip already imported emails
+        already = conn.execute(
+            'SELECT 1 FROM imported_emails WHERE message_id=?', (message_id,)).fetchone()
+        if already:
+            continue
 
         # Subject
         subj_raw = msg.get('Subject', 'RFQ')
@@ -888,8 +912,8 @@ def _fetch_imap(settings):
         subject  = subj_dec.decode('utf-8', errors='ignore') if isinstance(subj_dec, bytes) else str(subj_dec)
 
         # Sender
-        from_raw  = msg.get('From', '')
-        em_match  = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]+', from_raw)
+        from_raw   = msg.get('From', '')
+        em_match   = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]+', from_raw)
         cust_email = em_match.group() if em_match else from_raw
         cust_name  = from_raw.split('<')[0].strip().strip('"') if '<' in from_raw else ''
 
@@ -907,11 +931,12 @@ def _fetch_imap(settings):
         else:
             body = msg.get_payload(decode=True).decode('utf-8', errors='ignore') or ''
 
-        # Decide if it's an RFQ
+        # Decide if it looks like an RFQ
         combined = (subject + ' ' + body).lower()
         is_rfq   = any(kw in combined for kw in [
             'rfq', 'request for quote', 'request for quotation',
-            'part number', 'p/n', 'parts needed', 'quote request', 'availability'])
+            'part number', 'p/n', 'parts needed', 'quote request',
+            'availability', 'aircraft part', 'aviation part', 'aog'])
         parsed   = parse_rfq_text(body)
 
         if parsed or is_rfq:
@@ -925,9 +950,13 @@ def _fetch_imap(settings):
                 conn.execute(
                     'INSERT INTO rfq_items (rfq_id,part_number,description,quantity,condition) VALUES (?,?,?,?,?)',
                     (rfq_id, item['part_number'], item['description'], item['quantity'], item['condition']))
-
-            mail.store(mid, '+FLAGS', '\\Seen')
             count += 1
+
+        # Always mark this message as imported so we don't check it again
+        try:
+            conn.execute('INSERT OR IGNORE INTO imported_emails (message_id) VALUES (?)', (message_id,))
+        except Exception:
+            pass
 
     conn.commit()
     conn.close()
