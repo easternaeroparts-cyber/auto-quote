@@ -448,6 +448,15 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
               <option>Overhaul</option>
             </select>
           </div>
+          <div class="col-12">
+            <div class="d-flex align-items-center gap-3 p-2 rounded" style="background:#f8f9fa;border:1px solid #e3e8ef">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" id="addNoQuote" onchange="toggleAddNoQuote(this.checked)" style="cursor:pointer">
+                <label class="form-check-label fw-semibold" for="addNoQuote" style="cursor:pointer">No Quote</label>
+              </div>
+              <small class="text-muted">Mark this part as unable to quote — price will be set to 0 and greyed out.</small>
+            </div>
+          </div>
         </div>
         <!-- Mini raw email for reference inside modal -->
         {% if rfq.raw_email %}
@@ -865,20 +874,25 @@ function _closeAddModal() {
   document.body.classList.remove('modal-open');
   document.body.style.removeProperty('overflow');
   document.body.style.removeProperty('padding-right');
+  // Reset No Quote toggle
+  const nqCb = document.getElementById('addNoQuote');
+  if (nqCb && nqCb.checked) { nqCb.checked = false; toggleAddNoQuote(false); }
 }
 
 async function saveAddItem() {
   const pn = document.getElementById('addPN').value.trim();
   if (!pn) { document.getElementById('addPN').focus(); return; }
 
+  const noQuote = document.getElementById('addNoQuote').checked;
   const payload = {
     part_number:       pn,
     description:       document.getElementById('addDesc').value.trim(),
     quantity:          parseInt(document.getElementById('addQty').value) || 1,
-    unit_price:        parseFloat(document.getElementById('addPrice').value) || 0,
+    unit_price:        noQuote ? 0 : (parseFloat(document.getElementById('addPrice').value) || 0),
     lead_time:         document.getElementById('addLeadTime').value.trim() || 'Stock',
     condition:         document.getElementById('addCondition').value,
     price_type:        document.getElementById('addPriceType').value,
+    no_quote:          noQuote ? 1 : 0,
   };
 
   const res  = await fetch('/quotes/{{ quote.id }}/add-item', {
@@ -955,6 +969,17 @@ async function saveAddItem() {
 
 // ── Line item edit ────────────────────────────────────────────────────────────
 let _pnSugData = null;  // holds last-quote data for applySuggestion()
+
+function toggleAddNoQuote(checked) {
+  const fields = ['addPrice', 'addLeadTime', 'addPriceType', 'addCondition'];
+  fields.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.disabled = checked; el.style.opacity = checked ? '0.35' : '1'; }
+  });
+  const bar = document.querySelector('#addItemModal .d-flex[style*="background"]');
+  if (bar) bar.style.background = checked ? '#fff3cd' : '#f8f9fa';
+  if (checked) document.getElementById('addPrice').value = 0;
+}
 
 function toggleNoQuote(checked) {
   const fields = ['editPrice','editQty','editLeadTime','editPriceType','editCondition',
