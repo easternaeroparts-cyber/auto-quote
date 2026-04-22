@@ -109,6 +109,7 @@ def init_db():
             status         TEXT DEFAULT 'pending',
             notes          TEXT,
             raw_email      TEXT,
+            email_message_id TEXT,
             created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -159,6 +160,12 @@ def init_db():
         CREATE TABLE IF NOT EXISTS imported_emails (
             message_id  TEXT PRIMARY KEY,
             imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS blocked_senders (
+            email       TEXT PRIMARY KEY,
+            reason      TEXT,
+            blocked_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS users (
@@ -907,6 +914,26 @@ All parts are certified unless otherwise stated. Terms: COD unless prior credit 
 </p></body></html>"""
 
 
+# ─── Routes: RFQ Delete ──────────────────────────────────────────────────────
+
+@app.route('/rfqs/<int:rfq_id>/delete', methods=['POST'])
+@login_required
+def rfq_delete(rfq_id):
+    conn = get_db()
+    rfq = conn.execute('SELECT * FROM rfqs WHERE id=?', (rfq_id,)).fetchone()
+    if rfq:
+        # Mark the email's message_id so it won't be re-imported on next fetch
+        msg_id = rfq['email_message_id']
+        if msg_id:
+            conn.execute('INSERT OR IGNORE INTO imported_emails (message_id) VALUES (?)', (msg_id,))
+        conn.execute('DELETE FROM rfq_items WHERE rfq_id=?', (rfq_id,))
+        conn.execute('DELETE FROM rfqs WHERE id=?', (rfq_id,))
+        conn.commit()
+    conn.close()
+    flash('RFQ deleted. That email will not be imported again.', 'success')
+    return redirect(url_for('rfq_list'))
+
+
 # ─── Routes: Email Fetch (IMAP) ──────────────────────────────────────────────
 
 @app.route('/rfqs/fetch-email', methods=['POST'])
@@ -994,6 +1021,17 @@ def _fetch_imap(settings):
         if already:
             continue
 
+        # Skip emails from blocked senders (previously deleted as non-RFQ)
+        sender_check = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]+', msg.get('From', ''))
+        if sender_check:
+            blocked = conn.execute(
+                'SELECT 1 FROM blocked_senders WHERE email=?',
+                (sender_check.group().lower(),)).fetchone()
+            if blocked:
+                conn.execute('INSERT OR IGNORE INTO imported_emails (message_id) VALUES (?)', (message_id,))
+                conn.commit()
+                continue
+
         # Subject
         subj_raw = msg.get('Subject', 'RFQ')
         subj_dec = decode_header(subj_raw)[0][0]
@@ -1063,8 +1101,8 @@ def _fetch_imap(settings):
             rfq_no = gen_rfq_number()
             source = 'email-forwarded' if is_forwarded else 'email'
             conn.execute(
-                'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,source,notes,raw_email) VALUES (?,?,?,?,?,?,?)',
-                (rfq_no, cust_name, cust_email, '', source, subject, body[:6000]))
+                'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,source,notes,raw_email,email_message_id) VALUES (?,?,?,?,?,?,?,?)',
+                (rfq_no, cust_name, cust_email, '', source, subject, body[:6000], message_id))
             rfq_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
             for item in parsed:

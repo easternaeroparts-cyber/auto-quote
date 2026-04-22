@@ -57,10 +57,16 @@
         <td>{{ r.item_count }} part{{ 's' if r.item_count != 1 }}</td>
         <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
         <td><small class="text-muted">{{ r.created_at[:16] }}</small></td>
-        <td class="text-end pe-3">
+        <td class="text-end pe-3 d-flex gap-1 justify-content-end">
           <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-primary py-0">
             <i class="bi bi-eye"></i> View
           </a>
+          <form action="{{ url_for('rfq_delete', rfq_id=r.id) }}" method="post"
+                onsubmit="return confirm('Delete this RFQ?')">
+            <button class="btn btn-sm btn-outline-danger py-0">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
         </td>
       </tr>
       {% else %}
