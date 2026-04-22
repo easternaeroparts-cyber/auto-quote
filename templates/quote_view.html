@@ -218,7 +218,7 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
 <div class="modal fade" id="editItemModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
-      <div class="modal-header"><h6 class="modal-title">Edit Line Item</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-header"><h6 class="modal-title">Edit Line Item</h6><button class="btn-close" onclick="_closeModal()"></button></div>
       <div class="modal-body">
         <input type="hidden" id="editItemId">
 
@@ -303,7 +303,7 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
         </div>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-secondary btn-sm" onclick="_closeModal()">Cancel</button>
         <button class="btn btn-navy btn-sm" onclick="saveItem()">Save Changes</button>
       </div>
     </div>
@@ -334,7 +334,7 @@ function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo,
   _pnSugData = null;
   document.getElementById('pnSuggestion').classList.add('d-none');
 
-  bootstrap.Modal.getOrCreateInstance(document.getElementById('editItemModal')).show();
+  _openModal();
 
   // Fetch last quote for this PN asynchronously
   if (partNumber) {
@@ -375,20 +375,39 @@ function _dismissSuggestion() {
   document.getElementById('pnSuggestion').classList.add('d-none');
 }
 
-// Dismiss suggestion when user manually edits the price field
-// Also force-clean Bootstrap modal backdrop on every close so the page stays clickable
+function _openModal() {
+  const el = document.getElementById('editItemModal');
+  el.style.display = 'block';
+  el.classList.add('show');
+  el.removeAttribute('aria-hidden');
+  // Add backdrop
+  const bd = document.createElement('div');
+  bd.className = 'modal-backdrop fade show';
+  bd.id = 'editModalBackdrop';
+  document.body.appendChild(bd);
+  document.body.classList.add('modal-open');
+}
+
+function _closeModal() {
+  const el = document.getElementById('editItemModal');
+  el.style.display = 'none';
+  el.classList.remove('show');
+  el.setAttribute('aria-hidden', 'true');
+  const bd = document.getElementById('editModalBackdrop');
+  if (bd) bd.remove();
+  document.querySelectorAll('.modal-backdrop').forEach(e => e.remove());
+  document.body.classList.remove('modal-open');
+  document.body.style.removeProperty('overflow');
+  document.body.style.removeProperty('padding-right');
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('editPrice').addEventListener('input', function() {
     if (_pnSugData) _dismissSuggestion();
   });
-
-  const modalEl = document.getElementById('editItemModal');
-  modalEl.addEventListener('hidden.bs.modal', function() {
-    // Remove any lingering backdrops
-    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
-    document.body.classList.remove('modal-open');
-    document.body.style.removeProperty('overflow');
-    document.body.style.removeProperty('padding-right');
+  // Close on backdrop click or Cancel button
+  document.getElementById('editItemModal').addEventListener('click', function(e) {
+    if (e.target === this) _closeModal();
   });
 });
 
@@ -429,7 +448,7 @@ async function saveItem() {
       document.getElementById('quoteNumber').textContent = data.quote_number;
       document.title = data.quote_number;
     }
-    bootstrap.Modal.getOrCreateInstance(document.getElementById('editItemModal')).hide();
+    _closeModal();
   }
 }
 </script>
