@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Auto Quote{% endblock %} — Eastern Aero Parts</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <style>
+    :root{--navy:#1a3c6e;--gold:#f0b429;--light:#f4f7fb;}
+    body{background:var(--light);font-size:.92rem;}
+    .sidebar{width:220px;min-height:100vh;background:var(--navy);position:fixed;top:0;left:0;z-index:100;display:flex;flex-direction:column;}
+    .sidebar-brand{padding:20px 16px 14px;border-bottom:1px solid rgba(255,255,255,.12);}
+    .sidebar-brand span{color:#fff;font-size:1.1rem;font-weight:700;letter-spacing:.5px;}
+    .sidebar-brand small{display:block;color:var(--gold);font-size:.72rem;margin-top:2px;}
+    .sidebar .nav-link{color:rgba(255,255,255,.75);padding:10px 18px;border-radius:0;display:flex;align-items:center;gap:9px;transition:.15s;}
+    .sidebar .nav-link:hover,.sidebar .nav-link.active{color:#fff;background:rgba(255,255,255,.12);}
+    .sidebar .nav-link i{font-size:1rem;width:18px;}
+    .sidebar-section{padding:10px 18px 4px;color:rgba(255,255,255,.4);font-size:.68rem;letter-spacing:1px;text-transform:uppercase;margin-top:6px;}
+    .main-wrap{margin-left:220px;min-height:100vh;display:flex;flex-direction:column;}
+    .topbar{background:#fff;border-bottom:1px solid #e3e8ef;padding:10px 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:90;}
+    .topbar h5{margin:0;font-weight:700;color:var(--navy);}
+    .content{padding:28px;}
+    .card{border:none;box-shadow:0 1px 6px rgba(0,0,0,.07);border-radius:10px;}
+    .stat-card{background:#fff;border-radius:10px;padding:18px 22px;box-shadow:0 1px 6px rgba(0,0,0,.07);}
+    .stat-card .val{font-size:2rem;font-weight:700;color:var(--navy);}
+    .stat-card .lbl{color:#888;font-size:.8rem;margin-top:2px;}
+    .stat-card .icon{font-size:2rem;opacity:.15;}
+    .badge-pending{background:#fff3cd;color:#856404;}
+    .badge-quoted{background:#cfe2ff;color:#084298;}
+    .badge-sent{background:#d1e7dd;color:#0a3622;}
+    .badge-draft{background:#e2e3e5;color:#41464b;}
+    .table th{font-size:.78rem;text-transform:uppercase;letter-spacing:.5px;color:#888;font-weight:600;}
+    .btn-navy{background:var(--navy);color:#fff;border:none;}
+    .btn-navy:hover{background:#14305a;color:#fff;}
+    .btn-gold{background:var(--gold);color:#1a1a1a;border:none;}
+    .btn-gold:hover{background:#d99f1f;color:#1a1a1a;}
+    .alert{border-radius:8px;}
+    .flash-wrap{position:fixed;top:16px;right:16px;z-index:9999;min-width:300px;}
+  </style>
+  {% block head %}{% endblock %}
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav class="sidebar">
+  <div class="sidebar-brand">
+    <span>✈ Eastern Aero Parts</span>
+    <small>Auto Quote System</small>
+  </div>
+  <div class="pt-2">
+    <div class="sidebar-section">Main</div>
+    <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint=='dashboard' %}active{% endif %}">
+      <i class="bi bi-speedometer2"></i> Dashboard
+    </a>
+
+    <div class="sidebar-section">Quoting</div>
+    <a href="{{ url_for('rfq_list') }}" class="nav-link {% if 'rfq' in request.endpoint %}active{% endif %}">
+      <i class="bi bi-inbox"></i> RFQs
+    </a>
+    <a href="{{ url_for('rfq_new') }}" class="nav-link">
+      <i class="bi bi-plus-circle"></i> New RFQ
+    </a>
+    <a href="{{ url_for('quote_list') }}" class="nav-link {% if request.endpoint=='quote_list' %}active{% endif %}">
+      <i class="bi bi-file-earmark-text"></i> Quotes
+    </a>
+
+    <div class="sidebar-section">Inventory</div>
+    <a href="{{ url_for('inventory') }}" class="nav-link {% if request.endpoint=='inventory' %}active{% endif %}">
+      <i class="bi bi-box-seam"></i> Parts
+    </a>
+
+    <div class="sidebar-section">Config</div>
+    {% if current_user.is_authenticated and current_user.is_admin %}
+    <a href="{{ url_for('settings_page') }}" class="nav-link {% if request.endpoint=='settings_page' %}active{% endif %}">
+      <i class="bi bi-gear"></i> Settings
+    </a>
+    <a href="{{ url_for('user_list') }}" class="nav-link {% if request.endpoint in ['user_list'] %}active{% endif %}">
+      <i class="bi bi-people"></i> Users
+    </a>
+    {% endif %}
+    <a href="{{ url_for('account') }}" class="nav-link {% if request.endpoint=='account' %}active{% endif %}">
+      <i class="bi bi-person-circle"></i> My Account
+    </a>
+  </div>
+  <div class="mt-auto p-3" style="border-top:1px solid rgba(255,255,255,.1)">
+    <!-- Email fetch button -->
+    <form action="{{ url_for('fetch_email_rfqs') }}" method="post" class="mb-2">
+      <button type="submit" class="btn btn-sm w-100" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2)">
+        <i class="bi bi-envelope-arrow-down"></i> Fetch RFQ Emails
+      </button>
+    </form>
+    {% if current_user.is_authenticated %}
+    <a href="{{ url_for('logout') }}" class="btn btn-sm w-100" style="background:rgba(220,53,69,.3);color:#ffb3ba;border:1px solid rgba(220,53,69,.4)">
+      <i class="bi bi-box-arrow-right"></i> Log Out
+    </a>
+    {% endif %}
+  </div>
+</nav>
+
+<!-- Main -->
+<div class="main-wrap">
+  <div class="topbar">
+    <h5>{% block page_title %}{% endblock %}</h5>
+    <div class="d-flex align-items-center gap-2">
+      {% block topbar_actions %}{% endblock %}
+    </div>
+  </div>
+
+  <!-- Flash messages -->
+  <div class="flash-wrap">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}
+        <div class="alert alert-{{ 'danger' if cat=='error' else ('success' if cat=='success' else 'info') }} alert-dismissible fade show shadow-sm" role="alert">
+          {{ msg }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endwith %}
+  </div>
+
+  <div class="content flex-grow-1">
+    {% block content %}{% endblock %}
+  </div>
+
+  <footer class="text-center text-muted py-3" style="font-size:.75rem;border-top:1px solid #e3e8ef;">
+    Eastern Aero Parts Auto Quote System &mdash; {{ now.strftime('%Y') if now else '2024' }}
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+<script>
+  // Auto-dismiss flash messages after 4s
+  setTimeout(()=>{document.querySelectorAll('.alert').forEach(a=>{bootstrap.Alert.getOrCreateInstance(a).close();});},4000);
+</script>
+</body>
+</html>

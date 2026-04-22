@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}{{ quote.quote_number }}{% endblock %}
+{% block page_title %}{{ quote.quote_number }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('rfq_detail', rfq_id=rfq.id) }}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back to RFQ
+</a>
+<button onclick="window.print()" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-printer"></i> Print / PDF
+</button>
+{% if quote.status != 'sent' %}
+<button class="btn btn-sm btn-gold fw-semibold" data-bs-toggle="modal" data-bs-target="#sendModal">
+  <i class="bi bi-send"></i> Send to Customer
+</button>
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<style>
+@media print {
+  .sidebar, .topbar, .flash-wrap, .no-print { display:none !important; }
+  .main-wrap { margin-left:0 !important; }
+  .content { padding:0 !important; }
+  .card { box-shadow:none !important; border:1px solid #ddd !important; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header card -->
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="row align-items-center">
+      <div class="col-md-6">
+        <h4 class="fw-bold mb-0" style="color:var(--navy)">✈ {{ settings.company_name }}</h4>
+        <small class="text-muted">{{ settings.company_email }} &nbsp;|&nbsp; {{ settings.company_phone }}</small>
+        {% if settings.company_address %}<br><small class="text-muted">{{ settings.company_address }}</small>{% endif %}
+      </div>
+      <div class="col-md-6 text-md-end mt-3 mt-md-0">
+        <h5 class="fw-bold mb-1">QUOTATION</h5>
+        <code class="fs-6">{{ quote.quote_number }}</code>
+        <div class="text-muted small">Date: {{ quote.created_at[:10] }} &nbsp;|&nbsp; Valid: {{ quote.valid_days }} days</div>
+        <span class="badge badge-{{ quote.status }} mt-1">{{ quote.status.upper() }}</span>
+      </div>
+    </div>
+    <hr>
+    <div class="row">
+      <div class="col-md-4">
+        <div class="text-muted small fw-semibold mb-1">BILL TO</div>
+        <div class="fw-semibold">{{ rfq.customer_name or '—' }}</div>
+        <div>{{ rfq.company or '' }}</div>
+        {% if rfq.customer_email %}<div><a href="mailto:{{ rfq.customer_email }}">{{ rfq.customer_email }}</a></div>{% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="text-muted small fw-semibold mb-1">REF RFQ</div>
+        <code>{{ rfq.rfq_number }}</code><br>
+        <small class="text-muted">Source: {{ rfq.source }}</small>
+      </div>
+      <div class="col-md-4 text-md-end">
+        <div class="text-muted small fw-semibold mb-1">QUOTE TOTAL</div>
+        <div class="fs-3 fw-bold" style="color:var(--navy)">${{ '{:,.2f}'.format(quote.total_amount) }}</div>
+        <small class="text-muted">Markup: {{ quote.markup_percent }}%</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Line items -->
+<div class="card mb-3">
+  <div class="card-header bg-white d-flex justify-content-between py-3">
+    <strong>Line Items</strong>
+    <div class="no-print">
+      <span class="badge text-bg-success me-1">
+        {{ items|selectattr('matched')|list|length }} matched
+      </span>
+      <span class="badge text-bg-danger">
+        {{ items|rejectattr('matched')|list|length }} not found
+      </span>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <table class="table mb-0" id="itemsTable">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3">#</th>
+          <th>Part Number</th>
+          <th>Description</th>
+          <th>Cond</th>
+          <th>Qty Req</th>
+          <th>Qty Avail</th>
+          <th>Unit Price</th>
+          <th>Extended</th>
+          <th>Status</th>
+          <th class="no-print"></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for it in items %}
+      <tr id="item-{{ it.id }}" class="{{ 'table-warning' if not it.matched else '' }}">
+        <td class="ps-3 text-muted">{{ loop.index }}</td>
+        <td><code class="fw-bold">{{ it.part_number }}</code></td>
+        <td>{{ it.description or '—' }}</td>
+        <td><span class="badge text-bg-secondary">{{ it.condition }}</span></td>
+        <td id="qty-{{ it.id }}">{{ it.quantity_requested }}</td>
+        <td>
+          {% if it.matched %}
+            <span class="{% if it.quantity_available >= it.quantity_requested %}text-success{% else %}text-warning{% endif %} fw-semibold">
+              {{ it.quantity_available }}
+            </span>
+          {% else %}—{% endif %}
+        </td>
+        <td id="price-{{ it.id }}">${{ '%.2f'|format(it.unit_price) }}</td>
+        <td id="ext-{{ it.id }}" class="fw-semibold">${{ '%.2f'|format(it.extended_price) }}</td>
+        <td>
+          {% if it.matched %}
+            <span class="badge text-bg-success"><i class="bi bi-check"></i> In Stock</span>
+          {% else %}
+            <span class="badge text-bg-danger">Not Found</span>
+          {% endif %}
+        </td>
+        <td class="no-print">
+          <button class="btn btn-sm btn-outline-secondary py-0"
+            onclick="editItem({{ it.id }}, {{ it.unit_price }}, {{ it.quantity_requested }}, '{{ (it.notes or '')|replace("'","\\'")|replace('"','\\"') }}')">
+            <i class="bi bi-pencil"></i>
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="table-light fw-bold">
+          <td colspan="7" class="text-end ps-3">TOTAL (USD):</td>
+          <td id="grandTotal" class="fs-5" style="color:var(--navy)">${{ '{:,.2f}'.format(quote.total_amount) }}</td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{% if quote.notes %}
+<div class="card mb-3 no-print">
+  <div class="card-body"><strong>Notes:</strong> {{ quote.notes }}</div>
+</div>
+{% endif %}
+
+<p class="text-muted small">All prices in USD. Quote valid {{ quote.valid_days }} days from {{ quote.created_at[:10] }}.
+All parts certified unless otherwise stated. Terms: COD unless prior credit arrangement established.</p>
+
+<!-- Send Modal -->
+<div class="modal fade" id="sendModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-send"></i> Send Quote to Customer</h5>
+        <button class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('send_quote', quote_id=quote.id) }}">
+        <div class="modal-body">
+          <p>Send <strong>{{ quote.quote_number }}</strong> to:</p>
+          <div class="bg-light p-3 rounded mb-3">
+            <strong>{{ rfq.customer_name or '(Unknown)' }}</strong><br>
+            <a href="mailto:{{ rfq.customer_email }}">{{ rfq.customer_email or '(no email on file)' }}</a>
+          </div>
+          {% if not rfq.customer_email %}
+          <div class="alert alert-warning">No email address on file for this customer.</div>
+          {% endif %}
+          <p class="text-muted small">A professional HTML quote email will be sent from <strong>{{ settings.smtp_user }}</strong>.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-gold fw-semibold" {% if not rfq.customer_email %}disabled{% endif %}>
+            <i class="bi bi-send-fill"></i> Send Now
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Item Modal -->
+<div class="modal fade" id="editItemModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header"><h6 class="modal-title">Edit Line Item</h6><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" id="editItemId">
+        <div class="mb-2">
+          <label class="form-label">Unit Price (USD)</label>
+          <input type="number" id="editPrice" step="0.01" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Qty Requested</label>
+          <input type="number" id="editQty" min="1" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Notes</label>
+          <input type="text" id="editNotes" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-navy btn-sm" onclick="saveItem()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editItem(id, price, qty, notes) {
+  document.getElementById('editItemId').value = id;
+  document.getElementById('editPrice').value  = price;
+  document.getElementById('editQty').value    = qty;
+  document.getElementById('editNotes').value  = notes;
+  new bootstrap.Modal(document.getElementById('editItemModal')).show();
+}
+
+async function saveItem() {
+  const id    = document.getElementById('editItemId').value;
+  const price = parseFloat(document.getElementById('editPrice').value);
+  const qty   = parseInt(document.getElementById('editQty').value);
+  const notes = document.getElementById('editNotes').value;
+
+  const res  = await fetch(`/quotes/{{ quote.id }}/update-item`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({item_id:id, unit_price:price, quantity_requested:qty, notes})
+  });
+  const data = await res.json();
+  if (data.success) {
+    document.getElementById(`price-${id}`).textContent = `$${price.toFixed(2)}`;
+    document.getElementById(`qty-${id}`).textContent   = qty;
+    document.getElementById(`ext-${id}`).textContent   = `$${data.extended.toFixed(2)}`;
+    document.getElementById('grandTotal').textContent  = `$${data.total.toLocaleString('en-US',{minimumFractionDigits:2})}`;
+    bootstrap.Modal.getInstance(document.getElementById('editItemModal')).hide();
+  }
+}
+</script>
+{% endblock %}

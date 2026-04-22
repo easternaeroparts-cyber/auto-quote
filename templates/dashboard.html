@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('rfq_new') }}" class="btn btn-sm btn-navy">
+  <i class="bi bi-plus-lg"></i> New RFQ
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- Stat cards -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="stat-card d-flex justify-content-between align-items-center">
+      <div>
+        <div class="val">{{ stats.total_rfqs }}</div>
+        <div class="lbl">Total RFQs</div>
+      </div>
+      <i class="bi bi-inbox icon"></i>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="stat-card d-flex justify-content-between align-items-center" style="border-left:4px solid #f0b429">
+      <div>
+        <div class="val" style="color:#b45309">{{ stats.pending_rfqs }}</div>
+        <div class="lbl">Pending RFQs</div>
+      </div>
+      <i class="bi bi-hourglass-split icon"></i>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="stat-card d-flex justify-content-between align-items-center">
+      <div>
+        <div class="val">{{ stats.total_quotes }}</div>
+        <div class="lbl">Total Quotes</div>
+      </div>
+      <i class="bi bi-file-earmark-text icon"></i>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="stat-card d-flex justify-content-between align-items-center" style="border-left:4px solid #1e7e34">
+      <div>
+        <div class="val" style="color:#1e7e34">{{ stats.sent_quotes }}</div>
+        <div class="lbl">Quotes Sent</div>
+      </div>
+      <i class="bi bi-send-check icon"></i>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="stat-card d-flex justify-content-between align-items-center">
+      <div>
+        <div class="val">{{ stats.total_parts }}</div>
+        <div class="lbl">Parts in Stock</div>
+      </div>
+      <i class="bi bi-box-seam icon"></i>
+    </div>
+  </div>
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="stat-card d-flex justify-content-between align-items-center">
+      <div>
+        <div class="val" style="font-size:1.4rem">${{ '{:,.0f}'.format(stats.inventory_val) }}</div>
+        <div class="lbl">Inventory Value</div>
+      </div>
+      <i class="bi bi-currency-dollar icon"></i>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Recent RFQs -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+        <strong>Recent RFQs</strong>
+        <a href="{{ url_for('rfq_list') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead class="table-light"><tr>
+            <th class="ps-3">RFQ #</th><th>Customer</th><th>Source</th><th>Parts</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+          {% for r in recent_rfqs %}
+          <tr style="cursor:pointer" onclick="location.href='{{ url_for('rfq_detail', rfq_id=r.id) }}'">
+            <td class="ps-3 text-nowrap"><code>{{ r.rfq_number }}</code></td>
+            <td>
+              <div class="fw-semibold">{{ r.customer_name or '(Unknown)' }}</div>
+              <small class="text-muted">{{ r.company or '' }}</small>
+            </td>
+            <td><span class="badge text-bg-light">{{ r.source }}</span></td>
+            <td>{{ r.item_count }}</td>
+            <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-4">No RFQs yet. <a href="{{ url_for('rfq_new') }}">Create one</a></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Quotes -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+        <strong>Recent Quotes</strong>
+        <a href="{{ url_for('quote_list') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead class="table-light"><tr>
+            <th class="ps-3">Quote #</th><th>Customer</th><th>Total</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+          {% for q in recent_quotes %}
+          <tr style="cursor:pointer" onclick="location.href='{{ url_for('quote_view', quote_id=q.id) }}'">
+            <td class="ps-3 text-nowrap"><code>{{ q.quote_number }}</code></td>
+            <td>
+              <div class="fw-semibold">{{ q.customer_name or '(Unknown)' }}</div>
+              <small class="text-muted">{{ q.company or '' }}</small>
+            </td>
+            <td class="fw-semibold">${{ '{:,.2f}'.format(q.total_amount) }}</td>
+            <td><span class="badge badge-{{ q.status }}">{{ q.status }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-4">No quotes yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

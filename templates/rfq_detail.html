@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% block title %}{{ rfq.rfq_number }}{% endblock %}
+{% block page_title %}{{ rfq.rfq_number }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('rfq_list') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <!-- Customer info card -->
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-person"></i> Customer</strong>
+        <span class="badge badge-{{ rfq.status }} float-end">{{ rfq.status }}</span>
+      </div>
+      <div class="card-body">
+        <p class="mb-1 fw-bold fs-5">{{ rfq.customer_name or '(Unknown)' }}</p>
+        <p class="mb-1 text-muted">{{ rfq.company or '' }}</p>
+        {% if rfq.customer_email %}
+        <p class="mb-1"><i class="bi bi-envelope text-muted"></i> <a href="mailto:{{ rfq.customer_email }}">{{ rfq.customer_email }}</a></p>
+        {% endif %}
+        {% if rfq.phone %}
+        <p class="mb-1"><i class="bi bi-telephone text-muted"></i> {{ rfq.phone }}</p>
+        {% endif %}
+        <hr>
+        <small class="text-muted d-block">Source: <strong>{{ rfq.source }}</strong></small>
+        <small class="text-muted d-block">Received: {{ rfq.created_at[:16] }}</small>
+        {% if rfq.notes %}
+        <hr>
+        <small class="text-muted">{{ rfq.notes }}</small>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Create quote panel -->
+    <div class="card">
+      <div class="card-header bg-white py-3"><strong><i class="bi bi-file-earmark-plus"></i> Generate Quote</strong></div>
+      <div class="card-body">
+        <form method="post" action="{{ url_for('create_quote', rfq_id=rfq.id) }}">
+          <div class="mb-3">
+            <label class="form-label">Markup %</label>
+            <div class="input-group">
+              <input name="markup" type="number" step="0.5" min="0" class="form-control"
+                value="{{ settings.get('default_markup', 30) }}">
+              <span class="input-group-text">%</span>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Quote Valid (days)</label>
+            <input name="valid_days" type="number" class="form-control"
+              value="{{ settings.get('quote_valid_days', 30) }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notes (optional)</label>
+            <textarea name="notes" class="form-control" rows="2"></textarea>
+          </div>
+          <button type="submit" class="btn btn-gold w-100 fw-semibold">
+            <i class="bi bi-magic"></i> Auto-Quote All Parts
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Parts list -->
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3">
+        <strong><i class="bi bi-list-ul"></i> Requested Parts ({{ items|length }})</strong>
+      </div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">#</th>
+              <th>Part Number</th>
+              <th>Description</th>
+              <th>Qty</th>
+              <th>Condition</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for it in items %}
+          <tr>
+            <td class="ps-3 text-muted">{{ loop.index }}</td>
+            <td><code class="fw-bold">{{ it.part_number }}</code></td>
+            <td>{{ it.description or '—' }}</td>
+            <td>{{ it.quantity }}</td>
+            <td><span class="badge text-bg-secondary">{{ it.condition }}</span></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-center py-4 text-muted">No parts on this RFQ.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    {% if rfq.raw_email %}
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3 d-flex justify-content-between">
+        <strong><i class="bi bi-envelope-open"></i> Original Email / Text</strong>
+        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#emailBody">
+          Toggle
+        </button>
+      </div>
+      <div class="collapse" id="emailBody">
+        <div class="card-body">
+          <pre class="bg-light p-3 rounded" style="font-size:.82rem;white-space:pre-wrap;max-height:300px;overflow:auto">{{ rfq.raw_email }}</pre>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if quotes %}
+    <div class="card">
+      <div class="card-header bg-white py-3"><strong>Quotes for this RFQ</strong></div>
+      <div class="card-body p-0">
+        <table class="table mb-0">
+          <thead class="table-light">
+            <tr><th class="ps-3">Quote #</th><th>Total</th><th>Status</th><th>Created</th><th></th></tr>
+          </thead>
+          <tbody>
+          {% for q in quotes %}
+          <tr>
+            <td class="ps-3"><code>{{ q.quote_number }}</code></td>
+            <td class="fw-bold">${{ '%.2f'|format(q.total_amount) }}</td>
+            <td><span class="badge badge-{{ q.status }}">{{ q.status }}</span></td>
+            <td><small class="text-muted">{{ q.created_at[:16] }}</small></td>
+            <td><a href="{{ url_for('quote_view', quote_id=q.id) }}" class="btn btn-sm btn-outline-primary py-0">View</a></td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}New RFQ{% endblock %}
+{% block page_title %}Create New RFQ{% endblock %}
+
+{% block content %}
+<form method="post" id="rfqForm">
+<div class="row g-3">
+
+  <!-- Left: customer info -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header bg-white py-3"><strong><i class="bi bi-person"></i> Customer Info</strong></div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label">Customer Name</label>
+          <input name="customer_name" class="form-control" placeholder="Jane Smith">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Email Address</label>
+          <input name="customer_email" type="email" class="form-control" placeholder="jane@airline.com">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Company</label>
+          <input name="company" class="form-control" placeholder="Delta Airlines">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Phone</label>
+          <input name="phone" class="form-control" placeholder="+1 555 000 0000">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">RFQ Source</label>
+          <select name="source" class="form-select">
+            <option value="web">Web Form</option>
+            <option value="email">Email</option>
+            <option value="ils">ILS</option>
+            <option value="partsbase">PartsBase</option>
+            <option value="phone">Phone</option>
+            <option value="other">Other Platform</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Internal Notes</label>
+          <textarea name="notes" class="form-control" rows="3" placeholder="Priority, special conditions…"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: parts entry -->
+  <div class="col-lg-8">
+    <div class="card mb-3">
+      <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+        <strong><i class="bi bi-list-ul"></i> Parts Required</strong>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="addRow()">
+            <i class="bi bi-plus"></i> Add Row
+          </button>
+          <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#pastePanel">
+            <i class="bi bi-clipboard-text"></i> Paste Email / Text
+          </button>
+        </div>
+      </div>
+
+      <!-- Paste panel -->
+      <div class="collapse" id="pastePanel">
+        <div class="card-body border-bottom bg-light">
+          <label class="form-label fw-semibold">Paste RFQ Email or Text</label>
+          <textarea id="pasteArea" class="form-control font-monospace" rows="7"
+            placeholder="Paste the full RFQ email body here. The system will extract part numbers and quantities automatically.
+
+Example:
+P/N: MS21042-3   QTY: 10   Condition: SV
+P/N: AN3-4A      QTY: 5
+Part Number: 1234567, Qty: 2"></textarea>
+          <div class="mt-2 d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-navy" onclick="parseText()">
+              <i class="bi bi-magic"></i> Extract Parts
+            </button>
+            <span id="parseStatus" class="text-muted align-self-center small"></span>
+          </div>
+          <!-- Hidden textarea that gets submitted -->
+          <textarea name="raw_email" id="rawEmail" style="display:none"></textarea>
+        </div>
+      </div>
+
+      <div class="card-body p-0">
+        <table class="table mb-0" id="partsTable">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3" style="width:30%">Part Number *</th>
+              <th style="width:30%">Description</th>
+              <th style="width:12%">Qty</th>
+              <th style="width:15%">Condition</th>
+              <th style="width:8%"></th>
+            </tr>
+          </thead>
+          <tbody id="partsBody">
+            <!-- rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2">
+      <a href="{{ url_for('rfq_list') }}" class="btn btn-outline-secondary">Cancel</a>
+      <button type="submit" class="btn btn-navy px-4">
+        <i class="bi bi-check-lg"></i> Save RFQ
+      </button>
+    </div>
+  </div>
+
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let rowIdx = 0;
+
+function addRow(pn='', desc='', qty=1, cond='SV') {
+  const i = rowIdx++;
+  const tr = document.createElement('tr');
+  tr.id = `part-row-${i}`;
+  tr.innerHTML = `
+    <td class="ps-3">
+      <input name="part_number[]" class="form-control form-control-sm text-uppercase"
+        placeholder="e.g. MS21042-3" value="${pn}" required>
+    </td>
+    <td><input name="description[]" class="form-control form-control-sm" placeholder="Optional" value="${desc}"></td>
+    <td><input name="quantity[]" type="number" min="1" class="form-control form-control-sm" value="${qty}"></td>
+    <td>
+      <select name="condition[]" class="form-select form-select-sm">
+        ${['SV','OH','AR','RP','NS','any'].map(c=>`<option value="${c}" ${c===cond?'selected':''}>${c}</option>`).join('')}
+      </select>
+    </td>
+    <td><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="this.closest('tr').remove()">
+      <i class="bi bi-x"></i></button></td>`;
+  document.getElementById('partsBody').appendChild(tr);
+}
+
+async function parseText() {
+  const text = document.getElementById('pasteArea').value.trim();
+  if (!text) return;
+  document.getElementById('parseStatus').textContent = 'Parsing…';
+  document.getElementById('rawEmail').value = text;
+
+  const res  = await fetch('/api/parse-text', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({text})
+  });
+  const data = await res.json();
+  if (data.items.length) {
+    document.getElementById('partsBody').innerHTML = '';
+    rowIdx = 0;
+    data.items.forEach(it => addRow(it.part_number, it.description, it.quantity, it.condition));
+    document.getElementById('parseStatus').textContent = `✓ ${data.items.length} part(s) found`;
+  } else {
+    document.getElementById('parseStatus').textContent = 'No parts detected — add manually below.';
+  }
+}
+
+// Start with 3 blank rows
+addRow(); addRow(); addRow();
+</script>
+{% endblock %}

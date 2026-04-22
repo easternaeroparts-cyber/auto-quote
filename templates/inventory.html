@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% block title %}Inventory{% endblock %}
+{% block page_title %}Parts Inventory{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-sm btn-navy" data-bs-toggle="modal" data-bs-target="#uploadModal">
+  <i class="bi bi-upload"></i> Upload CSV / Excel
+</button>
+{% endblock %}
+
+{% block content %}
+<!-- Search bar -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form class="d-flex gap-2" method="get">
+      <input type="search" name="q" class="form-control form-control-sm" placeholder="Search part number or description…" value="{{ q }}">
+      <button class="btn btn-sm btn-navy">Search</button>
+      {% if q %}<a href="{{ url_for('inventory') }}" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+    <strong>{{ total }} Part{{ 's' if total != 1 }} in Database</strong>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0" id="invTable">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-3">Part Number</th>
+            <th>Description</th>
+            <th>Cond</th>
+            <th>Qty</th>
+            <th>Unit Cost</th>
+            <th>Unit Price</th>
+            <th>Location</th>
+            <th>UOM</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for p in parts %}
+        <tr id="row-{{ p.id }}">
+          <td class="ps-3"><code class="text-navy fw-bold">{{ p.part_number }}</code></td>
+          <td>{{ p.description or '—' }}</td>
+          <td><span class="badge text-bg-secondary">{{ p.condition }}</span></td>
+          <td class="fw-semibold {% if p.quantity == 0 %}text-danger{% endif %}">{{ p.quantity }}</td>
+          <td>${{ '%.2f'|format(p.unit_cost) }}</td>
+          <td class="fw-semibold">${{ '%.2f'|format(p.unit_price) }}</td>
+          <td><small class="text-muted">{{ p.location or '—' }}</small></td>
+          <td>{{ p.uom }}</td>
+          <td class="text-end pe-3">
+            <button class="btn btn-sm btn-outline-secondary py-0 me-1" onclick="editRow({{ p.id }}, this)" title="Edit">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <form method="post" action="{{ url_for('delete_part', pid=p.id) }}" style="display:inline"
+                  onsubmit="return confirm('Delete {{ p.part_number }}?')">
+              <button class="btn btn-sm btn-outline-danger py-0" title="Delete"><i class="bi bi-trash"></i></button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="text-center py-5 text-muted">
+          No parts yet. <button class="btn btn-sm btn-navy ms-2" data-bs-toggle="modal" data-bs-target="#uploadModal">Upload your inventory</button>
+        </td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Upload Inventory File</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="post" action="{{ url_for('upload_inventory') }}" enctype="multipart/form-data">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">CSV or Excel File</label>
+            <input type="file" name="file" class="form-control" accept=".csv,.xlsx,.xls" required>
+            <div class="form-text">Column names recognised: <code>Part Number / P/N / PN</code>, Description, Condition, Qty / Quantity, Unit Cost, Unit Price / Sell Price, Location, UOM</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Import Mode</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="mode" value="merge" id="mMerge" checked>
+              <label class="form-check-label" for="mMerge">Merge — add new parts, update existing</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="mode" value="replace" id="mReplace">
+              <label class="form-check-label" for="mReplace">Replace — clear all parts first</label>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-navy">Upload & Import</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Inline Edit Modal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Edit Part</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body" id="editBody"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const rows = {};
+{% for p in parts %}
+rows[{{ p.id }}] = {
+  part_number:'{{ p.part_number }}', description:'{{ (p.description or '')|replace("'","\\'")|replace('"','\\"') }}',
+  condition:'{{ p.condition }}', quantity:{{ p.quantity }},
+  unit_cost:{{ p.unit_cost }}, unit_price:{{ p.unit_price }},
+  location:'{{ (p.location or '')|replace("'","\\'")|replace('"','\\"') }}', uom:'{{ p.uom }}'
+};
+{% endfor %}
+
+function editRow(id) {
+  const p = rows[id];
+  document.getElementById('editBody').innerHTML = `
+    <form onsubmit="saveRow(event,${id})">
+      <div class="row g-2">
+        <div class="col-6"><label class="form-label">Part Number</label>
+          <input name="part_number" class="form-control" value="${p.part_number}" required></div>
+        <div class="col-6"><label class="form-label">Condition</label>
+          <input name="condition" class="form-control" value="${p.condition}"></div>
+        <div class="col-12"><label class="form-label">Description</label>
+          <input name="description" class="form-control" value="${p.description}"></div>
+        <div class="col-4"><label class="form-label">Qty</label>
+          <input name="quantity" type="number" class="form-control" value="${p.quantity}"></div>
+        <div class="col-4"><label class="form-label">Unit Cost</label>
+          <input name="unit_cost" type="number" step="0.01" class="form-control" value="${p.unit_cost}"></div>
+        <div class="col-4"><label class="form-label">Unit Price</label>
+          <input name="unit_price" type="number" step="0.01" class="form-control" value="${p.unit_price}"></div>
+        <div class="col-6"><label class="form-label">Location</label>
+          <input name="location" class="form-control" value="${p.location}"></div>
+        <div class="col-6"><label class="form-label">UOM</label>
+          <input name="uom" class="form-control" value="${p.uom}"></div>
+      </div>
+      <div class="mt-3 text-end">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-navy ms-2">Save Changes</button>
+      </div>
+    </form>`;
+  new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+async function saveRow(e, id) {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const res = await fetch(`/inventory/edit/${id}`, {method:'POST', body:fd});
+  const data = await res.json();
+  if (data.success) location.reload();
+}
+</script>
+{% endblock %}

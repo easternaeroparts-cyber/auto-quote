@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Quotes{% endblock %}
+{% block page_title %}All Quotes{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-hover mb-0">
+      <thead class="table-light">
+        <tr>
+          <th class="ps-3">Quote #</th>
+          <th>Customer</th>
+          <th>Company</th>
+          <th>Total</th>
+          <th>Markup</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Sent</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for q in quotes %}
+      <tr>
+        <td class="ps-3"><code>{{ q.quote_number }}</code></td>
+        <td class="fw-semibold">{{ q.customer_name or '—' }}</td>
+        <td><small class="text-muted">{{ q.company or '—' }}</small></td>
+        <td class="fw-bold">${{ '{:,.2f}'.format(q.total_amount) }}</td>
+        <td><small>{{ q.markup_percent }}%</small></td>
+        <td><span class="badge badge-{{ q.status }}">{{ q.status }}</span></td>
+        <td><small class="text-muted">{{ q.created_at[:10] }}</small></td>
+        <td><small class="text-muted">{{ q.sent_at[:10] if q.sent_at else '—' }}</small></td>
+        <td class="text-end pe-3">
+          <a href="{{ url_for('quote_view', quote_id=q.id) }}" class="btn btn-sm btn-outline-primary py-0">View</a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="9" class="text-center py-5 text-muted">No quotes yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
