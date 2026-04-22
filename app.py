@@ -1723,16 +1723,19 @@ def _parse_email_signature(body, sender_name=''):
 
 
 def _build_to_block(rfq):
-    """Build a multi-line HTML 'To:' block from RFQ contact fields."""
-    def v(key): return (rfq.get(key) or rfq[key] if isinstance(rfq, dict) else rfq[key]) if True else ''
-    try:
-        name    = (rfq.get('customer_name')    if isinstance(rfq, dict) else rfq['customer_name'])    or ''
-        company = (rfq.get('company')           if isinstance(rfq, dict) else rfq['company'])          or ''
-        email   = (rfq.get('customer_email')    if isinstance(rfq, dict) else rfq['customer_email'])   or ''
-        phone   = (rfq.get('phone')             if isinstance(rfq, dict) else rfq['phone'])            or ''
-        website = (rfq.get('website', '')       if isinstance(rfq, dict) else '')
-    except Exception:
-        name = company = email = phone = website = ''
+    """Build a multi-line HTML 'To:' block from all filled RFQ contact fields."""
+    def _get(key):
+        try:
+            return (rfq.get(key) if isinstance(rfq, dict) else rfq[key]) or ''
+        except Exception:
+            return ''
+
+    name    = _get('customer_name')
+    company = _get('company')
+    email   = _get('customer_email')
+    phone   = _get('phone')
+    website = _get('website')
+    address = _get('address')
 
     # Remove customer name prefix from company if accidentally captured together
     if company and name and company.lower().startswith(name.lower()):
@@ -1748,7 +1751,14 @@ def _build_to_block(rfq):
     if phone:
         lines.append(f'<span>Tel: {phone}</span>')
     if website:
-        lines.append(f'<a href="{website}" style="color:#1a3c6e;text-decoration:none">{website}</a>')
+        ws = website if website.startswith('http') else f'https://{website}'
+        lines.append(f'<a href="{ws}" style="color:#1a3c6e;text-decoration:none">{website}</a>')
+    if address:
+        # Render each address line separately
+        for addr_line in address.strip().splitlines():
+            addr_line = addr_line.strip()
+            if addr_line:
+                lines.append(f'<span style="color:#6b7280">{addr_line}</span>')
 
     inner = '<br>\n  '.join(lines) if lines else '—'
     return f'<p style="font-size:13px;margin:4px 0 12px;line-height:1.8;color:#374151">{inner}</p>'
@@ -1951,6 +1961,11 @@ def build_quote_email(quote, rfq, items, settings):
 <p style="margin-top:24px;color:#9ca3af;font-size:11px;text-align:center">
   All prices in {currency}. Quote valid for {quote['valid_days']} days from date of issue.<br>
   All parts are certified unless otherwise stated. Terms: COD unless prior credit arrangement established.
+</p>
+
+<p style="margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:11px;text-align:center">
+  Proudly Made in Nepal &#x1F1F3;&#x1F1F5; by Eastern Aero Nepal Pvt Ltd &nbsp;|&nbsp;
+  Learn more about <a href="https://www.eastern-aero.com" style="color:#9ca3af;text-decoration:underline">Eastern Aero Nepal</a>
 </p>
 </body></html>"""
 
