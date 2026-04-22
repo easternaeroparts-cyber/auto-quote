@@ -1188,8 +1188,6 @@ def send_quote(quote_id):
         flash('No customer email on file.', 'error')
         return redirect(url_for('quote_view', quote_id=quote_id))
 
-    html = build_quote_email(quote, rfq, items, settings)
-
     smtp_host = settings.get('smtp_host', 'smtp.gmail.com').strip()
     smtp_port = int(settings.get('smtp_port', 587))
     smtp_user = settings.get('smtp_user', '').strip()
@@ -1200,7 +1198,13 @@ def send_quote(quote_id):
         flash('Email is not configured. Go to Settings and enter your SMTP or Resend API credentials.', 'error')
         return redirect(url_for('quote_view', quote_id=quote_id))
 
-    # Mark as sending immediately so the page doesn't hang
+    # Convert SQLite rows to plain dicts so they're safe to use in background thread
+    quote_d    = dict(quote)
+    rfq_d      = dict(rfq)
+    items_d    = [dict(i) for i in items]
+    settings_d = dict(settings)
+
+    # Mark as sending immediately so the page returns right away
     conn2 = get_db()
     conn2.execute("UPDATE quotes SET status='sending' WHERE id=?", (quote_id,))
     conn2.commit()
@@ -1212,16 +1216,23 @@ def send_quote(quote_id):
         sent = False
         last_err = None
 
+        # Build email HTML inside the thread so logo fetch doesn't block the request
+        try:
+            html = build_quote_email(quote_d, rfq_d, items_d, settings_d)
+        except Exception as e:
+            print(f'[Email] build_quote_email failed: {e}')
+            html = f'<p>Quote {quote_d["quote_number"]} — please contact us for details.</p>'
+
         # ── 1. Try Resend HTTP API first (works on Railway, no SMTP ports needed) ──
         resend_key = (
             os.environ.get('RESEND_API_KEY') or
-            settings.get('resend_api_key', '')
+            settings_d.get('resend_api_key', '')
         ).strip()
 
-        company = settings.get('company_name', 'Eastern Aero Parts')
+        company = settings_d.get('company_name', 'Eastern Aero Parts')
         raw_from = smtp_user or 'sales@eastern-aero.com'
         from_addr = f"{company} <{raw_from}>"
-        subject_line = f"Quotation {quote['quote_number']} — {company}"
+        subject_line = f"Quotation {quote_d['quote_number']} — {company}"
 
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject_line
@@ -1298,10 +1309,10 @@ def send_quote(quote_id):
         db = get_db()
         if sent:
             db.execute("UPDATE quotes SET status='sent', sent_at=CURRENT_TIMESTAMP WHERE id=?", (quote_id,))
-            print(f'[Email] Quote {quote["quote_number"]} sent to {to_email}')
+            print(f'[Email] Quote {quote_d["quote_number"]} sent to {to_email}')
         else:
             db.execute("UPDATE quotes SET status='draft' WHERE id=?", (quote_id,))
-            print(f'[Email] FAILED to send {quote["quote_number"]}: {last_err}')
+            print(f'[Email] FAILED to send {quote_d["quote_number"]}: {last_err}')
         db.commit()
         db.close()
 
