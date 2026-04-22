@@ -280,6 +280,8 @@ def init_db():
             updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )""",
         "ALTER TABLE rfqs ADD COLUMN customer_ref TEXT",
+        "ALTER TABLE rfqs ADD COLUMN address TEXT",
+        "ALTER TABLE customer_profiles ADD COLUMN address TEXT",
     ]
     for sql in migrations:
         try:
@@ -2005,28 +2007,28 @@ def api_update_customer():
     email    = (data.get('email') or '').strip().lower()
     phone    = (data.get('phone') or '').strip()
     website  = (data.get('website') or '').strip()
+    address  = (data.get('address') or '').strip()
 
     if not rfq_id:
         return jsonify({'ok': False, 'error': 'Missing rfq_id'}), 400
 
     conn = get_db()
-    # Update the RFQ record
     conn.execute(
-        'UPDATE rfqs SET customer_name=?, company=?, customer_email=?, phone=?, website=? WHERE id=?',
-        (name, company, email, phone, website, rfq_id)
+        'UPDATE rfqs SET customer_name=?, company=?, customer_email=?, phone=?, website=?, address=? WHERE id=?',
+        (name, company, email, phone, website, address, rfq_id)
     )
-    # Upsert into customer_profiles so future RFQs from same email get this data
     if email:
         conn.execute('''
-            INSERT INTO customer_profiles (email, name, company, phone, website, updated_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO customer_profiles (email, name, company, phone, website, address, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(email) DO UPDATE SET
                 name=excluded.name,
                 company=excluded.company,
                 phone=excluded.phone,
                 website=excluded.website,
+                address=excluded.address,
                 updated_at=CURRENT_TIMESTAMP
-        ''', (email, name, company, phone, website))
+        ''', (email, name, company, phone, website, address))
     conn.commit()
     conn.close()
     return jsonify({'ok': True})

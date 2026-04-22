@@ -91,14 +91,18 @@
           <div id="dispCompany">{{ rfq.company or '' }}</div>
           {% if rfq.customer_email %}<div><a href="mailto:{{ rfq.customer_email }}" id="dispEmail">{{ rfq.customer_email }}</a></div>{% endif %}
           {% if rfq.phone %}<div class="text-muted small" id="dispPhone">{{ rfq.phone }}</div>{% endif %}
+          {% if rfq.website %}<div class="text-muted small" id="dispWebsite"><a href="{{ rfq.website }}" target="_blank">{{ rfq.website }}</a></div>{% endif %}
+          {% if rfq.address %}<div class="text-muted small" id="dispAddress" style="white-space:pre-line">{{ rfq.address }}</div>{% endif %}
         </div>
 
         <!-- Edit mode (hidden by default) -->
         <div id="custEdit" class="d-none">
-          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_name"    placeholder="Full name"    value="{{ rfq.customer_name or '' }}"></div>
-          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_company" placeholder="Company"      value="{{ rfq.company or '' }}"></div>
-          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_email"   placeholder="Email"        value="{{ rfq.customer_email or '' }}" type="email"></div>
-          <div class="mb-2"><input class="form-control form-control-sm" id="cedit_phone"   placeholder="Phone"        value="{{ rfq.phone or '' }}"></div>
+          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_name"    placeholder="Full name"         value="{{ rfq.customer_name or '' }}"></div>
+          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_company" placeholder="Company"           value="{{ rfq.company or '' }}"></div>
+          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_email"   placeholder="Email"             value="{{ rfq.customer_email or '' }}" type="email"></div>
+          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_phone"   placeholder="Phone"             value="{{ rfq.phone or '' }}"></div>
+          <div class="mb-1"><input class="form-control form-control-sm" id="cedit_website" placeholder="Website (optional)" value="{{ rfq.website or '' }}"></div>
+          <div class="mb-2"><textarea class="form-control form-control-sm" id="cedit_address" placeholder="Address (optional)" rows="2">{{ rfq.address or '' }}</textarea></div>
           <div class="d-flex gap-2">
             <button class="btn btn-sm btn-gold fw-semibold" onclick="saveCustomer()" style="font-size:.8rem">
               <i class="bi bi-check-lg"></i> Save
@@ -382,7 +386,8 @@ async function saveCustomer() {
     company: document.getElementById('cedit_company').value.trim(),
     email:   document.getElementById('cedit_email').value.trim(),
     phone:   document.getElementById('cedit_phone').value.trim(),
-    website: ''
+    website: document.getElementById('cedit_website').value.trim(),
+    address: document.getElementById('cedit_address').value.trim(),
   };
   const r = await fetch('/api/update-customer', {
     method: 'POST',
@@ -391,13 +396,16 @@ async function saveCustomer() {
   });
   const data = await r.json();
   if (data.ok) {
-    // Update display
     document.getElementById('dispName').textContent    = payload.name    || '—';
     document.getElementById('dispCompany').textContent = payload.company || '';
     const ea = document.getElementById('dispEmail');
     if (ea) { ea.textContent = payload.email; ea.href = 'mailto:' + payload.email; }
     const ep = document.getElementById('dispPhone');
     if (ep) ep.textContent = payload.phone;
+    const ew = document.getElementById('dispWebsite');
+    if (ew) { ew.textContent = payload.website; if (payload.website) { ew.querySelector('a') ? ew.querySelector('a').href = payload.website : null; } }
+    const eaddr = document.getElementById('dispAddress');
+    if (eaddr) eaddr.textContent = payload.address;
     cancelCustomerEdit();
     const badge = document.getElementById('custSavedBadge');
     badge.classList.remove('d-none');
