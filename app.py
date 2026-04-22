@@ -304,39 +304,74 @@ def get_settings():
 
 def extract_forwarded_content(body):
     """
-    Detect if an email is a forwarded message and extract:
-    - The original sender's name and email
-    - The original body content
+    Detect a forwarded email and extract everything after the divider line as the
+    original email. Treats it identically to a directly received email:
+    - Extracts original sender name + email from the forwarded headers
+    - Extracts original subject, date if present
+    - Returns the full original body (everything after the header block)
+      so it can be parsed for parts, signature, customer info etc.
+
     Returns (original_name, original_email, original_body) or (None, None, body)
     """
-    # Common forwarded message markers
-    fwd_markers = [
-        r'[-]+\s*Forwarded [Mm]essage\s*[-]+',
-        r'[-]+\s*Original [Mm]essage\s*[-]+',
-        r'Begin forwarded message:',
-        r'[-]+\s*Forwarded by',
-    ]
+    # All common forwarded message divider patterns
+    FWD_MARKERS = re.compile(
+        r'(-{3,}\s*(?:Forwarded [Mm]essage|Original [Mm]essage|Forwarded by)[^-]*-{3,}'
+        r'|Begin forwarded message\s*:)',
+        re.I
+    )
 
-    fwd_start = None
-    for marker in fwd_markers:
-        m = re.search(marker, body)
-        if m:
-            fwd_start = m.start()
-            break
-
-    if fwd_start is None:
+    m = FWD_MARKERS.search(body)
+    if not m:
         return None, None, body  # Not a forwarded email
 
-    fwd_content = body[fwd_start:]
+    # Everything after the divider line, strip leading whitespace/newlines
+    after_divider = body[m.end():].lstrip('\r\n')
 
-    # Extract original From
-    from_match = re.search(r'From:\s*([^\n<]+?)?\s*[<]?([\w.+\-]+@[\w\-]+\.[a-zA-Z]+)[>]?', fwd_content, re.I)
-    orig_name  = from_match.group(1).strip().strip('"') if from_match and from_match.group(1) else ''
-    orig_email = from_match.group(2).strip() if from_match else ''
+    # ── Parse the forwarded header block ─────────────────────────────────────
+    # Header lines look like:  "From: Name <email>"  "Date: ..."  "Subject: ..."  "To: ..."
+    # They end at the first blank line after at least one header was found
+    HEADER_LINE = re.compile(
+        r'^[ \t]*(From|Date|Subject|To|Cc|Reply-To)\s*:\s*(.+)$', re.I | re.MULTILINE)
 
-    # Get the body after the forwarded header block (skip To/Date/Subject lines)
-    header_end = re.search(r'\n\s*\n', fwd_content)
-    orig_body  = fwd_content[header_end.end():] if header_end else fwd_content
+    orig_name  = ''
+    orig_email = ''
+    orig_subj  = ''
+
+    lines = after_divider.splitlines(keepends=True)
+    found_header = False
+    pos = 0
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if found_header:
+                # Blank line after headers = end of header block
+                pos += len(line)
+                break
+            else:
+                # Leading blank line before headers — skip
+                pos += len(line)
+                continue
+        hm = HEADER_LINE.match(line)
+        if hm:
+            found_header = True
+            key, val = hm.group(1).lower(), hm.group(2).strip()
+            if key == 'from':
+                em = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]+', val)
+                if em:
+                    orig_email = em.group()
+                name_part = re.sub(r'<[^>]+>', '', val).strip().strip('"').strip("'")
+                if name_part and name_part.lower() != orig_email.lower():
+                    orig_name = name_part
+            elif key == 'subject':
+                orig_subj = val
+        pos += len(line)
+
+    # Original body = everything after the blank line that ends the header block
+    orig_body = after_divider[pos:].strip()
+
+    # If no blank-line boundary found, take everything after divider as body
+    if not orig_body:
+        orig_body = after_divider.strip()
 
     return orig_name, orig_email, orig_body
 
