@@ -924,6 +924,30 @@ def fetch_email_rfqs():
     return redirect(url_for('rfq_list'))
 
 
+def _fetch_from_folder(mail, folder):
+    """Fetch UNSEEN + 10 most recent message IDs from a given IMAP folder."""
+    try:
+        status, _ = mail.select(folder)
+        if status != 'OK':
+            return []
+    except Exception:
+        return []
+    try:
+        _, unseen_ids = mail.search(None, 'UNSEEN')
+        _, all_recent = mail.search(None, 'ALL')
+    except Exception:
+        return []
+    recent_10 = list(reversed(all_recent[0].split()))[:10]
+    unseen_list = unseen_ids[0].split()
+    seen = set()
+    result = []
+    for mid in (unseen_list + recent_10):
+        if mid not in seen:
+            seen.add(mid)
+            result.append((folder, mid))
+    return result
+
+
 def _fetch_imap(settings):
     import socket
     socket.setdefaulttimeout(30)  # 30s timeout per IMAP operation
@@ -931,26 +955,23 @@ def _fetch_imap(settings):
         settings.get('imap_host', 'imap.gmail.com'),
         int(settings.get('imap_port', 993)))
     mail.login(settings['imap_user'], settings['imap_pass'])
-    mail.select(settings.get('imap_folder', 'INBOX'))
 
-    # Get all UNSEEN (new incoming) emails
-    _, unseen_ids = mail.search(None, 'UNSEEN')
-    # Get 10 most recent overall (for initial seeding)
-    _, all_recent = mail.search(None, 'ALL')
+    # Always read INBOX plus any configured label (if different)
+    folders_to_check = ['INBOX']
+    extra_folder = settings.get('imap_folder', 'INBOX').strip()
+    if extra_folder and extra_folder.upper() != 'INBOX':
+        folders_to_check.append(extra_folder)
+
+    # Collect (folder, msg_id) pairs, deduplicated by message-id later
+    folder_msg_pairs = []
+    for folder in folders_to_check:
+        folder_msg_pairs.extend(_fetch_from_folder(mail, folder))
+
     conn = get_db()
     count = 0
 
-    recent_10 = list(reversed(all_recent[0].split()))[:10]
-    unseen_list = unseen_ids[0].split()
-    # Combine and deduplicate, keeping order (newest first)
-    seen_set = set()
-    all_ids = []
-    for mid in (unseen_list + recent_10):
-        if mid not in seen_set:
-            seen_set.add(mid)
-            all_ids.append(mid)
-
-    for mid in all_ids:
+    for folder, mid in folder_msg_pairs:
+        mail.select(folder)
         try:
             _, data = mail.fetch(mid, '(RFC822)')
             if not data or not data[0] or not isinstance(data[0], tuple):
@@ -1015,15 +1036,28 @@ def _fetch_imap(settings):
             parse_body = body
 
         # Decide if it looks like an RFQ
+        to_header = (msg.get('To', '') + ' ' + msg.get('Delivered-To', '') + ' ' + msg.get('X-Original-To', '')).lower()
+        addressed_to_rfq = 'rfq@eastern-aero.com' in to_header
+
         combined = (subject + ' ' + parse_body).lower()
-        is_rfq   = any(kw in combined for kw in [
+
+        # Keywords that identify a genuine RFQ from a customer
+        rfq_keywords = [
             'rfq', 'request for quote', 'request for quotation',
-            'part number', 'p/n', 'parts needed', 'quote request',
-            'availability', 'aircraft part', 'aviation part', 'aog',
-            'part #', 'pn:', 'p/n:', 'nsn', 'quote', 'pricing',
-            'price request', 'stock', 'lead time', 'need parts',
-            'looking for', 'do you have', 'quantity', 'qty'])
-        parsed   = parse_rfq_text(parse_body)
+            'quote', 'quotation', 'part no', 'part number', 'part #',
+            'p/n', 'pn:', 'p/n:', 'description', 'quantity', 'qty',
+            'parts needed', 'availability', 'aircraft part', 'aviation part',
+            'aog', 'nsn', 'pricing', 'price request', 'stock', 'lead time',
+            'need parts', 'looking for', 'do you have']
+
+        has_rfq_keywords = any(kw in combined for kw in rfq_keywords)
+
+        # Always treat emails from PartsBase as RFQs
+        from_partsbase = 'rfqs@partsbase.com' in from_raw.lower()
+
+        # Import if: from PartsBase, forwarded, (to rfq@ + keywords), or has keywords
+        is_rfq = from_partsbase or is_forwarded or (addressed_to_rfq and has_rfq_keywords) or has_rfq_keywords
+        parsed = parse_rfq_text(parse_body)
 
         if parsed or is_rfq:
             rfq_no = gen_rfq_number()
