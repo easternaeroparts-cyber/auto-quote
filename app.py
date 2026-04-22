@@ -2034,17 +2034,23 @@ def _fetch_imap(settings):
         cust_email = em_match.group() if em_match else from_raw
         cust_name  = from_raw.split('<')[0].strip().strip('"') if '<' in from_raw else ''
 
-        # Body — prefer plain text; fall back to stripped HTML
+        # Body — always collect BOTH plain text and HTML parts.
+        # We need HTML for PartsBase table parsing, plain for text parsing.
         body = ''
         raw_html_body = ''
         if msg.is_multipart():
             for part in msg.walk():
                 ct = part.get_content_type()
-                if ct == 'text/plain':
-                    body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                    break
-                if ct == 'text/html' and not body:
-                    raw_html_body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                if ct == 'text/plain' and not body:
+                    try:
+                        body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    except Exception:
+                        pass
+                elif ct == 'text/html' and not raw_html_body:
+                    try:
+                        raw_html_body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                    except Exception:
+                        pass
         else:
             ct = msg.get_content_type()
             if ct == 'text/html':
@@ -2054,17 +2060,39 @@ def _fetch_imap(settings):
         if not body and raw_html_body:
             body = _strip_html(raw_html_body)
 
+        # Always treat emails from PartsBase as RFQs (direct)
+        from_partsbase = 'rfqs@partsbase.com' in from_raw.lower()
+
         # Handle forwarded emails — extract original sender and content
         fwd_name, fwd_email, parse_body = extract_forwarded_content(body)
         is_forwarded = fwd_name is not None
 
-        if is_forwarded:
-            # Use original sender info if available
+        # ── Detect PartsBase content inside a forwarded email ─────────────────
+        # Pattern: someone forwarded a PartsBase Quick Quote Request to rfq@
+        PB_FWD_MARKERS = [
+            'partsbase quick quote request',
+            'rfqs@partsbase.com',
+            'partsbase.com on behalf of',
+            'quick quote request #',
+        ]
+        body_lower = (body + ' ' + subject).lower()
+        is_forwarded_partsbase = is_forwarded and any(m in body_lower for m in PB_FWD_MARKERS)
+
+        if is_forwarded_partsbase:
+            # Treat exactly like a direct PartsBase email
+            from_partsbase = True
+            is_forwarded   = False
+            parse_body     = body  # full body for keyword check; HTML parser does the real work
+            # Don't use fwd_name/fwd_email — the "From" in the forward header is
+            # rfq@eastern-aero.com or an internal address, not the real customer.
+            # The real customer comes from the PartsBase HTML table.
+
+        elif is_forwarded:
+            # Regular forwarded email — use sender info from the forwarded header
             if fwd_email:
                 cust_email = fwd_email
             if fwd_name:
                 cust_name = fwd_name
-            # Add forwarded note to subject
             if not subject.lower().startswith('fwd') and not subject.lower().startswith('fw'):
                 subject = f'[Forwarded] {subject}'
         else:
@@ -2083,12 +2111,10 @@ def _fetch_imap(settings):
             'p/n', 'pn:', 'p/n:', 'description', 'quantity', 'qty',
             'parts needed', 'availability', 'aircraft part', 'aviation part',
             'aog', 'nsn', 'pricing', 'price request', 'stock', 'lead time',
-            'need parts', 'looking for', 'do you have']
+            'need parts', 'looking for', 'do you have',
+            'partsbase', 'quick quote request']
 
         has_rfq_keywords = any(kw in combined for kw in rfq_keywords)
-
-        # Always treat emails from PartsBase as RFQs
-        from_partsbase = 'rfqs@partsbase.com' in from_raw.lower()
 
         # ── Sender blocklist: known non-RFQ automated senders ────────────────
         BLOCKED_DOMAINS = [
@@ -2100,16 +2126,6 @@ def _fetch_imap(settings):
             'twitter.com', 'instagram.com', 'amazon.com',
         ]
         sender_blocked = any(b in cust_email.lower() for b in BLOCKED_DOMAINS)
-
-        # ── RFQ keyword check ─────────────────────────────────────────────────
-        rfq_keywords = [
-            'rfq', 'request for quote', 'request for quotation',
-            'quote', 'quotation', 'part no', 'part number', 'part #',
-            'p/n', 'pn:', 'p/n:', 'description', 'quantity', 'qty',
-            'parts needed', 'availability', 'aircraft part', 'aviation part',
-            'aog', 'nsn', 'pricing', 'price request', 'stock', 'lead time',
-            'need parts', 'looking for', 'do you have']
-        has_rfq_keywords = any(kw in combined for kw in rfq_keywords)
 
         # ── Final RFQ determination ───────────────────────────────────────────
         # PartsBase and forwarded emails always qualify.
