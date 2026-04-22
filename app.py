@@ -228,6 +228,10 @@ def init_db():
         'smtp_user':       'easternaeroparts@gmail.com',
         'smtp_pass':       '',
         'resend_api_key':    '',
+        'pb_client_id':      'EAAEAPI',
+        'pb_client_secret':  '6F6A2E82-EF6C-4FBE-9F4A-882466FE5138',
+        'pb_username':       'easternaero',
+        'pb_password':       '',
     }
     for k, v in defaults.items():
         conn.execute('INSERT OR IGNORE INTO settings VALUES (?,?)', (k, v))
@@ -295,6 +299,12 @@ def init_db():
         "ALTER TABLE quote_attachments ADD COLUMN part_number TEXT",
         "ALTER TABLE quote_attachments ADD COLUMN serial_number TEXT",
         "ALTER TABLE quote_attachments ADD COLUMN verified INTEGER DEFAULT 0",
+        "ALTER TABLE rfqs ADD COLUMN pb_rfq_id TEXT",
+        "ALTER TABLE rfqs ADD COLUMN pb_sent_at TEXT",
+        "INSERT OR IGNORE INTO settings VALUES ('pb_client_id','EAAEAPI')",
+        "INSERT OR IGNORE INTO settings VALUES ('pb_client_secret','6F6A2E82-EF6C-4FBE-9F4A-882466FE5138')",
+        "INSERT OR IGNORE INTO settings VALUES ('pb_username','easternaero')",
+        "INSERT OR IGNORE INTO settings VALUES ('pb_password','')",
     ]
     for sql in migrations:
         try:
@@ -2513,6 +2523,130 @@ def _fetch_imap(settings):
     return count
 
 
+# ─── Partsbase Integration ───────────────────────────────────────────────────
+
+import time as _time
+import urllib.parse as _urlparse
+
+_PB_AUTH_URL  = 'https://auth.partsbase.com/connect/token'
+_PB_API_BASE  = 'https://apiservices.partsbase.com'
+_pb_token_cache = {'token': None, 'expires_at': 0}
+
+
+def _pb_get_token():
+    """Return a valid Partsbase OAuth2 Bearer token, refreshing if needed."""
+    now = _time.time()
+    if _pb_token_cache['token'] and now < _pb_token_cache['expires_at'] - 60:
+        return _pb_token_cache['token']
+
+    s = get_settings()
+    client_id     = s.get('pb_client_id',     '').strip()
+    client_secret = s.get('pb_client_secret', '').strip()
+    username      = s.get('pb_username',      '').strip()
+    password      = s.get('pb_password',      '').strip()
+
+    if not all([client_id, client_secret, username, password]):
+        raise ValueError('Partsbase credentials incomplete — check Settings → Partsbase.')
+
+    body = _urlparse.urlencode({
+        'grant_type':    'password',
+        'client_id':     client_id,
+        'client_secret': client_secret,
+        'scope':         'api openid',
+        'username':      username,
+        'password':      password,
+    }).encode()
+
+    req = urllib.request.Request(_PB_AUTH_URL, data=body,
+                                  headers={'Content-Type': 'application/x-www-form-urlencoded'})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        raise ValueError(f'Partsbase auth failed ({e.code}): {e.read().decode()[:200]}')
+
+    token = data.get('access_token')
+    expires_in = int(data.get('expires_in', 3600))
+    _pb_token_cache['token']      = token
+    _pb_token_cache['expires_at'] = now + expires_in
+    return token
+
+
+def _pb_api(method, path, payload=None):
+    """Make an authenticated call to the Partsbase API. Returns parsed JSON."""
+    token = _pb_get_token()
+    url   = _PB_API_BASE.rstrip('/') + '/' + path.lstrip('/')
+    body  = json.dumps(payload).encode() if payload else None
+    req   = urllib.request.Request(url, data=body, method=method.upper(),
+                                    headers={
+                                        'Authorization': f'Bearer {token}',
+                                        'Content-Type':  'application/json',
+                                        'Accept':        'application/json',
+                                    })
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        raise ValueError(f'Partsbase API error ({e.code}): {e.read().decode()[:300]}')
+
+
+@app.route('/rfqs/<int:rfq_id>/send-partsbase', methods=['POST'])
+@login_required
+def rfq_send_partsbase(rfq_id):
+    """Submit an RFQ to the Partsbase marketplace."""
+    conn = get_db()
+    rfq  = conn.execute('SELECT * FROM rfqs WHERE id=?', (rfq_id,)).fetchone()
+    if not rfq:
+        conn.close()
+        return jsonify({'success': False, 'error': 'RFQ not found'}), 404
+
+    items = conn.execute('SELECT * FROM rfq_items WHERE rfq_id=?', (rfq_id,)).fetchall()
+    if not items:
+        conn.close()
+        return jsonify({'success': False, 'error': 'RFQ has no line items'}), 400
+
+    parts = [{
+        'partNumber':  i['part_number'],
+        'description': i['description'] or '',
+        'quantity':    int(i['quantity'] or 1),
+        'condition':   i['condition'] or 'SV',
+        'notes':       '',
+    } for i in items]
+
+    payload = {
+        'rfqNumber': rfq['rfq_number'],
+        'buyerReference': rfq['rfq_number'],
+        'parts':     parts,
+        'notes':     rfq.get('notes') or '',
+        'currency':  'USD',
+    }
+
+    try:
+        result = _pb_api('POST', '/api/rfqs', payload)
+        pb_id  = result.get('id') or result.get('rfqId') or result.get('rfq_id') or str(result)
+        sent_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+        conn.execute('UPDATE rfqs SET pb_rfq_id=?, pb_sent_at=? WHERE id=?',
+                     (str(pb_id), sent_at, rfq_id))
+        conn.commit()
+        conn.close()
+        return jsonify({'success': True, 'pb_rfq_id': str(pb_id), 'sent_at': sent_at})
+    except ValueError as e:
+        conn.close()
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/partsbase/test')
+@login_required
+def api_partsbase_test():
+    """Test Partsbase credentials by fetching a token."""
+    try:
+        _pb_token_cache['token'] = None   # force fresh token
+        _pb_get_token()
+        return jsonify({'success': True, 'message': 'Connected to Partsbase successfully.'})
+    except ValueError as e:
+        return jsonify({'success': False, 'error': str(e)}), 400
+
+
 # ─── Routes: API / Settings ──────────────────────────────────────────────────
 
 
@@ -2648,10 +2782,12 @@ def settings_page():
         for key in ['company_name','company_email','company_phone','company_address',
                     'default_markup','quote_valid_days',
                     'imap_host','imap_port','imap_user','imap_pass','imap_folder',
-                    'smtp_host','smtp_port','smtp_user','smtp_pass','resend_api_key']:
+                    'smtp_host','smtp_port','smtp_user','smtp_pass','resend_api_key',
+                    'pb_client_id','pb_client_secret','pb_username','pb_password']:
             conn.execute('INSERT OR REPLACE INTO settings VALUES (?,?)', (key, request.form.get(key,'')))
         conn.commit()
         conn.close()
+        _pb_token_cache['token'] = None   # invalidate cached token on credential change
         flash('Settings saved.', 'success')
         return redirect(url_for('settings_page'))
     return render_template('settings.html', s=get_settings())

@@ -58,6 +58,25 @@
             </button>
           </form>
         {% endif %}
+
+        <hr class="my-2">
+
+        <!-- Partsbase Send -->
+        {% if rfq.pb_rfq_id %}
+          <div class="text-center">
+            <span class="badge text-bg-success py-2 px-3 w-100" style="font-size:.8rem">
+              <i class="bi bi-check-circle-fill me-1"></i> Sent to Partsbase
+            </span>
+            <small class="d-block text-muted mt-1">PB ID: {{ rfq.pb_rfq_id }}</small>
+            <small class="d-block text-muted">{{ rfq.pb_sent_at[:16] if rfq.pb_sent_at else '' }}</small>
+          </div>
+        {% else %}
+          <button type="button" id="pbSendBtn" class="btn btn-outline-primary w-100 fw-semibold"
+                  onclick="sendToPartsbase({{ rfq.id }})">
+            <i class="bi bi-send me-1"></i> Send to Partsbase
+          </button>
+          <div id="pbSendResult" class="mt-2" style="font-size:.82rem"></div>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -138,4 +157,34 @@
   </div>
 
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function sendToPartsbase(rfqId) {
+  const btn = document.getElementById('pbSendBtn');
+  const res_div = document.getElementById('pbSendResult');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sending…';
+  res_div.innerHTML = '';
+
+  try {
+    const res  = await fetch('/rfqs/' + rfqId + '/send-partsbase', {method: 'POST'});
+    const data = await res.json();
+    if (data.success) {
+      btn.className = 'btn btn-success w-100 fw-semibold';
+      btn.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> Sent to Partsbase';
+      res_div.innerHTML = '<small class="text-muted">PB ID: ' + data.pb_rfq_id + ' &mdash; ' + (data.sent_at || '') + '</small>';
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-send me-1"></i> Send to Partsbase';
+      res_div.innerHTML = '<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> ' + (data.error || 'Unknown error') + '</span>';
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-send me-1"></i> Send to Partsbase';
+    res_div.innerHTML = '<span class="text-danger">Network error — try again.</span>';
+  }
+}
+</script>
 {% endblock %}
