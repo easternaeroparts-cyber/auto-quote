@@ -993,8 +993,11 @@ def settings_page():
 
 # ─── Main ────────────────────────────────────────────────────────────────────
 
-if __name__ == '__main__':
+# Initialize DB on startup (works with both direct run and gunicorn)
+with app.app_context():
     init_db()
+
+if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
     print('\n  ✈  Eastern Aero Parts — Auto Quote System')
