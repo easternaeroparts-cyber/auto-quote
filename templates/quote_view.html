@@ -376,9 +376,19 @@ function _dismissSuggestion() {
 }
 
 // Dismiss suggestion when user manually edits the price field
+// Also force-clean Bootstrap modal backdrop on every close so the page stays clickable
 document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('editPrice').addEventListener('input', function() {
     if (_pnSugData) _dismissSuggestion();
+  });
+
+  const modalEl = document.getElementById('editItemModal');
+  modalEl.addEventListener('hidden.bs.modal', function() {
+    // Remove any lingering backdrops
+    document.querySelectorAll('.modal-backdrop').forEach(el => el.remove());
+    document.body.classList.remove('modal-open');
+    document.body.style.removeProperty('overflow');
+    document.body.style.removeProperty('padding-right');
   });
 });
 
