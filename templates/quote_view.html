@@ -89,7 +89,7 @@
       </div>
       <div class="col-md-4 text-md-end">
         <div class="text-muted small fw-semibold mb-1">QUOTE TOTAL</div>
-        <div class="fs-3 fw-bold" style="color:var(--navy)">${{ '{:,.2f}'.format(quote.total_amount) }}</div>
+        <div class="fs-3 fw-bold" style="color:var(--navy)">$<span id="headerTotal">{{ '{:,.2f}'.format(quote.total_amount) }}</span></div>
         <small class="text-muted">Markup: {{ quote.markup_percent }}%</small>
       </div>
     </div>
@@ -442,7 +442,9 @@ async function saveItem() {
     document.getElementById(`tagtype-${id}`).textContent  = tagType;
     document.getElementById(`taggedby-${id}`).textContent = taggedBy;
     document.getElementById(`cond-${id}`).textContent     = condition;
-    document.getElementById('grandTotal').textContent     = data.total.toLocaleString('en-US',{minimumFractionDigits:2});
+    const fmtTotal = data.total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    document.getElementById('grandTotal').textContent  = fmtTotal;
+    document.getElementById('headerTotal').textContent = fmtTotal;
     // Update quote number prefix live (QEX / QOR / QTE)
     if (data.quote_number) {
       document.getElementById('quoteNumber').textContent = data.quote_number;

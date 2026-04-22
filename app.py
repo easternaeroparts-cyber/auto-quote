@@ -1195,8 +1195,9 @@ def send_quote(quote_id):
     smtp_user = settings.get('smtp_user', '').strip()
     smtp_pass = settings.get('smtp_pass', '').strip()
 
-    if not smtp_user or not smtp_pass:
-        flash('SMTP credentials are not configured. Go to Settings and enter your SMTP username and password.', 'error')
+    resend_key_check = (os.environ.get('RESEND_API_KEY') or settings.get('resend_api_key', '')).strip()
+    if not resend_key_check and (not smtp_user or not smtp_pass):
+        flash('Email is not configured. Go to Settings and enter your SMTP or Resend API credentials.', 'error')
         return redirect(url_for('quote_view', quote_id=quote_id))
 
     # Mark as sending immediately so the page doesn't hang
