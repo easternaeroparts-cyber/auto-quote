@@ -294,28 +294,153 @@ def gen_quote_number():
 
 def parse_rfq_text(text):
     """
-    Extract part numbers + quantities from pasted email / RFQ body.
-    Handles P/N: XXX / QTY: N patterns and tab/pipe/comma delimited tables.
+    Extract part numbers, descriptions, and quantities from RFQ email body.
+    Handles:
+      - Inline patterns: P/N: XXX  QTY: N
+      - Table formats with header row (S/N | Description | Part Number | Qty | Unit)
+      - Various delimiters: tab, pipe, comma, multiple spaces
     """
     items = []
     seen  = set()
-    lines = text.split('\n')
+    lines = [l.rstrip() for l in text.split('\n')]
 
-    PN_PAT   = re.compile(r'(?:P/?N|PART\s*(?:NO\.?|NUMBER|#)?|PN)[:\s]+([A-Z0-9][A-Z0-9\-/\.]{1,24})', re.I)
+    # Words that are definitely NOT part numbers
+    SKIP_WORDS = {
+        'GREETINGS', 'DEAR', 'HELLO', 'HI', 'REGARDS', 'THANKS', 'THANK',
+        'SINCERELY', 'BEST', 'NUMBER', 'DESCRIPTION', 'QUANTITY', 'CONDITION',
+        'UNIT', 'PART', 'ITEM', 'SN', 'SNO', 'SER', 'SERIAL', 'NOTE', 'NOTES',
+        'PLEASE', 'FIND', 'ATTACHED', 'BELOW', 'ABOVE', 'FOLLOWING', 'REQUEST',
+        'QUOTE', 'QUOTATION', 'RFQ', 'ORDER', 'PURCHASE', 'PROCUREMENT',
+        'FORWARD', 'FWD', 'RE', 'FROM', 'SUBJECT', 'DATE', 'TO', 'CC',
+    }
+
+    # Regex patterns for inline key:value format
+    PN_PAT   = re.compile(r'(?:P/?N|PART\s*(?:NO\.?|NUMBER|#)|PN\b)[:\s]+([A-Z0-9][A-Z0-9\-/\.]{2,24})', re.I)
     QTY_PAT  = re.compile(r'(?:QTY|QUANTITY|Q\'?TY|QUAN)[:\s]+(\d+)', re.I)
     DESC_PAT = re.compile(r'(?:DESC(?:RIPTION)?|NOM)[:\s]+([^\n\r,|]{3,60})', re.I)
     COND_PAT = re.compile(r'(?:COND(?:ITION)?)[:\s]+([A-Z]{1,4})', re.I)
 
+    # Pattern for a real part number: alphanumeric with dashes, at least one digit
+    VALID_PN = re.compile(r'^[A-Z0-9][A-Z0-9\-/\.]{1,24}$')
+
+    def is_valid_pn(s):
+        s = s.upper().strip()
+        if s in SKIP_WORDS:
+            return False
+        if not VALID_PN.match(s):
+            return False
+        if not re.search(r'\d', s):  # Must contain at least one digit
+            return False
+        return True
+
     def add(pn, desc='', qty=1, cond='SV'):
         pn = pn.upper().strip()
-        if pn and pn not in seen:
+        if pn and pn not in seen and is_valid_pn(pn):
             seen.add(pn)
             items.append({'part_number': pn, 'description': desc.strip().title(),
                           'quantity': qty, 'condition': cond.upper()})
 
+    # ── Step 1: Try to detect a table with a header row ──────────────────────
+    HEADER_KEYWORDS = re.compile(
+        r'(?:part[\s_]?n(?:o|umber|r)?\.?|p/?n|description|desc|qty|quantity|s/?n\.?)',
+        re.I)
+
+    header_idx = None
+    col_pn = col_desc = col_qty = col_cond = None
+
+    for i, line in enumerate(lines):
+        if HEADER_KEYWORDS.search(line):
+            # Try to split this header row
+            for delim in ('\t', '|', ','):
+                if delim in line:
+                    cols = [c.strip().upper() for c in line.split(delim)]
+                    break
+            else:
+                # Try multiple-space split
+                cols = re.split(r'\s{2,}', line.strip().upper())
+
+            if len(cols) >= 2:
+                for ci, col in enumerate(cols):
+                    col_clean = re.sub(r'[^A-Z/]', '', col)
+                    if re.search(r'P/?N|PART.*N|PN', col_clean):
+                        col_pn = ci
+                    elif re.search(r'DESC', col_clean):
+                        col_desc = ci
+                    elif re.search(r'QTY|QUAN', col_clean):
+                        col_qty = ci
+                    elif re.search(r'COND', col_clean):
+                        col_cond = ci
+
+                if col_pn is not None:
+                    header_idx = i
+                    break
+
+    if header_idx is not None:
+        # Parse rows after the header
+        for line in lines[header_idx + 1:]:
+            if not line.strip():
+                continue
+            # Split same way as header
+            for delim in ('\t', '|', ','):
+                if delim in line:
+                    cols = [c.strip() for c in line.split(delim)]
+                    break
+            else:
+                cols = re.split(r'\s{2,}', line.strip())
+
+            if len(cols) <= col_pn:
+                continue
+            pn   = cols[col_pn].strip().upper()
+            desc = cols[col_desc].strip() if col_desc is not None and col_desc < len(cols) else ''
+            qty  = 1
+            cond = 'SV'
+            if col_qty is not None and col_qty < len(cols):
+                try: qty = int(re.search(r'\d+', cols[col_qty]).group())
+                except: pass
+            if col_cond is not None and col_cond < len(cols):
+                cond = cols[col_cond].strip().upper() or 'SV'
+            add(pn, desc, qty, cond)
+        if items:
+            return items  # Successfully parsed table — don't fall through
+
+    # ── Step 2: PartsBase / structured block format ──────────────────────────
+    # Handles: "Part No: 23048-004M  Alt Part No:  Description:STARTER GENERATOR"
+    #          "Condition: OH  Quantity: 1  Currency: dollars"
+    # Search the entire text as one block for all Part No occurrences
+    BLOCK_PN   = re.compile(r'Part\s*No[:\s]+([A-Z0-9][A-Z0-9\-/\.]{2,24})', re.I)
+    BLOCK_DESC = re.compile(r'Description[:\s]+([A-Z0-9][^\n\r:]{2,60}?)(?:\s{2,}|\t|$)', re.I)
+    BLOCK_QTY  = re.compile(r'Quantity[:\s]+(\d+)', re.I)
+    BLOCK_COND = re.compile(r'Condition[:\s]+([A-Z]{1,4})', re.I)
+
+    block_pns = list(BLOCK_PN.finditer(text))
+    if block_pns:
+        for m in block_pns:
+            pn = m.group(1).strip().upper()
+            if not is_valid_pn(pn):
+                continue
+            # Search a window of text around the part number match for other fields
+            start = max(0, m.start() - 50)
+            end   = min(len(text), m.end() + 400)
+            window = text[start:end]
+            desc  = ''
+            qty   = 1
+            cond  = 'SV'
+            md = BLOCK_DESC.search(window)
+            if md: desc = md.group(1).strip()
+            mq = BLOCK_QTY.search(window)
+            if mq:
+                try: qty = int(mq.group(1))
+                except: pass
+            mc = BLOCK_COND.search(window)
+            if mc: cond = mc.group(1).strip().upper()
+            add(pn, desc, qty, cond)
+        if items:
+            return items
+
+    # ── Step 3: Fall back to inline key:value scanning ───────────────────────
     for i, line in enumerate(lines):
         lu = line.upper().strip()
-        if not lu:
+        if not lu or any(skip in lu.split() for skip in SKIP_WORDS):
             continue
 
         m_pn = PN_PAT.search(line)
@@ -324,40 +449,35 @@ def parse_rfq_text(text):
             qty  = 1
             desc = ''
             cond = 'SV'
-
             m_q = QTY_PAT.search(line)
             if not m_q and i + 1 < len(lines):
                 m_q = QTY_PAT.search(lines[i + 1])
             if m_q:
                 try: qty = int(m_q.group(1))
                 except: pass
-
             m_d = DESC_PAT.search(line)
             if m_d: desc = m_d.group(1)
-
             m_c = COND_PAT.search(line)
             if m_c: cond = m_c.group(1)
-
             add(pn, desc, qty, cond)
             continue
 
-        # Delimited rows: PN | Desc | Qty | Cond
+        # Delimited row fallback: first column must be a valid PN
         for delim in ('\t', '|', ','):
             if delim in line:
                 cols = [c.strip() for c in line.split(delim)]
-                if len(cols) >= 2:
-                    potential = cols[0].upper()
-                    if re.match(r'^[A-Z0-9][A-Z0-9\-/\.]{2,20}$', potential):
-                        desc = cols[1] if len(cols) > 1 else ''
-                        qty  = 1
-                        cond = 'SV'
-                        if len(cols) > 2:
-                            try: qty = int(re.search(r'\d+', cols[2]).group())
-                            except: pass
-                        if len(cols) > 3:
-                            cond = cols[3].strip().upper() or 'SV'
-                        add(potential, desc, qty, cond)
+                if len(cols) >= 2 and is_valid_pn(cols[0]):
+                    desc = cols[1] if len(cols) > 1 else ''
+                    qty  = 1
+                    cond = 'SV'
+                    if len(cols) > 2:
+                        try: qty = int(re.search(r'\d+', cols[2]).group())
+                        except: pass
+                    if len(cols) > 3:
+                        cond = cols[3].strip().upper() or 'SV'
+                    add(cols[0].upper(), desc, qty, cond)
                 break
+
     return items
 
 
@@ -1195,6 +1315,28 @@ def settings_page():
 # Initialize DB on startup (works with both direct run and gunicorn)
 with app.app_context():
     init_db()
+
+# ─── Auto Email Fetch Scheduler ──────────────────────────────────────────────
+def scheduled_fetch():
+    """Background job: fetch RFQ emails every 5 minutes automatically."""
+    with app.app_context():
+        try:
+            settings = get_settings()
+            if settings.get('imap_pass'):
+                n = _fetch_imap(settings)
+                if n:
+                    print(f'[Scheduler] Auto-fetched {n} new RFQ(s)')
+        except Exception as e:
+            print(f'[Scheduler] Fetch error: {e}')
+
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    scheduler = BackgroundScheduler(daemon=True)
+    scheduler.add_job(scheduled_fetch, 'interval', minutes=5, id='auto_fetch')
+    scheduler.start()
+    print('[Scheduler] Auto email fetch started — runs every 5 minutes.')
+except Exception as e:
+    print(f'[Scheduler] Could not start scheduler: {e}')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
