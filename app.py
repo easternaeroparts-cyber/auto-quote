@@ -257,10 +257,14 @@ def extract_forwarded_content(body):
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 def gen_rfq_number():
+    import random
     conn = get_db()
-    n = conn.execute('SELECT COUNT(*) FROM rfqs').fetchone()[0]
-    conn.close()
-    return f"RFQ-{datetime.now().strftime('%Y%m%d')}-{n+1:04d}"
+    while True:
+        candidate = f"RFQ-{datetime.now().strftime('%Y%m%d%H%M%S')}-{random.randint(1000,9999)}"
+        exists = conn.execute('SELECT 1 FROM rfqs WHERE rfq_number=?', (candidate,)).fetchone()
+        if not exists:
+            conn.close()
+            return candidate
 
 
 def gen_quote_number():
