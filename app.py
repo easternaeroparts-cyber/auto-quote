@@ -2486,6 +2486,26 @@ def delete_attachment(quote_id, att_id):
     return jsonify({'success': True})
 
 
+@app.route('/quotes/<int:quote_id>/preview-email')
+@login_required
+def preview_quote_email(quote_id):
+    """Return the exact HTML email that would be sent — for in-app preview."""
+    conn        = get_db()
+    quote       = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
+    rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
+    items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
+    attachments = conn.execute(
+        'SELECT * FROM quote_attachments WHERE quote_id=? AND verified=1', (quote_id,)).fetchall()
+    settings    = get_settings()
+    conn.close()
+
+    html = build_quote_email(
+        dict(quote), dict(rfq), [dict(i) for i in items],
+        dict(settings), [dict(a) for a in attachments]
+    )
+    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+
 @app.route('/quotes/<int:quote_id>/send', methods=['POST'])
 @login_required
 def send_quote(quote_id):
@@ -3271,9 +3291,9 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
           <strong style="color:#1a3c6e">Cell / WhatsApp:</strong>
           <a href="tel:+17722032109" style="color:#1a3c6e;text-decoration:none">+1 772-203-2109</a>
         </p>
-        <p style="margin:4px 0;font-size:12px;color:#555">Morayfield QLD 4506 Australia</p>
-        <p style="margin:4px 0;font-size:12px;color:#555">Morayfield, QLD 4506</p>
-        <p style="margin:4px 0;font-size:12px;color:#555">Kathmandu, Nepal, 44600</p>
+        <p style="margin:4px 0;font-size:12px;color:#555">Port St. Lucie, FL 34987</p>
+        <p style="margin:4px 0;font-size:12px;color:#555">Morayfield, QLD 4506, Australia</p>
+        <p style="margin:4px 0;font-size:12px;color:#555">Kathmandu, Nepal 44600</p>
         <p style="margin:6px 0 0;font-size:13px">
           <a href="http://www.eastern-aero.com" style="color:#1a3c6e">www.eastern-aero.com</a>
         </p>
@@ -3286,9 +3306,9 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
   </tr>
 </table>
 
-<p style="margin-top:24px;color:#9ca3af;font-size:11px;text-align:center">
-  All prices in {currency}. Quote valid for {quote['valid_days']} days from date of issue.<br>
-  All parts are certified unless otherwise stated. Terms: COD unless prior credit arrangement established.
+<p style="margin-top:24px;color:#c0392b;font-size:11px;text-align:center;font-weight:600">
+  All prices in {currency}. Quote valid for {quote['valid_days']} days from date of issue.
+  All parts are certified unless otherwise stated. Terms: Prepay unless prior credit arrangement established.
 </p>
 
 <p style="margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:11px;text-align:center">

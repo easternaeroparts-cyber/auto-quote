@@ -15,6 +15,9 @@
 <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
   <i class="bi bi-printer"></i> Print / PDF
 </button>
+<button class="btn btn-sm btn-outline-info no-print" onclick="openEmailPreview()">
+  <i class="bi bi-eye"></i> Preview Email
+</button>
 <form method="post" action="{{ url_for('quote_convert_to_invoice', quote_id=quote.id) }}" class="d-inline no-print"
       onsubmit="return confirm('Create an invoice from this quote?')">
   <button type="submit" class="btn btn-sm btn-outline-success fw-semibold">
@@ -386,6 +389,52 @@
 {% endif %}
 
 <p class="small fw-semibold" style="color:#c0392b;">All prices in {{ quote.currency or 'USD' }}. Quote valid for {{ quote.valid_days }} days from date of issue. All parts are certified unless otherwise stated. Terms: Prepay unless prior credit arrangement established.</p>
+
+<!-- Email Preview Modal -->
+<div class="modal fade" id="emailPreviewModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:900px">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <div class="d-flex align-items-center gap-2">
+          <i class="bi bi-envelope-open text-info"></i>
+          <strong>Email Preview</strong>
+          <span class="badge bg-secondary fw-normal" id="previewToAddr" style="font-size:.75rem"></span>
+        </div>
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('previewFrame').src=document.getElementById('previewFrame').src">
+            <i class="bi bi-arrow-clockwise"></i> Refresh
+          </button>
+          <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
+            <i class="bi bi-x-lg"></i> Close
+          </button>
+        </div>
+      </div>
+      <div class="modal-body p-0 position-relative" style="min-height:600px">
+        <!-- Loading spinner -->
+        <div id="previewSpinner" class="position-absolute w-100 h-100 d-flex align-items-center justify-content-center" style="background:#f8f9fa;z-index:10">
+          <div class="text-center text-muted">
+            <div class="spinner-border spinner-border-sm mb-2" role="status"></div>
+            <div class="small">Building email preview…</div>
+          </div>
+        </div>
+        <iframe id="previewFrame" src="about:blank"
+                style="width:100%;height:700px;border:none;display:block"
+                onload="document.getElementById('previewSpinner').style.display='none'">
+        </iframe>
+      </div>
+      <div class="modal-footer py-2 justify-content-between">
+        <small class="text-muted"><i class="bi bi-info-circle"></i> This is an exact preview of the email your customer will receive.</small>
+        <div class="d-flex gap-2">
+          <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          <button class="btn btn-gold btn-sm fw-semibold" data-bs-dismiss="modal"
+                  onclick="setTimeout(() => document.querySelector('[data-bs-target=\'#sendModal\']').click(), 200)">
+            <i class="bi bi-send"></i> Looks Good — Send
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Send Modal -->
 <div class="modal fade" id="sendModal" tabindex="-1">
@@ -1351,5 +1400,24 @@ async function saveItem() {
   // Close when focus leaves the field/dropdown
   inp.addEventListener('blur', () => setTimeout(closeDropdown, 150));
 })();
+
+// ── Email Preview ─────────────────────────────────────────────────────────────
+function openEmailPreview() {
+  const modal = new bootstrap.Modal(document.getElementById('emailPreviewModal'), {backdrop:'static'});
+  const frame  = document.getElementById('previewFrame');
+  const spinner = document.getElementById('previewSpinner');
+
+  // Reset state
+  spinner.style.display = 'flex';
+  frame.src = 'about:blank';
+
+  // Show customer email in badge
+  const toEl = document.getElementById('previewToAddr');
+  toEl.textContent = '{{ rfq.customer_email or "(no email on file)" }}';
+
+  // Load the preview
+  frame.src = '{{ url_for("preview_quote_email", quote_id=quote.id) }}';
+  modal.show();
+}
 </script>
 {% endblock %}
