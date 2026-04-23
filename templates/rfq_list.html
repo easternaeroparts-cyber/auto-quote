@@ -29,7 +29,17 @@
 
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover mb-0" style="table-layout:fixed;width:100%;">
+      <colgroup>
+        <col style="width:200px">   <!-- RFQ # -->
+        <col style="width:140px">   <!-- Customer -->
+        <col>                        <!-- Company (flexible) -->
+        <col style="width:90px">    <!-- Source -->
+        <col style="width:70px">    <!-- Parts -->
+        <col style="width:80px">    <!-- Status -->
+        <col style="width:120px">   <!-- Date -->
+        <col style="width:90px">    <!-- Actions -->
+      </colgroup>
       <thead class="table-light">
         <tr>
           <th class="ps-3">RFQ #</th>
@@ -38,25 +48,25 @@
           <th>Source</th>
           <th>Parts</th>
           <th>Status</th>
-          <th>Date</th>
+          <th style="white-space:nowrap">Date</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
       {% for r in rfqs %}
       <tr>
-        <td class="ps-3"><code>{{ r.rfq_number }}</code></td>
-        <td class="fw-semibold">{{ r.customer_name or '(Unknown)' }}</td>
-        <td><small class="text-muted">{{ r.company or '—' }}</small></td>
+        <td class="ps-3" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><code>{{ r.rfq_number }}</code></td>
+        <td class="fw-semibold" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.customer_name or '(Unknown)' }}</td>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><small class="text-muted">{{ r.company or '—' }}</small></td>
         <td>
           <span class="badge text-bg-light">
             {% if r.source == 'email' %}<i class="bi bi-envelope"></i>{% elif r.source == 'ils' %}<i class="bi bi-globe"></i>{% endif %}
             {{ r.source }}
           </span>
         </td>
-        <td>{{ r.item_count }} part{{ 's' if r.item_count != 1 }}</td>
+        <td style="white-space:nowrap">{{ r.item_count }} part{{ 's' if r.item_count != 1 }}</td>
         <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
-        <td><small class="text-muted">{{ r.created_at[:16] }}</small></td>
+        <td style="white-space:nowrap"><small class="text-muted">{{ r.created_at[:16] }}</small></td>
         <td class="text-end pe-3 d-flex gap-1 justify-content-end">
           <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-primary py-0">
             <i class="bi bi-eye"></i> View

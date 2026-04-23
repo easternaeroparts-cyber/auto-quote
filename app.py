@@ -3009,9 +3009,32 @@ def _parse_email_signature(body, sender_name='', sender_email=''):
                     and 'phone' not in line.lower()[:6]):
                 addr_lines.append(line)
 
-    # ── Assemble address ──────────────────────────────────────────────────────
-    if addr_lines:
-        result['address'] = ', '.join(addr_lines)
+    # ── Assemble address — deduplicate similar lines ──────────────────────────
+    def _addr_key(s):
+        """Normalise an address line for deduplication: lowercase, strip punctuation/spaces."""
+        return re.sub(r'[^a-z0-9]', '', s.lower())
+
+    seen_addr_keys = []
+    deduped_addr = []
+    for al in addr_lines:
+        key = _addr_key(al)
+        # Reject if this key is a substring of (or contains) an already-added key
+        is_dup = False
+        for sk in seen_addr_keys:
+            if key in sk or sk in key:
+                is_dup = True
+                # Keep the longer / more specific version
+                if len(key) > len(sk):
+                    idx = seen_addr_keys.index(sk)
+                    seen_addr_keys[idx] = key
+                    deduped_addr[idx] = al
+                break
+        if not is_dup:
+            seen_addr_keys.append(key)
+            deduped_addr.append(al)
+
+    if deduped_addr:
+        result['address'] = ', '.join(deduped_addr)
 
     # ── Company fallback: derive from email domain ────────────────────────────
     if 'company' not in result and sender_email and '@' in sender_email:
