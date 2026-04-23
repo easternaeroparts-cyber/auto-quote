@@ -3,7 +3,7 @@ Eastern Aero Parts — Auto Quote System
 A Rotabull-style aviation parts quoting application.
 """
 
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, send_file
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
@@ -20,6 +20,8 @@ from datetime import datetime
 from functools import wraps
 import urllib.request
 import json
+import mimetypes
+import traceback
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'aero-quote-secret-change-in-production')
@@ -557,6 +559,67 @@ def init_db():
         "ALTER TABLE vendors ADD COLUMN shipping_state TEXT",
         "ALTER TABLE vendors ADD COLUMN shipping_zip TEXT",
         "ALTER TABLE vendors ADD COLUMN shipping_country TEXT DEFAULT 'USA'",
+        # ERP tables — safety net in case executescript didn't reach them on an existing DB
+        """CREATE TABLE IF NOT EXISTS customers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, fax TEXT,
+            email TEXT, payment_method TEXT DEFAULT 'Check', payment_terms TEXT DEFAULT 'COD',
+            credit_limit REAL DEFAULT 0, balance REAL DEFAULT 0, hourly_rate REAL DEFAULT 100,
+            tax_id TEXT, tax_percent REAL DEFAULT 0, vat_number TEXT, date_format TEXT DEFAULT 'mm-yyyy',
+            sales_person TEXT, purchasing_person TEXT, customer_service_rep TEXT, shipping_service TEXT,
+            status TEXT DEFAULT 'Active', required_part_categories TEXT, currency TEXT DEFAULT 'USD',
+            tags TEXT, statement_notes TEXT, invoice_notes TEXT, notes TEXT, related_vendor_id INTEGER,
+            billing_name TEXT, billing_address TEXT, billing_city TEXT, billing_state TEXT,
+            billing_zip TEXT, billing_country TEXT DEFAULT 'USA', shipping_name TEXT, shipping_address TEXT,
+            shipping_city TEXT, shipping_state TEXT, shipping_zip TEXT, shipping_country TEXT DEFAULT 'USA',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL,
+            first_name TEXT, last_name TEXT, title TEXT, email TEXT, phone TEXT, mobile TEXT,
+            is_primary INTEGER DEFAULT 0, notes TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS invoice_attachments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER NOT NULL,
+            label TEXT DEFAULT 'Customer PO', filename TEXT NOT NULL, filepath TEXT NOT NULL,
+            mimetype TEXT, uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS purchase_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, po_number TEXT UNIQUE, vendor_name TEXT,
+            vendor_address TEXT, ship_to_name TEXT DEFAULT 'Eastern Aero Parts',
+            ship_to_address TEXT, date TEXT, ship_date TEXT, terms TEXT DEFAULT 'Net 30',
+            ship_via TEXT, shipping_account TEXT, subtotal REAL DEFAULT 0, shipping REAL DEFAULT 0,
+            tax_rate REAL DEFAULT 0, sales_tax REAL DEFAULT 0, grand_total REAL DEFAULT 0,
+            notes TEXT, status TEXT DEFAULT 'draft', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS po_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, po_id INTEGER, part_number TEXT,
+            description TEXT, condition TEXT, quantity REAL DEFAULT 1,
+            unit_price REAL DEFAULT 0, total_price REAL DEFAULT 0)""",
+        """CREATE TABLE IF NOT EXISTS invoices (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_number TEXT UNIQUE, invoice_for TEXT,
+            customer_name TEXT, customer_address TEXT, reference TEXT, due_date TEXT,
+            subtotal REAL DEFAULT 0, adjustments REAL DEFAULT 0, grand_total REAL DEFAULT 0,
+            notes TEXT, status TEXT DEFAULT 'draft', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS invoice_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER, part_number TEXT,
+            description TEXT, condition TEXT, quantity REAL DEFAULT 1,
+            unit_price REAL DEFAULT 0, total_price REAL DEFAULT 0)""",
+        """CREATE TABLE IF NOT EXISTS packing_slips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ps_number TEXT UNIQUE, date TEXT, terms TEXT,
+            po_number TEXT, invoice_number TEXT, ship_date TEXT, ship_via TEXT, shipping_account TEXT,
+            vendor_name TEXT, vendor_address TEXT, ship_to_name TEXT, ship_to_address TEXT,
+            notes TEXT, pallet_dims TEXT, weight_lbs REAL DEFAULT 0, status TEXT DEFAULT 'draft',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS ps_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ps_id INTEGER, part_number TEXT, description TEXT,
+            serial_number TEXT, quantity REAL DEFAULT 1, country_of_origin TEXT DEFAULT 'USA', hs_code TEXT)""",
+        """CREATE TABLE IF NOT EXISTS repair_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ro_number TEXT UNIQUE, vendor_name TEXT,
+            vendor_address TEXT, ship_to_name TEXT DEFAULT 'Eastern Aero Parts', ship_to_address TEXT,
+            date TEXT, ship_date TEXT, terms TEXT DEFAULT 'Net 30', ship_via TEXT, shipping_account TEXT,
+            subtotal REAL DEFAULT 0, shipping REAL DEFAULT 0, tax_rate REAL DEFAULT 0,
+            sales_tax REAL DEFAULT 0, grand_total REAL DEFAULT 0, notes TEXT,
+            status TEXT DEFAULT 'draft', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
+        """CREATE TABLE IF NOT EXISTS ro_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, ro_id INTEGER, part_number TEXT, description TEXT,
+            serial_number TEXT, quantity REAL DEFAULT 1, work_requested TEXT,
+            avg_cost REAL DEFAULT 0, total_price REAL DEFAULT 0)""",
     ]
     migrations = migrations + erp_migrations
 
@@ -1650,7 +1713,6 @@ def _compress_file(filepath, ext, mime):
 @login_required
 def attach_file(quote_id):
     """Upload a file attachment for a quote, with compression + PN/SN tagging."""
-    import mimetypes
     f = request.files.get('file')
     if not f or not f.filename:
         return jsonify({'success': False, 'error': 'No file provided'})
@@ -1719,7 +1781,6 @@ def attach_file(quote_id):
 @login_required
 def view_attachment(quote_id, att_id):
     """Serve an attachment file for in-browser viewing."""
-    from flask import send_file
     conn = get_db()
     row  = conn.execute(
         'SELECT * FROM quote_attachments WHERE id=? AND quote_id=?', (att_id, quote_id)).fetchone()
@@ -3363,56 +3424,60 @@ def po_list():
 @login_required
 def po_new():
     if request.method == 'POST':
-        po_number = _next_erp_number('PO', 'purchase_orders', 'po_number')
-        conn = get_db()
-        cur = conn.execute('''
-            INSERT INTO purchase_orders
-              (po_number, vendor_name, vendor_address, ship_to_name, ship_to_address,
-               date, ship_date, terms, ship_via, shipping_account,
-               subtotal, shipping, tax_rate, sales_tax, grand_total, notes, status)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ''', (
-            po_number,
-            request.form.get('vendor_name',''),
-            request.form.get('vendor_address',''),
-            request.form.get('ship_to_name','Eastern Aero Parts'),
-            request.form.get('ship_to_address','11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987'),
-            request.form.get('date', datetime.now().strftime('%Y-%m-%d')),
-            request.form.get('ship_date',''),
-            request.form.get('terms','Net 30'),
-            request.form.get('ship_via',''),
-            request.form.get('shipping_account',''),
-            float(request.form.get('subtotal',0) or 0),
-            float(request.form.get('shipping',0) or 0),
-            float(request.form.get('tax_rate',0) or 0),
-            float(request.form.get('sales_tax',0) or 0),
-            float(request.form.get('grand_total',0) or 0),
-            request.form.get('notes',''),
-            'draft'
-        ))
-        po_id = cur.lastrowid
-        # Save line items
-        pns   = request.form.getlist('pn[]')
-        descs = request.form.getlist('desc[]')
-        conds = request.form.getlist('cond[]')
-        qtys  = request.form.getlist('qty[]')
-        ups   = request.form.getlist('unit_price[]')
-        tots  = request.form.getlist('total_price[]')
-        for i, pn in enumerate(pns):
-            if not pn.strip():
-                continue
-            conn.execute(
-                'INSERT INTO po_items (po_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
-                (po_id, pn.strip(), descs[i] if i < len(descs) else '',
-                 conds[i] if i < len(conds) else '',
-                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
-                 float(ups[i]) if i < len(ups) and ups[i] else 0,
-                 float(tots[i]) if i < len(tots) and tots[i] else 0)
-            )
-        conn.commit()
-        conn.close()
-        flash(f'Purchase Order {po_number} created.', 'success')
-        return redirect(url_for('po_view', po_id=po_id))
+        try:
+            po_number = _next_erp_number('PO', 'purchase_orders', 'po_number')
+            conn = get_db()
+            cur = conn.execute('''
+                INSERT INTO purchase_orders
+                  (po_number, vendor_name, vendor_address, ship_to_name, ship_to_address,
+                   date, ship_date, terms, ship_via, shipping_account,
+                   subtotal, shipping, tax_rate, sales_tax, grand_total, notes, status)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (
+                po_number,
+                request.form.get('vendor_name',''),
+                request.form.get('vendor_address',''),
+                request.form.get('ship_to_name','Eastern Aero Parts'),
+                request.form.get('ship_to_address','11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987'),
+                request.form.get('date',''),
+                request.form.get('ship_date',''),
+                request.form.get('terms','Net 30'),
+                request.form.get('ship_via',''),
+                request.form.get('shipping_account',''),
+                float(request.form.get('subtotal') or 0),
+                float(request.form.get('shipping') or 0),
+                float(request.form.get('tax_rate') or 0),
+                float(request.form.get('sales_tax') or 0),
+                float(request.form.get('grand_total') or 0),
+                request.form.get('notes',''),
+                'draft'
+            ))
+            po_id = cur.lastrowid
+            pns   = request.form.getlist('pn[]')
+            descs = request.form.getlist('desc[]')
+            conds = request.form.getlist('cond[]')
+            qtys  = request.form.getlist('qty[]')
+            ups   = request.form.getlist('unit_price[]')
+            tots  = request.form.getlist('total_price[]')
+            for i, pn in enumerate(pns):
+                if not pn.strip():
+                    continue
+                conn.execute(
+                    'INSERT INTO po_items (po_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                    (po_id, pn.strip(),
+                     descs[i] if i < len(descs) else '',
+                     conds[i] if i < len(conds) else '',
+                     float(qtys[i] or 0) if i < len(qtys) else 1,
+                     float(ups[i] or 0) if i < len(ups) else 0,
+                     float(tots[i] or 0) if i < len(tots) else 0)
+                )
+            conn.commit()
+            conn.close()
+            flash(f'Purchase Order {po_number} created.', 'success')
+            return redirect(url_for('po_view', po_id=po_id))
+        except Exception as e:
+            app.logger.error('po_new error: %s\n%s', e, traceback.format_exc())
+            flash(f'Error creating Purchase Order: {e}', 'danger')
     conn = get_db()
     vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
     conn.close()
@@ -3660,8 +3725,6 @@ def invoice_delete(inv_id):
 
 # ─── Invoice: Customer PO Attachments ────────────────────────────────────────
 
-import mimetypes
-
 _INV_ALLOWED = {'.pdf', '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.webp'}
 
 @app.route('/api/invoice-attachments/<int:inv_id>')
@@ -3718,7 +3781,6 @@ def invoice_upload_po(inv_id):
 @app.route('/invoices/<int:inv_id>/po/<int:att_id>/view')
 @login_required
 def invoice_po_view(inv_id, att_id):
-    from flask import send_file
     conn = get_db()
     att = conn.execute(
         'SELECT * FROM invoice_attachments WHERE id=? AND invoice_id=?',
