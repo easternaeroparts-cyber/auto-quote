@@ -125,14 +125,6 @@
       <div class="col-md-6">
         <div class="row g-3">
           <div class="col-md-6">
-            <label class="lbl">Hourly Rate <span class="req">*</span></label>
-            <div class="input-group">
-              <span class="input-group-text">$</span>
-              <input name="hourly_rate" type="number" step="0.01" class="form-control"
-                value="{{ '%.2f'|format(c.hourly_rate or 100) if c else '100.00' }}">
-            </div>
-          </div>
-          <div class="col-md-4">
             <label class="lbl">Tax ID #</label>
             <input name="tax_id" class="form-control" value="{{ c.tax_id if c else '' }}">
           </div>

@@ -1,5 +1,5 @@
 """
-Eastern Aero Parts — Auto Quote System
+Eastern Aero Pty Ltd — Auto Quote System
 A Rotabull-style aviation parts quoting application.
 """
 
@@ -320,8 +320,8 @@ def init_db():
             po_number        TEXT UNIQUE,
             vendor_name      TEXT,
             vendor_address   TEXT,
-            ship_to_name     TEXT DEFAULT 'Eastern Aero Parts',
-            ship_to_address  TEXT DEFAULT '11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987',
+            ship_to_name     TEXT DEFAULT 'Eastern Aero Pty Ltd',
+            ship_to_address  TEXT DEFAULT '10 Composure St\nMorayfield QLD 4506 Australia',
             date             TEXT,
             ship_date        TEXT,
             terms            TEXT DEFAULT 'Net 30',
@@ -415,8 +415,8 @@ def init_db():
             ro_number        TEXT UNIQUE,
             vendor_name      TEXT,
             vendor_address   TEXT,
-            ship_to_name     TEXT DEFAULT 'Eastern Aero Parts',
-            ship_to_address  TEXT DEFAULT '11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987',
+            ship_to_name     TEXT DEFAULT 'Eastern Aero Pty Ltd',
+            ship_to_address  TEXT DEFAULT '10 Composure St\nMorayfield QLD 4506 Australia',
             date             TEXT,
             ship_date        TEXT,
             terms            TEXT DEFAULT 'Net 30',
@@ -447,7 +447,7 @@ def init_db():
     ''')
 
     defaults = {
-        'company_name':    'Eastern Aero Parts',
+        'company_name':    'Eastern Aero Pty Ltd',
         'company_email':   'easternaeroparts@gmail.com',
         'company_phone':   '',
         'company_address': '',
@@ -582,7 +582,7 @@ def init_db():
             mimetype TEXT, uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
         """CREATE TABLE IF NOT EXISTS purchase_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT, po_number TEXT UNIQUE, vendor_name TEXT,
-            vendor_address TEXT, ship_to_name TEXT DEFAULT 'Eastern Aero Parts',
+            vendor_address TEXT, ship_to_name TEXT DEFAULT 'Eastern Aero Pty Ltd',
             ship_to_address TEXT, date TEXT, ship_date TEXT, terms TEXT DEFAULT 'Net 30',
             ship_via TEXT, shipping_account TEXT, subtotal REAL DEFAULT 0, shipping REAL DEFAULT 0,
             tax_rate REAL DEFAULT 0, sales_tax REAL DEFAULT 0, grand_total REAL DEFAULT 0,
@@ -611,7 +611,7 @@ def init_db():
             serial_number TEXT, quantity REAL DEFAULT 1, country_of_origin TEXT DEFAULT 'USA', hs_code TEXT)""",
         """CREATE TABLE IF NOT EXISTS repair_orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT, ro_number TEXT UNIQUE, vendor_name TEXT,
-            vendor_address TEXT, ship_to_name TEXT DEFAULT 'Eastern Aero Parts', ship_to_address TEXT,
+            vendor_address TEXT, ship_to_name TEXT DEFAULT 'Eastern Aero Pty Ltd', ship_to_address TEXT,
             date TEXT, ship_date TEXT, terms TEXT DEFAULT 'Net 30', ship_via TEXT, shipping_account TEXT,
             subtotal REAL DEFAULT 0, shipping REAL DEFAULT 0, tax_rate REAL DEFAULT 0,
             sales_tax REAL DEFAULT 0, grand_total REAL DEFAULT 0, notes TEXT,
@@ -623,7 +623,7 @@ def init_db():
         # ALTER TABLE migrations for ERP tables — adds any missing columns to existing tables
         "ALTER TABLE purchase_orders ADD COLUMN vendor_name TEXT",
         "ALTER TABLE purchase_orders ADD COLUMN vendor_address TEXT",
-        "ALTER TABLE purchase_orders ADD COLUMN ship_to_name TEXT DEFAULT 'Eastern Aero Parts'",
+        "ALTER TABLE purchase_orders ADD COLUMN ship_to_name TEXT DEFAULT 'Eastern Aero Pty Ltd'",
         "ALTER TABLE purchase_orders ADD COLUMN ship_to_address TEXT",
         "ALTER TABLE purchase_orders ADD COLUMN date TEXT",
         "ALTER TABLE purchase_orders ADD COLUMN ship_date TEXT",
@@ -687,7 +687,7 @@ def init_db():
         "ALTER TABLE ps_items ADD COLUMN hs_code TEXT",
         "ALTER TABLE repair_orders ADD COLUMN vendor_name TEXT",
         "ALTER TABLE repair_orders ADD COLUMN vendor_address TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN ship_to_name TEXT DEFAULT 'Eastern Aero Parts'",
+        "ALTER TABLE repair_orders ADD COLUMN ship_to_name TEXT DEFAULT 'Eastern Aero Pty Ltd'",
         "ALTER TABLE repair_orders ADD COLUMN ship_to_address TEXT",
         "ALTER TABLE repair_orders ADD COLUMN date TEXT",
         "ALTER TABLE repair_orders ADD COLUMN ship_date TEXT",
@@ -714,6 +714,56 @@ def init_db():
         "ALTER TABLE invoice_attachments ADD COLUMN filepath TEXT",
         "ALTER TABLE invoice_attachments ADD COLUMN mimetype TEXT",
         "ALTER TABLE invoice_attachments ADD COLUMN uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        # customers table column migrations
+        "ALTER TABLE customers ADD COLUMN phone TEXT",
+        "ALTER TABLE customers ADD COLUMN fax TEXT",
+        "ALTER TABLE customers ADD COLUMN email TEXT",
+        "ALTER TABLE customers ADD COLUMN payment_method TEXT DEFAULT 'Check'",
+        "ALTER TABLE customers ADD COLUMN payment_terms TEXT DEFAULT 'COD'",
+        "ALTER TABLE customers ADD COLUMN credit_limit REAL DEFAULT 0",
+        "ALTER TABLE customers ADD COLUMN balance REAL DEFAULT 0",
+        "ALTER TABLE customers ADD COLUMN hourly_rate REAL DEFAULT 100",
+        "ALTER TABLE customers ADD COLUMN tax_id TEXT",
+        "ALTER TABLE customers ADD COLUMN tax_percent REAL DEFAULT 0",
+        "ALTER TABLE customers ADD COLUMN vat_number TEXT",
+        "ALTER TABLE customers ADD COLUMN date_format TEXT DEFAULT 'mm-yyyy'",
+        "ALTER TABLE customers ADD COLUMN sales_person TEXT",
+        "ALTER TABLE customers ADD COLUMN purchasing_person TEXT",
+        "ALTER TABLE customers ADD COLUMN customer_service_rep TEXT",
+        "ALTER TABLE customers ADD COLUMN shipping_service TEXT",
+        "ALTER TABLE customers ADD COLUMN status TEXT DEFAULT 'Active'",
+        "ALTER TABLE customers ADD COLUMN required_part_categories TEXT",
+        "ALTER TABLE customers ADD COLUMN currency TEXT DEFAULT 'USD'",
+        "ALTER TABLE customers ADD COLUMN tags TEXT",
+        "ALTER TABLE customers ADD COLUMN statement_notes TEXT",
+        "ALTER TABLE customers ADD COLUMN invoice_notes TEXT",
+        "ALTER TABLE customers ADD COLUMN notes TEXT",
+        "ALTER TABLE customers ADD COLUMN related_vendor_id INTEGER",
+        "ALTER TABLE customers ADD COLUMN billing_name TEXT",
+        "ALTER TABLE customers ADD COLUMN billing_address TEXT",
+        "ALTER TABLE customers ADD COLUMN billing_city TEXT",
+        "ALTER TABLE customers ADD COLUMN billing_state TEXT",
+        "ALTER TABLE customers ADD COLUMN billing_zip TEXT",
+        "ALTER TABLE customers ADD COLUMN billing_country TEXT DEFAULT 'USA'",
+        "ALTER TABLE customers ADD COLUMN shipping_name TEXT",
+        "ALTER TABLE customers ADD COLUMN shipping_address TEXT",
+        "ALTER TABLE customers ADD COLUMN shipping_city TEXT",
+        "ALTER TABLE customers ADD COLUMN shipping_state TEXT",
+        "ALTER TABLE customers ADD COLUMN shipping_zip TEXT",
+        "ALTER TABLE customers ADD COLUMN shipping_country TEXT DEFAULT 'USA'",
+        "ALTER TABLE customers ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        # contacts table column migrations
+        "ALTER TABLE contacts ADD COLUMN entity_type TEXT",
+        "ALTER TABLE contacts ADD COLUMN entity_id INTEGER",
+        "ALTER TABLE contacts ADD COLUMN first_name TEXT",
+        "ALTER TABLE contacts ADD COLUMN last_name TEXT",
+        "ALTER TABLE contacts ADD COLUMN title TEXT",
+        "ALTER TABLE contacts ADD COLUMN email TEXT",
+        "ALTER TABLE contacts ADD COLUMN phone TEXT",
+        "ALTER TABLE contacts ADD COLUMN mobile TEXT",
+        "ALTER TABLE contacts ADD COLUMN is_primary INTEGER DEFAULT 0",
+        "ALTER TABLE contacts ADD COLUMN notes TEXT",
+        "ALTER TABLE contacts ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
     ]
     migrations = migrations + erp_migrations
 
@@ -1650,6 +1700,85 @@ def create_quote(rfq_id):
 
 # ─── Routes: Quotes ──────────────────────────────────────────────────────────
 
+@app.route('/quotes/new', methods=['GET', 'POST'])
+@login_required
+def quote_new():
+    """Create a standalone quote not tied to any RFQ email."""
+    settings = get_settings()
+    if request.method == 'POST':
+        # Create a bare RFQ-like stub so quote_view works unchanged
+        conn = get_db()
+        cur = conn.execute('''
+            INSERT INTO rfqs (rfq_number, customer_name, customer_email, company, phone,
+                              source, status, notes)
+            VALUES (?,?,?,?,?,?,?,?)
+        ''', (
+            f"MANUAL-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            request.form.get('customer_name', '').strip(),
+            request.form.get('customer_email', '').strip(),
+            request.form.get('company', '').strip(),
+            request.form.get('phone', '').strip(),
+            'manual',
+            'quoted',
+            request.form.get('notes', '').strip(),
+        ))
+        rfq_id = cur.lastrowid
+
+        markup  = float(request.form.get('markup_percent') or settings.get('default_markup', 30))
+        currency = request.form.get('currency', 'USD')
+        valid_days = int(request.form.get('valid_days') or settings.get('quote_valid_days', 30))
+
+        q_num = gen_quote_number('QTE')
+        qcur = conn.execute('''
+            INSERT INTO quotes (quote_number, rfq_id, status, markup_percent,
+                                total_amount, notes, valid_days, currency)
+            VALUES (?,?,?,?,?,?,?,?)
+        ''', (q_num, rfq_id, 'draft', markup, 0, '', valid_days, currency))
+        quote_id = qcur.lastrowid
+
+        # Save line items
+        pns    = request.form.getlist('pn[]')
+        descs  = request.form.getlist('desc[]')
+        conds  = request.form.getlist('cond[]')
+        qtys   = request.form.getlist('qty[]')
+        prices = request.form.getlist('price[]')
+        leads  = request.form.getlist('lead[]')
+        ptypes = request.form.getlist('ptype[]')
+
+        total = 0.0
+        for i, pn in enumerate(pns):
+            if not pn.strip():
+                continue
+            qty   = int(qtys[i] or 1) if i < len(qtys) else 1
+            price = float(prices[i] or 0) if i < len(prices) else 0
+            ext   = round(qty * price, 2)
+            total += ext
+            conn.execute('''
+                INSERT INTO quote_items
+                  (quote_id, part_number, description, condition,
+                   quantity_requested, quantity_available, unit_price, extended_price,
+                   matched, lead_time, price_type, warranty)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            ''', (
+                quote_id,
+                pn.strip().upper(),
+                descs[i].strip() if i < len(descs) else '',
+                conds[i].strip() if i < len(conds) else 'SV',
+                qty, 0, price, ext, 0,
+                leads[i].strip() if i < len(leads) else 'Stock',
+                ptypes[i].strip() if i < len(ptypes) else 'Outright',
+                '3 Months',
+            ))
+
+        conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (round(total, 2), quote_id))
+        conn.commit()
+        conn.close()
+        flash(f'Quote {q_num} created.', 'success')
+        return redirect(url_for('quote_view', quote_id=quote_id))
+
+    return render_template('quote_new.html', settings=settings)
+
+
 @app.route('/quotes')
 @login_required
 def quote_list():
@@ -1666,13 +1795,32 @@ def quote_list():
 @app.route('/quotes/<int:quote_id>')
 @login_required
 def quote_view(quote_id):
-    conn     = get_db()
+    conn        = get_db()
     quote       = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
-    rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
+    if not quote:
+        conn.close()
+        flash('Quote not found.', 'error')
+        return redirect(url_for('quote_list'))
+    rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone() if quote['rfq_id'] else None
     items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
     attachments = conn.execute('SELECT * FROM quote_attachments WHERE quote_id=? ORDER BY uploaded_at', (quote_id,)).fetchall()
     settings    = get_settings()
     conn.close()
+    # For standalone quotes without an RFQ, create a minimal stub so the template works
+    if rfq is None:
+        import collections
+        stub = collections.defaultdict(str)
+        stub['id']             = 0
+        stub['customer_name']  = ''
+        stub['customer_email'] = ''
+        stub['company']        = ''
+        stub['phone']          = ''
+        stub['source']         = 'manual'
+        stub['raw_email']      = ''
+        stub['customer_ref']   = ''
+        stub['website']        = ''
+        stub['address']        = ''
+        rfq = stub
     return render_template('quote_view.html', quote=quote, rfq=rfq, items=items,
                            attachments=attachments, settings=settings)
 
@@ -1926,9 +2074,10 @@ def send_quote(quote_id):
     settings    = get_settings()
     conn.close()
 
-    to_email = rfq['customer_email']
+    # Allow override email from the send modal (e.g. entered from the quote list)
+    to_email = request.form.get('override_email', '').strip() or rfq['customer_email']
     if not to_email:
-        flash('No customer email on file.', 'error')
+        flash('No customer email on file. Enter an email address to send.', 'error')
         return redirect(url_for('quote_view', quote_id=quote_id))
 
     smtp_host = settings.get('smtp_host', 'smtp.gmail.com').strip()
@@ -2585,7 +2734,7 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
           <strong style="color:#1a3c6e">Cell / WhatsApp:</strong>
           <a href="tel:+17722032109" style="color:#1a3c6e;text-decoration:none">+1 772-203-2109</a>
         </p>
-        <p style="margin:4px 0;font-size:12px;color:#555">Port St. Lucie, FL 34987</p>
+        <p style="margin:4px 0;font-size:12px;color:#555">Morayfield QLD 4506 Australia</p>
         <p style="margin:4px 0;font-size:12px;color:#555">Morayfield, QLD 4506</p>
         <p style="margin:4px 0;font-size:12px;color:#555">Kathmandu, Nepal, 44600</p>
         <p style="margin:6px 0 0;font-size:13px">
@@ -3531,8 +3680,8 @@ def po_new():
                 po_number,
                 request.form.get('vendor_name',''),
                 request.form.get('vendor_address',''),
-                request.form.get('ship_to_name','Eastern Aero Parts'),
-                request.form.get('ship_to_address','11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987'),
+                request.form.get('ship_to_name','Eastern Aero Pty Ltd'),
+                request.form.get('ship_to_address','10 Composure St\nMorayfield QLD 4506 Australia'),
                 request.form.get('date',''),
                 request.form.get('ship_date',''),
                 request.form.get('terms','Net 30'),
@@ -3572,9 +3721,12 @@ def po_new():
         except Exception as e:
             app.logger.error('po_new error: %s\n%s', e, traceback.format_exc())
             flash(f'Error creating Purchase Order: {e}', 'danger')
-    conn = get_db()
-    vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
-    conn.close()
+    try:
+        conn = get_db()
+        vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
+        conn.close()
+    except Exception:
+        vendors = []
     return render_template('po_form.html', po=None, items=[], vendors=vendors)
 
 
@@ -3681,51 +3833,59 @@ def invoice_list():
 @login_required
 def invoice_new():
     if request.method == 'POST':
-        inv_number = _next_erp_number('INV', 'invoices', 'invoice_number')
+        try:
+            inv_number = _next_erp_number('INV', 'invoices', 'invoice_number')
+            conn = get_db()
+            cur = conn.execute('''
+                INSERT INTO invoices
+                  (invoice_number, invoice_for, customer_name, customer_address,
+                   reference, due_date, subtotal, adjustments, grand_total, notes, status)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+            ''', (
+                inv_number,
+                request.form.get('invoice_for',''),
+                request.form.get('customer_name',''),
+                request.form.get('customer_address',''),
+                request.form.get('reference',''),
+                request.form.get('due_date',''),
+                float(request.form.get('subtotal') or 0),
+                float(request.form.get('adjustments') or 0),
+                float(request.form.get('grand_total') or 0),
+                request.form.get('notes',''),
+                'draft'
+            ))
+            inv_id = cur.lastrowid
+            pns   = request.form.getlist('pn[]')
+            descs = request.form.getlist('desc[]')
+            conds = request.form.getlist('cond[]')
+            qtys  = request.form.getlist('qty[]')
+            ups   = request.form.getlist('unit_price[]')
+            tots  = request.form.getlist('total_price[]')
+            for i, pn in enumerate(pns):
+                if not pn.strip():
+                    continue
+                conn.execute(
+                    'INSERT INTO invoice_items (invoice_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                    (inv_id, pn.strip(),
+                     descs[i] if i < len(descs) else '',
+                     conds[i] if i < len(conds) else '',
+                     float(qtys[i] or 0) if i < len(qtys) else 1,
+                     float(ups[i] or 0) if i < len(ups) else 0,
+                     float(tots[i] or 0) if i < len(tots) else 0)
+                )
+            conn.commit()
+            conn.close()
+            flash(f'Invoice {inv_number} created.', 'success')
+            return redirect(url_for('invoice_view', inv_id=inv_id))
+        except Exception as e:
+            app.logger.error('invoice_new error: %s\n%s', e, traceback.format_exc())
+            flash(f'Error creating Invoice: {e}', 'danger')
+    try:
         conn = get_db()
-        cur = conn.execute('''
-            INSERT INTO invoices
-              (invoice_number, invoice_for, customer_name, customer_address,
-               reference, due_date, subtotal, adjustments, grand_total, notes, status)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?)
-        ''', (
-            inv_number,
-            request.form.get('invoice_for',''),
-            request.form.get('customer_name',''),
-            request.form.get('customer_address',''),
-            request.form.get('reference',''),
-            request.form.get('due_date',''),
-            float(request.form.get('subtotal',0) or 0),
-            float(request.form.get('adjustments',0) or 0),
-            float(request.form.get('grand_total',0) or 0),
-            request.form.get('notes',''),
-            'draft'
-        ))
-        inv_id = cur.lastrowid
-        pns   = request.form.getlist('pn[]')
-        descs = request.form.getlist('desc[]')
-        conds = request.form.getlist('cond[]')
-        qtys  = request.form.getlist('qty[]')
-        ups   = request.form.getlist('unit_price[]')
-        tots  = request.form.getlist('total_price[]')
-        for i, pn in enumerate(pns):
-            if not pn.strip():
-                continue
-            conn.execute(
-                'INSERT INTO invoice_items (invoice_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
-                (inv_id, pn.strip(), descs[i] if i < len(descs) else '',
-                 conds[i] if i < len(conds) else '',
-                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
-                 float(ups[i]) if i < len(ups) and ups[i] else 0,
-                 float(tots[i]) if i < len(tots) and tots[i] else 0)
-            )
-        conn.commit()
+        customers = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM customers ORDER BY name').fetchall()
         conn.close()
-        flash(f'Invoice {inv_number} created.', 'success')
-        return redirect(url_for('invoice_view', inv_id=inv_id))
-    conn = get_db()
-    customers = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM customers ORDER BY name').fetchall()
-    conn.close()
+    except Exception:
+        customers = []
     return render_template('invoice_form.html', inv=None, items=[], customers=customers)
 
 
@@ -3967,10 +4127,13 @@ def ps_new():
         conn.close()
         flash(f'Packing Slip {ps_number} created.', 'success')
         return redirect(url_for('ps_view', ps_id=ps_id))
-    conn = get_db()
-    vendors  = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
-    invoices = conn.execute("SELECT id, invoice_number, invoice_for, customer_name FROM invoices ORDER BY created_at DESC").fetchall()
-    conn.close()
+    try:
+        conn = get_db()
+        vendors  = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
+        invoices = conn.execute("SELECT id, invoice_number, invoice_for, customer_name FROM invoices ORDER BY created_at DESC").fetchall()
+        conn.close()
+    except Exception:
+        vendors, invoices = [], []
     return render_template('ps_form.html', ps=None, items=[], vendors=vendors, invoices=invoices)
 
 
@@ -4090,8 +4253,8 @@ def ro_new():
             ro_number,
             request.form.get('vendor_name',''),
             request.form.get('vendor_address',''),
-            request.form.get('ship_to_name','Eastern Aero Parts'),
-            request.form.get('ship_to_address','11582 SW Village Pkwy #1044\nPort St. Lucie, FL 34987'),
+            request.form.get('ship_to_name','Eastern Aero Pty Ltd'),
+            request.form.get('ship_to_address','10 Composure St\nMorayfield QLD 4506 Australia'),
             request.form.get('date', datetime.now().strftime('%Y-%m-%d')),
             request.form.get('ship_date',''),
             request.form.get('terms','Net 30'),
@@ -4130,9 +4293,12 @@ def ro_new():
         conn.close()
         flash(f'Repair Order {ro_number} created.', 'success')
         return redirect(url_for('ro_view', ro_id=ro_id))
-    conn = get_db()
-    vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
-    conn.close()
+    try:
+        conn = get_db()
+        vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
+        conn.close()
+    except Exception:
+        vendors = []
     return render_template('ro_form.html', ro=None, items=[], vendors=vendors)
 
 
@@ -4258,6 +4424,6 @@ except Exception as e:
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
-    print('\n  ✈  Eastern Aero Parts — Auto Quote System')
+    print('\n  ✈  Eastern Aero Pty Ltd — Auto Quote System')
     print(f'     Open  http://localhost:{port}  in your browser\n')
     app.run(host='0.0.0.0', debug=debug, port=port)

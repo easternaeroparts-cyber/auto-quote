@@ -371,20 +371,27 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
       </div>
       <form method="post" action="{{ url_for('send_quote', quote_id=quote.id) }}">
         <div class="modal-body">
-          <p>Send <strong>{{ quote.quote_number }}</strong> to:</p>
+          <p class="mb-2">Send <strong>{{ quote.quote_number }}</strong> to:</p>
           <div class="bg-light p-3 rounded mb-3">
-            <strong>{{ rfq.customer_name or '(Unknown)' }}</strong><br>
-            <a href="mailto:{{ rfq.customer_email }}">{{ rfq.customer_email or '(no email on file)' }}</a>
+            <div class="fw-semibold mb-1">{{ rfq.customer_name or '(Unknown)' }}</div>
+            {% if rfq.customer_email %}
+            <div class="mb-2"><a href="mailto:{{ rfq.customer_email }}">{{ rfq.customer_email }}</a></div>
+            {% else %}
+            <div class="text-muted small mb-2">(no email on file)</div>
+            {% endif %}
+            <label class="form-label mb-1" style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:#666;">Override recipient email (optional)</label>
+            <input type="email" name="override_email" class="form-control form-control-sm"
+              placeholder="Leave blank to use email above{% if not rfq.customer_email %} — required{% endif %}">
           </div>
           {% if not rfq.customer_email %}
-          <div class="alert alert-warning">No email address on file for this customer.</div>
+          <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle me-1"></i>No email on file — enter an address above.</div>
           {% endif %}
-          <p class="text-muted small">A professional HTML quote email will be sent from <strong>{{ settings.smtp_user }}</strong>.</p>
+          <p class="text-muted small mb-0">A professional HTML quote email will be sent. Only verified attachments are included.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-gold fw-semibold" {% if not rfq.customer_email %}disabled{% endif %}>
-            <i class="bi bi-send-fill"></i> Send Now
+          <button type="submit" class="btn btn-gold fw-semibold">
+            <i class="bi bi-send-fill"></i> {% if quote.status == 'sent' %}Resend{% else %}Send Now{% endif %}
           </button>
         </div>
       </form>
