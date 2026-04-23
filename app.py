@@ -1476,6 +1476,49 @@ def inventory():
     return render_template('inventory.html', parts=parts, total=total, q=q)
 
 
+@app.route('/api/inventory-search')
+@login_required
+def inventory_search():
+    """Return inventory rows matching a PN prefix/substring — for autocomplete."""
+    q = request.args.get('q', '').strip().upper()
+    if len(q) < 1:
+        return jsonify([])
+    conn = get_db()
+    # Prioritise: starts-with match first, then contains
+    like_start    = f'{q}%'
+    like_contains = f'%{q}%'
+    rows = conn.execute("""
+        SELECT part_number, description, condition, unit_cost, unit_price,
+               location, uom, manufacturer, alt_part_number, qty_avail, quantity
+        FROM inventory
+        WHERE UPPER(part_number) LIKE ?
+           OR UPPER(REPLACE(REPLACE(part_number,'-',''),'/','')) LIKE ?
+           OR UPPER(description)  LIKE ?
+           OR UPPER(alt_part_number) LIKE ?
+        ORDER BY
+          CASE WHEN UPPER(part_number) LIKE ? THEN 0 ELSE 1 END,
+          part_number
+        LIMIT 12
+    """, (like_contains, like_contains, like_contains, like_contains, like_start)).fetchall()
+    conn.close()
+    result = []
+    for r in rows:
+        avail = r['qty_avail'] if r['qty_avail'] is not None else r['quantity']
+        result.append({
+            'part_number':  r['part_number'],
+            'description':  r['description'] or '',
+            'condition':    r['condition'] or 'SV',
+            'unit_cost':    r['unit_cost'] or 0,
+            'unit_price':   r['unit_price'] or 0,
+            'location':     r['location'] or '',
+            'uom':          r['uom'] or 'EA',
+            'manufacturer': r['manufacturer'] or '',
+            'alt_pn':       r['alt_part_number'] or '',
+            'qty_avail':    avail or 0,
+        })
+    return jsonify(result)
+
+
 @app.route('/inventory/upload', methods=['POST'])
 @login_required
 def upload_inventory():
@@ -2215,11 +2258,15 @@ def update_quote_item(quote_id):
     ext   = 0.0 if no_quote else round(price * qty, 2)
 
     conn = get_db()
+    pn   = (data.get('part_number') or '').strip().upper()
+    desc = (data.get('description') or '').strip()
     conn.execute('''UPDATE quote_items SET
+        part_number=?, description=?,
         unit_price=?, quantity_requested=?, extended_price=?, notes=?,
         lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?, condition=?, no_quote=?
         WHERE id=? AND quote_id=?''',
-        (price, qty, ext, notes,
+        (pn or None, desc or None,
+         price, qty, ext, notes,
          data.get('lead_time', 'Stock'),
          data.get('price_type', 'Outright'),
          data.get('warranty', '3 Months'),
