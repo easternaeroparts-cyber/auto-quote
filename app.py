@@ -766,6 +766,19 @@ def init_db():
         "ALTER TABLE contacts ADD COLUMN is_primary INTEGER DEFAULT 0",
         "ALTER TABLE contacts ADD COLUMN notes TEXT",
         "ALTER TABLE contacts ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+        # Inventory extra fields from stockline CSV
+        "ALTER TABLE inventory ADD COLUMN manufacturer TEXT",
+        "ALTER TABLE inventory ADD COLUMN alt_part_number TEXT",
+        "ALTER TABLE inventory ADD COLUMN serial_number TEXT",
+        "ALTER TABLE inventory ADD COLUMN item_group TEXT",
+        "ALTER TABLE inventory ADD COLUMN qty_reserved INTEGER DEFAULT 0",
+        "ALTER TABLE inventory ADD COLUMN qty_avail INTEGER DEFAULT 0",
+        "ALTER TABLE inventory ADD COLUMN traceable_to TEXT",
+        "ALTER TABLE inventory ADD COLUMN tag_type TEXT",
+        "ALTER TABLE inventory ADD COLUMN cert_number TEXT",
+        "ALTER TABLE inventory ADD COLUMN rec_date TEXT",
+        "ALTER TABLE inventory ADD COLUMN exp_date TEXT",
+        "ALTER TABLE inventory ADD COLUMN sl_number TEXT",
     ]
     migrations = migrations + erp_migrations
 
@@ -927,6 +940,24 @@ def parse_rfq_text(text):
     """
     items = []
     seen  = set()
+
+    # ── Strip email signature and quoted reply content ────────────────────────
+    # Email signatures start with "-- " (RFC 3676) or "--\n" on a line by itself,
+    # or with common sign-off words. Quoted replies start with "> " etc.
+    SIG_SEP = re.compile(
+        r'(?m)'
+        r'(?:^--\s*$'                                              # RFC sig delimiter
+        r'|^-{3,}\s*$'                                            # --- alone on line
+        r'|^_{3,}\s*$'                                            # ___ alone on line
+        r'|^-{3,}\s*(?:original\s+message|forwarded\s+message)'   # Outlook separators
+        r'|^On .{5,120} wrote:\s*$'                               # Gmail/Outlook thread
+        r'|^>+\s)',                                               # quoted lines
+        re.I
+    )
+    m_sep = SIG_SEP.search(text)
+    if m_sep:
+        text = text[:m_sep.start()]
+
     lines = [l.rstrip() for l in text.split('\n')]
 
     # Words that are definitely NOT part numbers
@@ -970,10 +1001,18 @@ def parse_rfq_text(text):
         r'(?:part[\s_]?n(?:o|umber|r)?\.?|p/?n|description|desc|qty|quantity|s/?n\.?)',
         re.I)
 
+    # Pattern that means this line is an inline key:value, NOT a table header
+    # e.g. "PN: HC-B3TN-3D" or "Part No: 12345" — value is on the same line
+    INLINE_KV = re.compile(
+        r'(?:P/?N|PART\s*(?:NO\.?|NUMBER|#))[:\s]+[A-Z0-9]', re.I)
+
     header_idx = None
     col_pn = col_desc = col_qty = col_cond = None
 
     for i, line in enumerate(lines):
+        # Skip lines that are clearly inline key:value (not a header row)
+        if INLINE_KV.search(line):
+            continue
         if HEADER_KEYWORDS.search(line):
             # Try to split this header row
             for delim in ('\t', '|', ','):
@@ -1166,6 +1205,17 @@ def parse_rfq_text(text):
             qty  = 1
             desc = ''
             cond = 'SV'
+            # Extract condition from COND: label OR from parentheses on the same
+            # line after the PN, e.g. "PN: HC-B3TN-3D        (OH)"
+            m_c = COND_PAT.search(line)
+            if m_c:
+                cond = m_c.group(1).upper()
+            else:
+                # Look for (XX) parenthetical condition code after the PN match
+                rest = line[m_pn.end():]
+                m_paren = re.search(r'\(\s*([A-Z]{1,4})\s*\)', rest, re.I)
+                if m_paren:
+                    cond = m_paren.group(1).upper()
             m_q = QTY_PAT.search(line)
             if not m_q and i + 1 < len(lines):
                 m_q = QTY_PAT.search(lines[i + 1])
@@ -1174,8 +1224,6 @@ def parse_rfq_text(text):
                 except: pass
             m_d = DESC_PAT.search(line)
             if m_d: desc = m_d.group(1)
-            m_c = COND_PAT.search(line)
-            if m_c: cond = m_c.group(1)
             add(pn, desc, qty, cond)
             continue
 
@@ -1199,18 +1247,59 @@ def parse_rfq_text(text):
 
 
 def match_inventory(part_number, conn):
-    """Return best inventory match for a part number (exact → partial)."""
-    clean = re.sub(r'[\s\-/]', '', part_number.upper())
+    """
+    Return the best inventory match for a part number using a tiered strategy:
+      1. Exact match (case-insensitive, ignoring spaces/dashes/slashes)
+      2. Inventory PN contains the queried PN as a substring
+      3. Queried PN contains an inventory PN as a substring
+      4. Token-overlap: if the cleaned tokens of both PNs share the same core token
+
+    Returns the matched inventory row (sqlite3.Row) or None.
+    Also returns a 'match_confidence' key if you access result['_confidence'].
+    """
+    if not part_number:
+        return None
+
+    clean = re.sub(r'[\s\-/\.]', '', part_number.upper())
+
+    # Tier 1: exact stripped match
     row = conn.execute(
-        "SELECT * FROM inventory WHERE UPPER(REPLACE(REPLACE(REPLACE(part_number,' ',''),'-',''),'/',''))=?",
+        "SELECT * FROM inventory WHERE UPPER(REPLACE(REPLACE(REPLACE(REPLACE(part_number,' ',''),'-',''),'/',''),'.',''))=?",
         (clean,)
     ).fetchone()
-    if not row:
-        row = conn.execute(
-            "SELECT * FROM inventory WHERE UPPER(part_number) LIKE ?",
-            (f'%{part_number.upper()}%',)
-        ).fetchone()
-    return row
+    if row:
+        return row
+
+    # Tier 2: inventory PN contains queried PN (e.g. "HC-B3TN-3D" in "HC-B3TN-3D-MOD")
+    row = conn.execute(
+        "SELECT * FROM inventory WHERE UPPER(part_number) LIKE ?",
+        (f'%{part_number.upper()}%',)
+    ).fetchone()
+    if row:
+        return row
+
+    # Tier 3: queried PN contains an inventory PN (e.g. longer queried than stored)
+    # Fetch all and check in Python (only if inventory is reasonably small)
+    rows = conn.execute(
+        "SELECT * FROM inventory WHERE length(part_number) >= 4"
+    ).fetchall()
+    for r in rows:
+        inv_clean = re.sub(r'[\s\-/\.]', '', (r['part_number'] or '').upper())
+        if inv_clean and len(inv_clean) >= 4 and inv_clean in clean:
+            return r
+
+    # Tier 4: token overlap — split both PNs on non-alphanumeric boundaries
+    # and check if the longest shared token is >= 5 chars
+    q_tokens = set(re.split(r'[^A-Z0-9]', part_number.upper()))
+    q_tokens = {t for t in q_tokens if len(t) >= 5}
+    if q_tokens:
+        for r in rows:
+            inv_tokens = set(re.split(r'[^A-Z0-9]', (r['part_number'] or '').upper()))
+            inv_tokens = {t for t in inv_tokens if len(t) >= 5}
+            if q_tokens & inv_tokens:   # non-empty intersection
+                return r
+
+    return None
 
 
 # ─── Routes: Dashboard ───────────────────────────────────────────────────────
@@ -1369,9 +1458,16 @@ def inventory():
     q = request.args.get('q', '')
     conn = get_db()
     if q:
+        like = f'%{q.upper()}%'
         parts = conn.execute(
-            "SELECT * FROM inventory WHERE UPPER(part_number) LIKE ? OR UPPER(description) LIKE ? ORDER BY part_number",
-            (f'%{q.upper()}%', f'%{q.upper()}%')
+            """SELECT * FROM inventory
+               WHERE UPPER(part_number)     LIKE ?
+                  OR UPPER(description)     LIKE ?
+                  OR UPPER(manufacturer)    LIKE ?
+                  OR UPPER(alt_part_number) LIKE ?
+                  OR UPPER(item_group)      LIKE ?
+               ORDER BY part_number""",
+            (like, like, like, like, like)
         ).fetchall()
     else:
         parts = conn.execute("SELECT * FROM inventory ORDER BY part_number").fetchall()
@@ -1393,77 +1489,185 @@ def upload_inventory():
 
     try:
         df = pd.read_csv(path) if f.filename.lower().endswith('.csv') else pd.read_excel(path)
-        df.columns = [c.upper().strip() for c in df.columns]
+        # Keep original column names for display; work with uppercased copy for detection
+        orig_cols = list(df.columns)
+        upper_cols = [c.strip().upper() for c in orig_cols]
+        df.columns = upper_cols  # replace with uppercased names
+
+        def detect_col(candidates, exclude_patterns=None):
+            """Return first column name whose uppercased form contains any candidate string.
+               exclude_patterns: list of substrings that would DISQUALIFY a column if present."""
+            for col in upper_cols:
+                if exclude_patterns and any(ex in col for ex in exclude_patterns):
+                    continue
+                if any(cand in col for cand in candidates):
+                    return col
+            return None
 
         COL = {}
-        for c in df.columns:
-            cu = c.upper()
-            if any(x in cu for x in ['PART','P/N','PN','PARTNO','PART_NUM','PART NO']):
-                COL.setdefault('part_number', c)
-            elif 'DESC' in cu:
-                COL.setdefault('description', c)
-            elif 'COND' in cu:
-                COL.setdefault('condition', c)
-            elif cu in ('QTY','QUANTITY','STOCK','ON HAND','ONHAND','QTY ON HAND'):
-                COL.setdefault('quantity', c)
-            elif 'COST' in cu:
-                COL.setdefault('unit_cost', c)
-            elif 'PRICE' in cu or 'SELL' in cu:
-                COL.setdefault('unit_price', c)
-            elif 'LOC' in cu or 'BIN' in cu or 'SHELF' in cu:
-                COL.setdefault('location', c)
-            elif cu in ('UOM','UNIT OF MEASURE'):
-                COL.setdefault('uom', c)
+        # Part number: "PN" but NOT "PN DESCRIPTION" or "ALT PN"
+        COL['part_number'] = detect_col(['PART NO', 'PART NUM', 'PARTNO', 'P/N'],
+                                         exclude_patterns=['DESC', 'ALT', 'REVISED']) \
+                          or detect_col(['^PN$', 'PN '],
+                                         exclude_patterns=['DESC', 'ALT', 'REVISED'])
+        # Fallback: find exact "PN" column
+        if not COL['part_number']:
+            for col in upper_cols:
+                if col.strip() == 'PN':
+                    COL['part_number'] = col
+                    break
 
-        if 'part_number' not in COL:
-            flash('Cannot find a Part Number column. Name it "Part Number", "P/N", or "PN".', 'error')
+        # Description: must contain DESC, prefer "PN DESCRIPTION" or "DESCRIPTION"
+        COL['description'] = detect_col(['PN DESCRIPTION', 'PART DESCRIPTION', 'DESCRIPTION', ' DESC'])
+        if not COL['description']:
+            COL['description'] = detect_col(['DESC'])
+
+        # Alt Part Number
+        COL['alt_pn'] = detect_col(['ALT PN', 'ALT PART', 'ALTERNATE PN', 'ALTERNATE PART',
+                                     'REVISED PN', 'REVISED PART'])
+
+        # Condition
+        COL['condition'] = detect_col(['COND'])
+
+        # Quantity on hand (prefer "QTY OH", "QTY ON HAND", "QTY AVAIL", then generic QTY)
+        COL['quantity'] = (detect_col(['QTY OH', 'QTY ON HAND', 'ON HAND', 'ONHAND', 'QTY AVAIL'])
+                        or detect_col(['QTY', 'QUANTITY', 'STOCK']))
+
+        # Reserved qty
+        COL['qty_reserved'] = detect_col(['QTY RESERVED', 'RESERVED'])
+
+        # Available qty
+        COL['qty_avail'] = detect_col(['QTY AVAIL', 'AVAIL'])
+
+        # Unit cost
+        COL['unit_cost'] = detect_col(['UNIT COST', 'COST'])
+
+        # Unit price / sell price
+        COL['unit_price'] = detect_col(['UNIT PRICE', 'SELL PRICE', 'LIST PRICE', 'PRICE'])
+
+        # Location
+        COL['location'] = detect_col(['LOCATION', 'LOC', 'BIN', 'SHELF', 'WAREHOUSE'])
+
+        # UOM
+        COL['uom'] = detect_col(['UOM', 'UNIT OF MEASURE', 'UNIT MEASURE'])
+
+        # Manufacturer
+        COL['manufacturer'] = detect_col(['MANUFACTURER', 'MFR', 'MFG', 'MAKE', 'VENDOR'])
+
+        # Item group / category
+        COL['item_group'] = detect_col(['ITEM GROUP', 'ITEM_GROUP', 'CATEGORY', 'GROUP'])
+
+        # Serial number
+        COL['serial_number'] = detect_col(['SER NUM', 'SERIAL NUM', 'SERIAL NO', 'SER NO', 'SERIAL'])
+
+        # Traceability
+        COL['traceable_to'] = detect_col(['TRACEABLE', 'TRACE TO', 'OBTAINED FROM'])
+
+        # Tag info
+        COL['tag_type']    = detect_col(['TAG TYPE'])
+        COL['cert_number'] = detect_col(['CERT NUM', 'CERTIFIED NUM', 'CERT NO'])
+
+        # Dates
+        COL['rec_date'] = detect_col(['REC\'D DATE', 'RECEIVED DATE', 'REC DATE', 'RECV DATE'])
+        COL['exp_date'] = detect_col(['EXP DATE', 'EXPIRY', 'EXPIRATION'])
+
+        # Stockline number
+        COL['sl_number'] = detect_col(['SL NUM', 'STOCKLINE NUM', 'SL NO'])
+
+        if not COL['part_number']:
+            flash('Cannot find a Part Number column. Expected column named "PN", "P/N", or "Part Number".', 'error')
             return redirect(url_for('inventory'))
 
-        conn  = get_db()
-        mode  = request.form.get('mode', 'merge')
+        conn = get_db()
+        mode = request.form.get('mode', 'merge')
         if mode == 'replace':
             conn.execute('DELETE FROM inventory')
 
+        def gv(key, default=''):
+            """Get value for a mapped column, returning default for NaN/None/empty."""
+            col = COL.get(key)
+            if not col:
+                return default
+            val = df[col].iloc[row_idx] if col in df.columns else default
+            s = str(val).strip()
+            return default if s.upper() in ('NAN', 'NONE', '', 'N/A') else s
+
         added = updated = 0
-        for _, row in df.iterrows():
-            pn = str(row[COL['part_number']]).strip().upper()
+        for row_idx in range(len(df)):
+            pn = str(df[COL['part_number']].iloc[row_idx]).strip().upper()
             if not pn or pn in ('NAN', 'NONE', ''):
                 continue
 
-            def g(key, default=''):
-                col = COL.get(key)
-                if not col: return default
-                val = row.get(col, default)
-                return default if str(val).upper() in ('NAN','NONE','') else val
+            desc     = gv('description', '').strip().title()
+            alt_pn   = gv('alt_pn', '').strip().upper()
+            cond     = gv('condition', 'SV').strip().upper() or 'SV'
+            loc      = gv('location', '').strip()
+            uom      = gv('uom', 'EA').strip() or 'EA'
+            mfr      = gv('manufacturer', '').strip().title()
+            grp      = gv('item_group', '').strip().title()
+            ser      = gv('serial_number', '').strip()
+            trace    = gv('traceable_to', '').strip()
+            tag_type = gv('tag_type', '').strip()
+            cert_num = gv('cert_number', '').strip()
+            rec_date = gv('rec_date', '').strip()
+            exp_date = gv('exp_date', '').strip()
+            sl_num   = gv('sl_number', '').strip()
 
-            desc  = str(g('description', '')).strip().title()
-            cond  = str(g('condition', 'SV')).strip().upper()
-            loc   = str(g('location', '')).strip()
-            uom   = str(g('uom', 'EA')).strip() or 'EA'
-            try: qty = int(float(g('quantity', 0)))
-            except: qty = 0
-            try: cost = float(g('unit_cost', 0))
+            try: qty      = int(float(gv('quantity', 0)))
+            except: qty   = 0
+            try: qty_res  = int(float(gv('qty_reserved', 0)))
+            except: qty_res = 0
+            try: qty_avail = int(float(gv('qty_avail', qty)))
+            except: qty_avail = qty
+            try: cost  = float(gv('unit_cost', 0))
             except: cost = 0.0
-            try: price = float(g('unit_price', 0))
+            try: price = float(gv('unit_price', 0))
             except: price = 0.0
 
             exists = conn.execute('SELECT id FROM inventory WHERE part_number=?', (pn,)).fetchone()
             if exists:
-                conn.execute(
-                    'UPDATE inventory SET description=?,condition=?,quantity=?,unit_cost=?,unit_price=?,location=?,uom=?,updated_at=CURRENT_TIMESTAMP WHERE part_number=?',
-                    (desc, cond, qty, cost, price, loc, uom, pn))
+                conn.execute('''
+                    UPDATE inventory SET
+                        description=?, alt_part_number=?, condition=?,
+                        quantity=?, qty_reserved=?, qty_avail=?,
+                        unit_cost=?, unit_price=?, location=?, uom=?,
+                        manufacturer=?, item_group=?, serial_number=?,
+                        traceable_to=?, tag_type=?, cert_number=?,
+                        rec_date=?, exp_date=?, sl_number=?,
+                        updated_at=CURRENT_TIMESTAMP
+                    WHERE part_number=?''',
+                    (desc, alt_pn, cond,
+                     qty, qty_res, qty_avail,
+                     cost, price, loc, uom,
+                     mfr, grp, ser,
+                     trace, tag_type, cert_num,
+                     rec_date, exp_date, sl_num,
+                     pn))
                 updated += 1
             else:
-                conn.execute(
-                    'INSERT INTO inventory (part_number,description,condition,quantity,unit_cost,unit_price,location,uom) VALUES (?,?,?,?,?,?,?,?)',
-                    (pn, desc, cond, qty, cost, price, loc, uom))
+                conn.execute('''
+                    INSERT INTO inventory
+                        (part_number, description, alt_part_number, condition,
+                         quantity, qty_reserved, qty_avail,
+                         unit_cost, unit_price, location, uom,
+                         manufacturer, item_group, serial_number,
+                         traceable_to, tag_type, cert_number,
+                         rec_date, exp_date, sl_number)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                    (pn, desc, alt_pn, cond,
+                     qty, qty_res, qty_avail,
+                     cost, price, loc, uom,
+                     mfr, grp, ser,
+                     trace, tag_type, cert_num,
+                     rec_date, exp_date, sl_num))
                 added += 1
 
         conn.commit()
         conn.close()
         flash(f'Inventory updated — {added} added, {updated} updated.', 'success')
     except Exception as e:
-        flash(f'Error reading file: {e}', 'error')
+        import traceback
+        flash(f'Error reading file: {e}\n{traceback.format_exc()}', 'error')
 
     return redirect(url_for('inventory'))
 
@@ -1483,12 +1687,29 @@ def delete_part(pid):
 @login_required
 def edit_part(pid):
     conn = get_db()
-    conn.execute(
-        'UPDATE inventory SET part_number=?,description=?,condition=?,quantity=?,unit_cost=?,unit_price=?,location=?,uom=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
-        (request.form['part_number'].upper(), request.form.get('description',''),
-         request.form.get('condition','SV'), int(request.form.get('quantity',0)),
-         float(request.form.get('unit_cost',0)), float(request.form.get('unit_price',0)),
-         request.form.get('location',''), request.form.get('uom','EA'), pid))
+    try:
+        qty_avail = int(request.form.get('qty_avail', request.form.get('quantity', 0)))
+    except:
+        qty_avail = 0
+    conn.execute('''
+        UPDATE inventory SET
+            part_number=?, alt_part_number=?, description=?, manufacturer=?,
+            condition=?, quantity=?, qty_avail=?,
+            unit_cost=?, unit_price=?, location=?, uom=?,
+            updated_at=CURRENT_TIMESTAMP
+        WHERE id=?''',
+        (request.form['part_number'].strip().upper(),
+         request.form.get('alt_part_number', '').strip().upper(),
+         request.form.get('description', ''),
+         request.form.get('manufacturer', ''),
+         request.form.get('condition', 'SV').strip().upper(),
+         int(request.form.get('quantity', 0)),
+         qty_avail,
+         float(request.form.get('unit_cost', 0)),
+         float(request.form.get('unit_price', 0)),
+         request.form.get('location', ''),
+         request.form.get('uom', 'EA'),
+         pid))
     conn.commit()
     conn.close()
     return jsonify({'success': True})
@@ -2501,72 +2722,116 @@ def _extract_customer_ref(subject, body=''):
     return ''
 
 
-def _parse_email_signature(body, sender_name=''):
+def _parse_email_signature(body, sender_name='', sender_email=''):
     """
     Find the email signature block (after Best Regards / Thanks etc.)
-    and extract name, company, phone, email, website from labelled lines.
-    Handles markdown bold (*text*) formatting common in forwarded emails.
+    and extract name, company, phone, email, website, address from labelled lines.
+    Handles markdown bold (*text*), emoji-prefixed lines (📞 Phone:), and plain bare values.
     """
     result = {}
 
-    def _strip_md(s):
-        """Strip markdown bold/italic asterisks and clean whitespace."""
-        s = re.sub(r'\*+', '', s)          # remove all asterisks
+    def _strip_decorations(s):
+        """Strip markdown asterisks, emoji, and collapse whitespace."""
+        # Remove emoji (unicode ranges for common emoji blocks)
+        s = re.sub(r'[\U0001F300-\U0001FFFF\U00002600-\U000027BF\U0000FE00-\U0000FEFF]', '', s)
+        s = re.sub(r'\*+', '', s)          # remove markdown bold/italic
         s = re.sub(r'\s{2,}', ' ', s)      # collapse multiple spaces
         return s.strip()
 
     # ── 1. Locate signature block ─────────────────────────────────────────────
-    # Allow optional surrounding asterisks e.g. *Best Regards,*
+    # Sign-off words that typically precede the signature
     SIGNOFF = re.compile(
         r'^\s*\*{0,2}\s*(?:best\s+regards?|kind\s+regards?|regards?|sincerely'
         r'|thanks?(?:\s+and\s+regards?)?|cheers|warm\s+regards?|thank\s+you'
+        r'|atenciosamente|cordialmente|abraços?'          # Portuguese sign-offs
         r'|yours\s+(?:truly|sincerely|faithfully))[,\.]?\s*\*{0,2}\s*$',
         re.I | re.MULTILINE
     )
-    m = SIGNOFF.search(body)
-    sig_block = body[m.end():] if m else body
+    # Also detect sig block by RFC 3676 "-- " delimiter or 3+ dashes alone
+    SIG_DELIM = re.compile(r'(?m)^(?:--\s*|-{3,}|_{3,})\s*$')
+    m_signoff = SIGNOFF.search(body)
+    m_delim   = SIG_DELIM.search(body)
+    if m_signoff and (not m_delim or m_signoff.start() <= m_delim.start()):
+        sig_block = body[m_signoff.end():]
+    elif m_delim:
+        sig_block = body[m_delim.end():]
+    else:
+        sig_block = body  # no signoff found — scan whole body
 
-    # Take first 30 non-empty lines, stripping markdown
-    raw_lines = [l.strip() for l in sig_block.splitlines() if l.strip()][:30]
-    lines = [_strip_md(l) for l in raw_lines]
+    # Take first 40 non-empty lines, stripping decorations
+    raw_lines = [l.strip() for l in sig_block.splitlines() if l.strip()][:40]
+    lines = [_strip_decorations(l) for l in raw_lines]
 
-    # ── 2. Patterns for labelled fields ──────────────────────────────────────
-    # Single-letter labels (P:, M:, T:, E:, W:) and full-word labels
+    # ── 2. Patterns ───────────────────────────────────────────────────────────
+    # Labels that may be preceded by emoji (already stripped above)
     PH_LABEL  = re.compile(
         r'^(?:p|m|ph|phone|tel|mobile|cell|direct|office|fax)[:\s\.]+(.+)$', re.I)
     EM_LABEL  = re.compile(
         r'^(?:e|e[\-]?mail|email)[:\s]+(.+)$', re.I)
     WEB_LABEL = re.compile(
         r'^(?:w|web(?:site)?|url|www)[:\s]+(.+)$', re.I)
-    PH_BARE   = re.compile(r'^(\+{1,2}?[\d][\d\s\-\.\(\)\/]{5,25}\d)$')
-    WEB_BARE  = re.compile(r'^((?:https?://|www\.)\S+)$', re.I)
+    ADDR_LABEL = re.compile(
+        r'^(?:addr(?:ess)?|endereço|location|loc)[:\s]+(.+)$', re.I)
+
+    PH_BARE  = re.compile(r'^(\+{0,2}[\d][\d\s\-\.\(\)\/]{5,25}\d)$')
+    WEB_BARE = re.compile(r'^((?:https?://|www\.)\S+)$', re.I)
+    EMAIL_BARE = re.compile(r'^([\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,})$')
+
     CO_SUFFIX = re.compile(
         r'\b(?:Pvt\.?\s*Ltd\.?|Pty\.?\s*Ltd\.?|Ltd\.?|LLC\.?|Inc\.?|Corp\.?'
         r'|GmbH|SAS|BV|PLC|Limited|Incorporated|Airlines?|Airways?|Aviation'
-        r'|Aerospace|Parts\s+Inc|Spares)\b', re.I
+        r'|Aerospace|Parts\s*(?:Inc\.?)?|Spares|Supply|Services?|Solutions?'
+        r'|International|Group|Holdings?)\b', re.I
     )
-    # Role/title keywords — skip these lines for name/company detection
+    # Role/job title keywords — these lines are titles, not company names
     ROLE_KW = re.compile(
         r'\b(?:manager|director|officer|executive|engineer|purchasing|procurement'
-        r'|sales|unit|dept|department|division|representative|coordinator)\b', re.I
+        r'|sales|assistente|gerente|compras|supervisor|analyst|coordinator'
+        r'|specialist|representative|agent|buyer|vendas|comercial|técnico)\b', re.I
     )
+    # Street address indicators
+    STREET_KW = re.compile(
+        r'\b(?:rua|av(?:enida)?|street|st\.|road|rd\.|blvd|boulevard|dr\.|drive'
+        r'|lane|ln\.|way|court|ct\.|place|pl\.|square|sq\.|suite|ste\.'
+        r'|andar|sala|lote|quadra|setor|jardim|jd\.?|bairro)\b', re.I
+    )
+    # Postal code patterns: US (12345 or 12345-6789), BR (12345-678), AU (1234), etc.
+    POSTCODE = re.compile(
+        r'\b(?:\d{5}(?:-\d{3,4})?|\d{4}(?:\s?[A-Z]{2})?|[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})\b'
+    )
+
+    # Words that indicate a greeting/salutation (not a person's name)
+    GREETING_WORDS = {
+        'good', 'morning', 'afternoon', 'evening', 'hello', 'hi', 'hey',
+        'dear', 'greetings', 'salutations', 'sir', 'madam', 'team',
+        'all', 'everyone', 'there', 'folks', 'gentlemen',
+    }
+
+    addr_lines = []   # accumulate address lines
 
     for i, line in enumerate(lines):
         if not line:
             continue
 
-        # ── Name: first line after signoff that looks like a person's name
-        if 'sig_name' not in result and i == 0:
-            # Person name: 2-4 words, each capitalised, no digits, no special chars
-            if re.match(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}$', line):
-                result['sig_name'] = line
+        # ── Name: first 1-2 lines that look like a person's full name
+        if 'sig_name' not in result and i <= 1:
+            if re.match(r'^[A-ZÀ-Ö][a-zà-ö]+(?:\s+(?:de|da|dos?|las?|van|von|el)?\s*[A-ZÀ-Öa-zà-ö][a-zà-ö]+){1,3}$', line):
+                words_lower = {w.lower() for w in line.split()}
+                if not (words_lower & GREETING_WORDS):
+                    result['sig_name'] = line
 
-        # ── Phone (skip if line already matched as email/web)
+        # ── Role/title (line 2-4, has role keywords, not already captured as name)
+        if 'role' not in result and 0 < i <= 3 and ROLE_KW.search(line):
+            if not CO_SUFFIX.search(line):   # avoid "Sales Inc" being a role
+                result['role'] = line
+
+        # ── Phone
         if 'phone' not in result:
             lm = PH_LABEL.match(line)
             if lm:
                 val = lm.group(1).strip()
-                # Take first phone number if multiple separated by 'or'
+                # Strip mailto-style angle brackets and take first number
+                val = re.sub(r'<[^>]+>', '', val).strip()
                 val = re.split(r'\s+or\s+', val, maxsplit=1)[0].strip()
                 result['phone'] = val
             elif PH_BARE.match(line):
@@ -2577,26 +2842,72 @@ def _parse_email_signature(body, sender_name=''):
             em = EM_LABEL.match(line)
             if em:
                 val = em.group(1).strip()
-                # Handle "address <address>" format
                 angle = re.search(r'<([\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,})>', val)
-                result['email'] = angle.group(1) if angle else val.split()[0]
-            elif re.match(r'^[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}$', line):
+                if angle:
+                    result['email'] = angle.group(1)
+                else:
+                    # Take first email-like token
+                    tok = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}', val)
+                    if tok:
+                        result['email'] = tok.group()
+            elif EMAIL_BARE.match(line):
                 result['email'] = line
+            else:
+                # Handle "address <mailto:address>" style lines
+                mailto = re.search(
+                    r'([\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,})'
+                    r'(?:<mailto:([\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,})>)?',
+                    line
+                )
+                if mailto and not any(lbl in line.lower()[:10]
+                                      for lbl in ('phone', 'tel', 'web', 'www', 'fax')):
+                    result['email'] = mailto.group(1)
 
         # ── Website
         if 'website' not in result:
             wm = WEB_LABEL.match(line)
             if wm:
-                result['website'] = wm.group(1).strip()
+                val = wm.group(1).strip()
+                # Strip angle bracket URL duplicates like "www.x.com<https://www.x.com>"
+                val = re.sub(r'<https?://[^>]+>', '', val).strip()
+                result['website'] = val
             elif WEB_BARE.match(line):
+                raw_url = line
+                clean_url = re.sub(r'<https?://[^>]+>', '', raw_url).strip()
                 skip = ['unsubscribe', 'track', 'click', 'pixel']
-                if not any(s in line.lower() for s in skip):
-                    result['website'] = line
+                if not any(s in clean_url.lower() for s in skip):
+                    result['website'] = clean_url
 
-        # ── Company: line with a business suffix, not a role/title line
+        # ── Company: line with a business suffix
         if 'company' not in result and CO_SUFFIX.search(line):
             if line.lower() != (sender_name or '').lower() and not ROLE_KW.search(line):
                 result['company'] = line
+
+        # ── Address accumulation: lines that look like street addresses or postcodes
+        if STREET_KW.search(line) or (POSTCODE.search(line) and len(line) <= 60):
+            # Don't re-add lines already captured as company/phone/email/website
+            if (line not in (result.get('company',''), result.get('phone',''),
+                             result.get('email',''), result.get('website',''))
+                    and 'phone' not in line.lower()[:6]):
+                addr_lines.append(line)
+
+    # ── Assemble address ──────────────────────────────────────────────────────
+    if addr_lines:
+        result['address'] = ', '.join(addr_lines)
+
+    # ── Company fallback: derive from email domain ────────────────────────────
+    if 'company' not in result and sender_email and '@' in sender_email:
+        domain = sender_email.split('@')[1].lower()
+        # Strip TLD(s) and common generic domains
+        GENERIC_DOMAINS = {'gmail', 'yahoo', 'hotmail', 'outlook', 'icloud',
+                           'aol', 'protonmail', 'zoho', 'yandex'}
+        base = domain.split('.')[0]
+        if base not in GENERIC_DOMAINS:
+            # Convert "aviationpartsinc" → "Aviation Parts Inc"
+            # Split on common word boundaries (camelCase, numbers, separators)
+            parts = re.sub(r'([a-z])([A-Z])', r'\1 \2', base)
+            parts = re.sub(r'[\-_]', ' ', parts)
+            result['company'] = parts.title()
 
     return result
 
@@ -3116,16 +3427,32 @@ def _fetch_imap(settings):
                     parsed = pb['parts']
             else:
                 # ── Parse email signature block for contact info ──────────────
-                sig_info = _parse_email_signature(parse_body, cust_name)
+                sig_info = _parse_email_signature(parse_body, cust_name, cust_email)
                 cust_company = sig_info.get('company', '')
                 cust_phone   = sig_info.get('phone', '')
                 cust_website = sig_info.get('website', '')
+                cust_address = sig_info.get('address', '')
                 sig_name = sig_info.get('sig_name', '')
                 if sig_name and sig_name.lower() != cust_name.lower():
                     cust_name = sig_name
                 sig_email = sig_info.get('email', '')
                 if sig_email and not cust_email:
                     cust_email = sig_email
+                # ── Final fallback: derive name from email address ─────────────
+                # If cust_name is still empty or just looks like a greeting,
+                # use the part before @ in the email address
+                GREETING_WORDS_CHECK = {
+                    'good', 'morning', 'afternoon', 'evening', 'hello', 'hi',
+                    'dear', 'greetings', 'hey', 'sir', 'madam',
+                }
+                name_words = {w.lower() for w in cust_name.split()}
+                if not cust_name or (name_words & GREETING_WORDS_CHECK):
+                    if cust_email and '@' in cust_email:
+                        # Convert "john.smith" → "John Smith"
+                        prefix = cust_email.split('@')[0]
+                        cust_name = ' '.join(
+                            w.capitalize() for w in re.split(r'[._\-]', prefix)
+                        ) or cust_email
                 # ── Extract customer reference from subject/body ──────────────
                 customer_ref = _extract_customer_ref(subject, parse_body)
 
@@ -3148,9 +3475,25 @@ def _fetch_imap(settings):
             rfq_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
             for item in parsed:
+                pn   = item['part_number']
+                desc = item['description']
+                cond = item['condition']
+
+                # ── Cross-reference against inventory ─────────────────────────
+                # If the parsed PN matches something in stock, use the
+                # canonical PN from inventory (correct capitalisation, dashes etc.)
+                # and fill in description if the email didn't provide one.
+                inv_match = match_inventory(pn, conn)
+                if inv_match:
+                    pn   = inv_match['part_number']          # canonical PN
+                    desc = desc or inv_match.get('description') or desc
+                    # Use inventory condition only if email didn't supply one
+                    if cond in ('SV', '') and inv_match.get('condition'):
+                        cond = inv_match['condition']
+
                 conn.execute(
                     'INSERT INTO rfq_items (rfq_id,part_number,description,quantity,condition) VALUES (?,?,?,?,?)',
-                    (rfq_id, item['part_number'], item['description'], item['quantity'], item['condition']))
+                    (rfq_id, pn, desc, item['quantity'], cond))
             count += 1
 
         # Always mark this message as imported so we don't check it again
