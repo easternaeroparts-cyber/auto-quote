@@ -90,13 +90,14 @@
     <table class="table table-sm mb-0" id="itemsTable">
       <thead>
         <tr>
-          <th style="width:14%">Part Number</th>
-          <th style="width:38%">Description</th>
-          <th style="width:8%">Cond</th>
-          <th style="width:7%">Qty</th>
-          <th style="width:12%">Unit Price</th>
-          <th style="width:12%">Total Price</th>
-          <th style="width:5%"></th>
+          <th style="width:13%">Part Number</th>
+          <th style="width:27%">Description</th>
+          <th style="width:10%">Serial #</th>
+          <th style="width:7%">Cond</th>
+          <th style="width:6%">Qty</th>
+          <th style="width:11%">Unit Price</th>
+          <th style="width:11%">Total Price</th>
+          <th style="width:4%"></th>
         </tr>
       </thead>
       <tbody id="itemsTbody">
@@ -104,6 +105,7 @@
         <tr class="item-row">
           <td><input name="pn[]" class="form-control form-control-sm" value="{{ item.part_number }}"></td>
           <td><input name="desc[]" class="form-control form-control-sm" value="{{ item.description }}"></td>
+          <td><input name="sn[]" class="form-control form-control-sm" value="{{ item.serial_number or '' }}" placeholder="N/A"></td>
           <td><input name="cond[]" class="form-control form-control-sm" value="{{ item.condition }}" placeholder="NE"></td>
           <td><input name="qty[]" type="number" step="any" class="form-control form-control-sm qty" value="{{ item.quantity }}"></td>
           <td><input name="unit_price[]" type="number" step="0.01" class="form-control form-control-sm up" value="{{ item.unit_price }}"></td>
@@ -220,6 +222,7 @@ function addRow() {
   tr.innerHTML = `
     <td><input name="pn[]" class="form-control form-control-sm" placeholder="PN"></td>
     <td><input name="desc[]" class="form-control form-control-sm" placeholder="Description"></td>
+    <td><input name="sn[]" class="form-control form-control-sm" placeholder="N/A"></td>
     <td><input name="cond[]" class="form-control form-control-sm" placeholder="NE"></td>
     <td><input name="qty[]" type="number" step="any" class="form-control form-control-sm qty" value="1"></td>
     <td><input name="unit_price[]" type="number" step="0.01" class="form-control form-control-sm up" value="0"></td>

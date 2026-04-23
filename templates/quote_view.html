@@ -3,12 +3,24 @@
 {% block page_title %}{{ quote.quote_number }}{% endblock %}
 
 {% block topbar_actions %}
+{% if rfq and rfq.id %}
 <a href="{{ url_for('rfq_detail', rfq_id=rfq.id) }}" class="btn btn-sm btn-outline-secondary">
   <i class="bi bi-arrow-left"></i> Back to RFQ
 </a>
+{% else %}
+<a href="{{ url_for('quote_list') }}" class="btn btn-sm btn-outline-secondary">
+  <i class="bi bi-arrow-left"></i> Back to Quotes
+</a>
+{% endif %}
 <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
   <i class="bi bi-printer"></i> Print / PDF
 </button>
+<form method="post" action="{{ url_for('quote_convert_to_invoice', quote_id=quote.id) }}" class="d-inline no-print"
+      onsubmit="return confirm('Create an invoice from this quote?')">
+  <button type="submit" class="btn btn-sm btn-outline-success fw-semibold">
+    <i class="bi bi-receipt"></i> Convert to Invoice
+  </button>
+</form>
 <button class="btn btn-sm {% if quote.status == 'sent' %}btn-outline-secondary{% else %}btn-gold fw-semibold{% endif %} no-print" data-bs-toggle="modal" data-bs-target="#sendModal">
   <i class="bi bi-send"></i> {% if quote.status == 'sent' %}Resend{% else %}Send to Customer{% endif %}
 </button>

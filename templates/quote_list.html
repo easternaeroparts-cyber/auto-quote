@@ -39,10 +39,16 @@
         <td><small class="text-muted">{{ q.created_at[:10] }}</small></td>
         <td><small class="text-muted">{{ q.sent_at[:10] if q.sent_at else '—' }}</small></td>
         <td class="text-end pe-3">
-          <div class="d-flex gap-1 justify-content-end">
+          <div class="d-flex gap-1 justify-content-end flex-wrap">
             <a href="{{ url_for('quote_view', quote_id=q.id) }}" class="btn btn-sm btn-outline-secondary py-0">
               <i class="bi bi-eye"></i> View
             </a>
+            <form method="post" action="{{ url_for('quote_convert_to_invoice', quote_id=q.id) }}"
+                  class="d-inline" onsubmit="return confirm('Create invoice from {{ q.quote_number }}?')">
+              <button type="submit" class="btn btn-sm btn-outline-success py-0">
+                <i class="bi bi-receipt"></i> Invoice
+              </button>
+            </form>
             <button type="button"
               class="btn btn-sm py-0 {% if q.status == 'sent' %}btn-outline-secondary{% else %}btn-gold fw-semibold{% endif %}"
               onclick="openSendModal({{ q.id }}, '{{ q.quote_number }}', '{{ q.customer_name or '' }}', '{{ q.customer_email or '' }}', '{{ q.status }}')">

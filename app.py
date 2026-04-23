@@ -640,6 +640,7 @@ def init_db():
         "ALTER TABLE purchase_orders ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
         "ALTER TABLE po_items ADD COLUMN part_number TEXT",
         "ALTER TABLE po_items ADD COLUMN description TEXT",
+        "ALTER TABLE po_items ADD COLUMN serial_number TEXT",
         "ALTER TABLE po_items ADD COLUMN condition TEXT",
         "ALTER TABLE po_items ADD COLUMN quantity REAL DEFAULT 1",
         "ALTER TABLE po_items ADD COLUMN unit_price REAL DEFAULT 0",
@@ -658,6 +659,7 @@ def init_db():
         "ALTER TABLE invoices ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
         "ALTER TABLE invoice_items ADD COLUMN part_number TEXT",
         "ALTER TABLE invoice_items ADD COLUMN description TEXT",
+        "ALTER TABLE invoice_items ADD COLUMN serial_number TEXT",
         "ALTER TABLE invoice_items ADD COLUMN condition TEXT",
         "ALTER TABLE invoice_items ADD COLUMN quantity REAL DEFAULT 1",
         "ALTER TABLE invoice_items ADD COLUMN unit_price REAL DEFAULT 0",
@@ -1823,6 +1825,89 @@ def quote_view(quote_id):
         rfq = stub
     return render_template('quote_view.html', quote=quote, rfq=rfq, items=items,
                            attachments=attachments, settings=settings)
+
+
+@app.route('/quotes/<int:quote_id>/convert-to-invoice', methods=['POST'])
+@login_required
+def quote_convert_to_invoice(quote_id):
+    """Create an invoice pre-populated with all data from the quote."""
+    conn  = get_db()
+    quote = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
+    if not quote:
+        conn.close()
+        flash('Quote not found.', 'error')
+        return redirect(url_for('quote_list'))
+
+    rfq = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone() if quote['rfq_id'] else None
+    items = conn.execute(
+        'SELECT * FROM quote_items WHERE quote_id=? AND (no_quote IS NULL OR no_quote=0)',
+        (quote_id,)
+    ).fetchall()
+
+    # Build customer info from RFQ
+    customer_name    = (rfq['customer_name'] if rfq else '') or ''
+    customer_company = (rfq['company']       if rfq else '') or ''
+    customer_email   = (rfq['customer_email'] if rfq else '') or ''
+    customer_ref     = (rfq['customer_ref']  if rfq else '') or ''
+
+    # invoice_for = customer name / company
+    invoice_for = customer_company or customer_name
+
+    # Build customer address block
+    address_parts = []
+    if customer_name and customer_company:
+        address_parts.append(customer_name)
+    if rfq and rfq['address']:
+        address_parts.append(rfq['address'])
+    elif customer_email:
+        address_parts.append(customer_email)
+    customer_address = '\n'.join(address_parts)
+
+    # Calculate totals
+    subtotal = sum((i['extended_price'] or 0) for i in items)
+
+    inv_number = _next_erp_number('INV', 'invoices', 'invoice_number')
+
+    cur = conn.execute('''
+        INSERT INTO invoices
+          (invoice_number, invoice_for, customer_name, customer_address,
+           reference, due_date, subtotal, adjustments, grand_total, notes, status)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+    ''', (
+        inv_number,
+        invoice_for,
+        customer_name,
+        customer_address,
+        customer_ref or quote['quote_number'],
+        '',   # due_date — left for user to fill
+        round(subtotal, 2),
+        0,
+        round(subtotal, 2),
+        f"Converted from Quote {quote['quote_number']}",
+        'draft'
+    ))
+    inv_id = cur.lastrowid
+
+    # Copy line items
+    for item in items:
+        conn.execute('''
+            INSERT INTO invoice_items
+              (invoice_id, part_number, description, condition, quantity, unit_price, total_price)
+            VALUES (?,?,?,?,?,?,?)
+        ''', (
+            inv_id,
+            item['part_number'] or '',
+            item['description'] or '',
+            item['condition']   or '',
+            item['quantity_requested'] or 1,
+            item['unit_price']  or 0,
+            item['extended_price'] or 0,
+        ))
+
+    conn.commit()
+    conn.close()
+    flash(f'Invoice {inv_number} created from Quote {quote["quote_number"]}.', 'success')
+    return redirect(url_for('invoice_edit', inv_id=inv_id))
 
 
 @app.route('/quotes/<int:quote_id>/update-item', methods=['POST'])
@@ -3698,6 +3783,7 @@ def po_new():
             po_id = cur.lastrowid
             pns   = request.form.getlist('pn[]')
             descs = request.form.getlist('desc[]')
+            sns   = request.form.getlist('sn[]')
             conds = request.form.getlist('cond[]')
             qtys  = request.form.getlist('qty[]')
             ups   = request.form.getlist('unit_price[]')
@@ -3706,9 +3792,10 @@ def po_new():
                 if not pn.strip():
                     continue
                 conn.execute(
-                    'INSERT INTO po_items (po_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                    'INSERT INTO po_items (po_id,part_number,description,serial_number,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?,?)',
                     (po_id, pn.strip(),
                      descs[i] if i < len(descs) else '',
+                     sns[i] if i < len(sns) else '',
                      conds[i] if i < len(conds) else '',
                      float(qtys[i] or 0) if i < len(qtys) else 1,
                      float(ups[i] or 0) if i < len(ups) else 0,
@@ -3781,6 +3868,7 @@ def po_edit(po_id):
         conn.execute('DELETE FROM po_items WHERE po_id=?', (po_id,))
         pns   = request.form.getlist('pn[]')
         descs = request.form.getlist('desc[]')
+        sns   = request.form.getlist('sn[]')
         conds = request.form.getlist('cond[]')
         qtys  = request.form.getlist('qty[]')
         ups   = request.form.getlist('unit_price[]')
@@ -3789,8 +3877,9 @@ def po_edit(po_id):
             if not pn.strip():
                 continue
             conn.execute(
-                'INSERT INTO po_items (po_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                'INSERT INTO po_items (po_id,part_number,description,serial_number,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?,?)',
                 (po_id, pn.strip(), descs[i] if i < len(descs) else '',
+                 sns[i] if i < len(sns) else '',
                  conds[i] if i < len(conds) else '',
                  float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
                  float(ups[i]) if i < len(ups) and ups[i] else 0,
@@ -3857,6 +3946,7 @@ def invoice_new():
             inv_id = cur.lastrowid
             pns   = request.form.getlist('pn[]')
             descs = request.form.getlist('desc[]')
+            sns   = request.form.getlist('sn[]')
             conds = request.form.getlist('cond[]')
             qtys  = request.form.getlist('qty[]')
             ups   = request.form.getlist('unit_price[]')
@@ -3865,9 +3955,10 @@ def invoice_new():
                 if not pn.strip():
                     continue
                 conn.execute(
-                    'INSERT INTO invoice_items (invoice_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                    'INSERT INTO invoice_items (invoice_id,part_number,description,serial_number,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?,?)',
                     (inv_id, pn.strip(),
                      descs[i] if i < len(descs) else '',
+                     sns[i] if i < len(sns) else '',
                      conds[i] if i < len(conds) else '',
                      float(qtys[i] or 0) if i < len(qtys) else 1,
                      float(ups[i] or 0) if i < len(ups) else 0,
@@ -3934,6 +4025,7 @@ def invoice_edit(inv_id):
         conn.execute('DELETE FROM invoice_items WHERE invoice_id=?', (inv_id,))
         pns   = request.form.getlist('pn[]')
         descs = request.form.getlist('desc[]')
+        sns   = request.form.getlist('sn[]')
         conds = request.form.getlist('cond[]')
         qtys  = request.form.getlist('qty[]')
         ups   = request.form.getlist('unit_price[]')
@@ -3942,8 +4034,9 @@ def invoice_edit(inv_id):
             if not pn.strip():
                 continue
             conn.execute(
-                'INSERT INTO invoice_items (invoice_id,part_number,description,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?)',
+                'INSERT INTO invoice_items (invoice_id,part_number,description,serial_number,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?,?)',
                 (inv_id, pn.strip(), descs[i] if i < len(descs) else '',
+                 sns[i] if i < len(sns) else '',
                  conds[i] if i < len(conds) else '',
                  float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
                  float(ups[i]) if i < len(ups) and ups[i] else 0,

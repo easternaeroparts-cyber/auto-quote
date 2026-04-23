@@ -95,12 +95,13 @@
   <table class="items-table">
     <thead>
       <tr>
-        <th style="width:14%">Part Number</th>
-        <th style="width:38%">Description</th>
-        <th style="width:8%">Cond</th>
-        <th style="width:7%;text-align:center">Qty</th>
-        <th style="width:14%;text-align:right">Unit Price</th>
-        <th style="width:14%;text-align:right">Total Price</th>
+        <th style="width:13%">Part Number</th>
+        <th style="width:27%">Description</th>
+        <th style="width:11%">Serial #</th>
+        <th style="width:7%">Cond</th>
+        <th style="width:6%;text-align:center">Qty</th>
+        <th style="width:13%;text-align:right">Unit Price</th>
+        <th style="width:13%;text-align:right">Total Price</th>
       </tr>
     </thead>
     <tbody>
@@ -108,6 +109,7 @@
       <tr>
         <td><strong>{{ item.part_number }}</strong></td>
         <td>{{ item.description }}</td>
+        <td>{{ item.serial_number or '—' }}</td>
         <td>{{ item.condition }}</td>
         <td style="text-align:center">{{ item.quantity|int }}</td>
         <td style="text-align:right">${{ '%.2f'|format(item.unit_price or 0) }}</td>
