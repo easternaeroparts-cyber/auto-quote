@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+{% block title %}{{ part.part_number }}{% endblock %}
+{% block page_title %}{{ part.part_number }}{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('inventory') }}" class="btn btn-outline-secondary btn-sm">
+  <i class="bi bi-arrow-left"></i> Back to Inventory
+</a>
+{% endblock %}
+
+{% block head %}
+<style>
+  .doc-badge { font-size:.72rem; font-weight:700; letter-spacing:.6px; text-transform:uppercase; padding:3px 8px; border-radius:4px; }
+  .section-title { font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:.8px; color:#1a3c6e; border-bottom:2px solid #1a3c6e; padding-bottom:6px; margin-bottom:12px; }
+  .stat-box { background:#f8f9fa; border:1px solid #dee2e6; border-radius:8px; padding:14px 18px; text-align:center; }
+  .stat-num { font-size:1.6rem; font-weight:800; color:#1a3c6e; line-height:1; }
+  .stat-lbl { font-size:.7rem; font-weight:600; text-transform:uppercase; color:#888; letter-spacing:.5px; margin-top:2px; }
+  .history-table th { font-size:.72rem; text-transform:uppercase; letter-spacing:.4px; color:#888; font-weight:600; border-bottom:2px solid #dee2e6; }
+  .history-table td { font-size:.84rem; vertical-align:middle; }
+  .empty-state { color:#aaa; font-size:.85rem; padding:16px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Part Info Card -->
+<div class="card mb-4">
+  <div class="card-body">
+    <div class="row align-items-center g-3">
+      <div class="col-md-4">
+        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#888;">Part Number</div>
+        <div style="font-size:1.5rem;font-weight:800;color:#1a3c6e;font-family:monospace;">{{ part.part_number }}</div>
+        {% if part.alt_part_number %}
+        <div style="font-size:.8rem;color:#888;">Alt PN: <strong>{{ part.alt_part_number }}</strong></div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#888;">Description</div>
+        <div style="font-size:1rem;font-weight:600;">{{ part.description or '—' }}</div>
+        {% if part.manufacturer %}
+        <div style="font-size:.82rem;color:#666;">{{ part.manufacturer }}</div>
+        {% endif %}
+      </div>
+      <div class="col-md-4">
+        <div class="row g-2">
+          <div class="col-4">
+            <div class="stat-box">
+              <div class="stat-num {% if part.quantity == 0 %}text-danger{% endif %}">{{ part.quantity }}</div>
+              <div class="stat-lbl">Qty OH</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="stat-box">
+              <div class="stat-num" style="font-size:1.1rem;">
+                <span class="badge text-bg-{% if part.condition == 'OH' %}success{% elif part.condition in ('AR','SV') %}warning{% elif part.condition == 'NE' %}info{% else %}secondary{% endif %} fs-6">
+                  {{ part.condition }}
+                </span>
+              </div>
+              <div class="stat-lbl">Condition</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="stat-box">
+              <div class="stat-num" style="font-size:1rem;">${{ '%.2f'|format(part.unit_cost or 0) }}</div>
+              <div class="stat-lbl">Unit Cost</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if part.location or part.serial_number or part.item_group or part.manufacturer %}
+    <hr class="my-3">
+    <div class="row g-3" style="font-size:.83rem;">
+      {% if part.location %}<div class="col-auto"><span class="text-muted">Location:</span> <strong>{{ part.location }}</strong></div>{% endif %}
+      {% if part.serial_number %}<div class="col-auto"><span class="text-muted">Serial #:</span> <strong>{{ part.serial_number }}</strong></div>{% endif %}
+      {% if part.item_group %}<div class="col-auto"><span class="text-muted">Group:</span> <strong>{{ part.item_group }}</strong></div>{% endif %}
+      {% if part.uom %}<div class="col-auto"><span class="text-muted">UOM:</span> <strong>{{ part.uom }}</strong></div>{% endif %}
+      {% if part.traceable_to %}<div class="col-auto"><span class="text-muted">Traceable To:</span> <strong>{{ part.traceable_to }}</strong></div>{% endif %}
+      {% if part.cert_number %}<div class="col-auto"><span class="text-muted">Cert #:</span> <strong>{{ part.cert_number }}</strong></div>{% endif %}
+      {% if part.rec_date %}<div class="col-auto"><span class="text-muted">Received:</span> <strong>{{ part.rec_date }}</strong></div>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Activity Summary -->
+<div class="row g-3 mb-4">
+  <div class="col">
+    <div class="stat-box">
+      <div class="stat-num text-warning">{{ rfqs|length }}</div>
+      <div class="stat-lbl">RFQs</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="stat-box">
+      <div class="stat-num text-primary">{{ quotes|length }}</div>
+      <div class="stat-lbl">Quotes</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="stat-box">
+      <div class="stat-num" style="color:#6f42c1;">{{ pos|length }}</div>
+      <div class="stat-lbl">Purchase Orders</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="stat-box">
+      <div class="stat-num text-success">{{ invoices|length }}</div>
+      <div class="stat-lbl">Invoices</div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="stat-box">
+      <div class="stat-num text-danger">{{ ros|length }}</div>
+      <div class="stat-lbl">Repair Orders</div>
+    </div>
+  </div>
+</div>
+
+<!-- RFQs -->
+<div class="card mb-3">
+  <div class="card-header bg-white py-2">
+    <span class="section-title d-block mb-0">
+      <i class="bi bi-envelope-open"></i> RFQs
+      <span class="badge bg-warning text-dark ms-1">{{ rfqs|length }}</span>
+    </span>
+  </div>
+  <div class="card-body p-0">
+    {% if rfqs %}
+    <table class="table history-table mb-0">
+      <thead><tr>
+        <th class="ps-3">RFQ #</th>
+        <th>Customer</th>
+        <th>Company</th>
+        <th>Qty</th>
+        <th>Cond</th>
+        <th>Date</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rfqs %}
+      <tr>
+        <td class="ps-3">
+          <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="fw-semibold text-decoration-none text-navy">
+            {{ r.rfq_number }}
+          </a>
+        </td>
+        <td>{{ r.customer_name or '—' }}</td>
+        <td><small class="text-muted">{{ r.company or '—' }}</small></td>
+        <td>{{ r.quantity or 1 }}</td>
+        <td><span class="badge text-bg-secondary">{{ r.condition or '—' }}</span></td>
+        <td><small class="text-muted">{{ r.created_at[:10] if r.created_at else '—' }}</small></td>
+        <td><span class="badge text-bg-{{ 'success' if r.status == 'quoted' else 'secondary' }}">{{ r.status or 'new' }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state text-center"><i class="bi bi-inbox"></i> No RFQs for this part</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Quotes -->
+<div class="card mb-3">
+  <div class="card-header bg-white py-2">
+    <span class="section-title d-block mb-0">
+      <i class="bi bi-file-text"></i> Quotes
+      <span class="badge bg-primary ms-1">{{ quotes|length }}</span>
+    </span>
+  </div>
+  <div class="card-body p-0">
+    {% if quotes %}
+    <table class="table history-table mb-0">
+      <thead><tr>
+        <th class="ps-3">Quote #</th>
+        <th>Customer</th>
+        <th>Company</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th>Cond</th>
+        <th>Date</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody>
+      {% for q in quotes %}
+      <tr>
+        <td class="ps-3">
+          <a href="{{ url_for('quote_view', quote_id=q.id) }}" class="fw-semibold text-decoration-none text-navy">
+            {{ q.quote_number }}
+          </a>
+        </td>
+        <td>{{ q.customer_name or '—' }}</td>
+        <td><small class="text-muted">{{ q.company or '—' }}</small></td>
+        <td>{{ q.quantity_requested or 1 }}</td>
+        <td>${{ '%.2f'|format(q.unit_price or 0) }}</td>
+        <td><span class="badge text-bg-secondary">{{ q.condition or '—' }}</span></td>
+        <td><small class="text-muted">{{ q.created_at[:10] if q.created_at else '—' }}</small></td>
+        <td><span class="badge text-bg-{{ 'success' if q.status == 'sent' else 'secondary' }}">{{ q.status or 'draft' }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state text-center"><i class="bi bi-inbox"></i> No quotes for this part</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Purchase Orders -->
+<div class="card mb-3">
+  <div class="card-header bg-white py-2">
+    <span class="section-title d-block mb-0">
+      <i class="bi bi-cart3"></i> Purchase Orders
+      <span class="badge ms-1" style="background:#6f42c1;">{{ pos|length }}</span>
+    </span>
+  </div>
+  <div class="card-body p-0">
+    {% if pos %}
+    <table class="table history-table mb-0">
+      <thead><tr>
+        <th class="ps-3">PO #</th>
+        <th>Vendor</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th>Cond</th>
+        <th>Serial #</th>
+        <th>Date</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody>
+      {% for p in pos %}
+      <tr>
+        <td class="ps-3">
+          <a href="{{ url_for('po_view', po_id=p.id) }}" class="fw-semibold text-decoration-none text-navy">
+            {{ p.po_number }}
+          </a>
+        </td>
+        <td>{{ p.vendor_name or '—' }}</td>
+        <td>{{ p.quantity|int }}</td>
+        <td>${{ '%.2f'|format(p.unit_price or 0) }}</td>
+        <td><span class="badge text-bg-secondary">{{ p.condition or '—' }}</span></td>
+        <td><small class="text-muted">{{ p.serial_number or '—' }}</small></td>
+        <td><small class="text-muted">{{ p.created_at[:10] if p.created_at else '—' }}</small></td>
+        <td><span class="badge text-bg-{{ 'success' if p.status == 'received' else 'secondary' }}">{{ p.status or 'open' }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state text-center"><i class="bi bi-inbox"></i> No purchase orders for this part</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Invoices -->
+<div class="card mb-3">
+  <div class="card-header bg-white py-2">
+    <span class="section-title d-block mb-0">
+      <i class="bi bi-receipt"></i> Invoices
+      <span class="badge bg-success ms-1">{{ invoices|length }}</span>
+    </span>
+  </div>
+  <div class="card-body p-0">
+    {% if invoices %}
+    <table class="table history-table mb-0">
+      <thead><tr>
+        <th class="ps-3">Invoice #</th>
+        <th>Customer</th>
+        <th>Qty</th>
+        <th>Unit Price</th>
+        <th>Cond</th>
+        <th>Serial #</th>
+        <th>Date</th>
+      </tr></thead>
+      <tbody>
+      {% for inv in invoices %}
+      <tr>
+        <td class="ps-3">
+          <a href="{{ url_for('invoice_view', inv_id=inv.id) }}" class="fw-semibold text-decoration-none text-navy">
+            {{ inv.invoice_number }}
+          </a>
+        </td>
+        <td>{{ inv.invoice_for or '—' }}</td>
+        <td>{{ inv.quantity|int }}</td>
+        <td>${{ '%.2f'|format(inv.unit_price or 0) }}</td>
+        <td><span class="badge text-bg-secondary">{{ inv.condition or '—' }}</span></td>
+        <td><small class="text-muted">{{ inv.serial_number or '—' }}</small></td>
+        <td><small class="text-muted">{{ inv.created_at[:10] if inv.created_at else '—' }}</small></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state text-center"><i class="bi bi-inbox"></i> No invoices for this part</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Repair Orders -->
+<div class="card mb-3">
+  <div class="card-header bg-white py-2">
+    <span class="section-title d-block mb-0">
+      <i class="bi bi-tools"></i> Repair Orders
+      <span class="badge bg-danger ms-1">{{ ros|length }}</span>
+    </span>
+  </div>
+  <div class="card-body p-0">
+    {% if ros %}
+    <table class="table history-table mb-0">
+      <thead><tr>
+        <th class="ps-3">RO #</th>
+        <th>Customer</th>
+        <th>Description</th>
+        <th>Qty</th>
+        <th>Cond</th>
+        <th>Date</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody>
+      {% for r in ros %}
+      <tr>
+        <td class="ps-3">
+          <a href="{{ url_for('ro_view', ro_id=r.id) }}" class="fw-semibold text-decoration-none text-navy">
+            {{ r.ro_number }}
+          </a>
+        </td>
+        <td>{{ r.customer_name or '—' }}</td>
+        <td><small>{{ r.description or '—' }}</small></td>
+        <td>{{ r.quantity or 1 }}</td>
+        <td><span class="badge text-bg-secondary">{{ r.condition or '—' }}</span></td>
+        <td><small class="text-muted">{{ r.created_at[:10] if r.created_at else '—' }}</small></td>
+        <td><span class="badge text-bg-{{ 'success' if r.status == 'complete' else 'secondary' }}">{{ r.status or 'open' }}</span></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state text-center"><i class="bi bi-inbox"></i> No repair orders for this part</div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

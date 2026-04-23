@@ -1683,6 +1683,77 @@ def delete_part(pid):
     return redirect(url_for('inventory'))
 
 
+@app.route('/inventory/part/<int:pid>')
+@login_required
+def part_detail(pid):
+    """Detail view for a single part — shows linked RFQs, Quotes, POs, Invoices, ROs."""
+    conn = get_db()
+    part = conn.execute('SELECT * FROM inventory WHERE id=?', (pid,)).fetchone()
+    if not part:
+        flash('Part not found.', 'error')
+        conn.close()
+        return redirect(url_for('inventory'))
+
+    pn = part['part_number']
+
+    # RFQs that requested this PN
+    rfqs = conn.execute("""
+        SELECT r.id, r.rfq_number, r.customer_name, r.company,
+               r.created_at, r.status, i.quantity, i.condition
+        FROM rfq_items i
+        JOIN rfqs r ON i.rfq_id = r.id
+        WHERE UPPER(i.part_number) = ?
+        ORDER BY r.created_at DESC
+    """, (pn,)).fetchall()
+
+    # Quotes
+    quotes = conn.execute("""
+        SELECT q.id, q.quote_number, r.customer_name, r.company,
+               q.created_at, q.status,
+               i.quantity_requested, i.unit_price, i.condition
+        FROM quote_items i
+        JOIN quotes q ON i.quote_id = q.id
+        LEFT JOIN rfqs r ON q.rfq_id = r.id
+        WHERE UPPER(i.part_number) = ?
+        ORDER BY q.created_at DESC
+    """, (pn,)).fetchall()
+
+    # Purchase Orders
+    pos = conn.execute("""
+        SELECT p.id, p.po_number, p.vendor_name, p.created_at, p.status,
+               i.quantity, i.unit_price, i.condition, i.serial_number
+        FROM po_items i
+        JOIN purchase_orders p ON i.po_id = p.id
+        WHERE UPPER(i.part_number) = ?
+        ORDER BY p.created_at DESC
+    """, (pn,)).fetchall()
+
+    # Invoices
+    invoices = conn.execute("""
+        SELECT inv.id, inv.invoice_number, inv.invoice_for, inv.created_at,
+               i.quantity, i.unit_price, i.condition, i.serial_number
+        FROM invoice_items i
+        JOIN invoices inv ON i.invoice_id = inv.id
+        WHERE UPPER(i.part_number) = ?
+        ORDER BY inv.created_at DESC
+    """, (pn,)).fetchall()
+
+    # Repair Orders
+    ros = conn.execute("""
+        SELECT r.id, r.ro_number, r.customer_name, r.created_at, r.status,
+               i.description, i.quantity, i.condition
+        FROM ro_items i
+        JOIN repair_orders r ON i.ro_id = r.id
+        WHERE UPPER(i.part_number) = ?
+        ORDER BY r.created_at DESC
+    """, (pn,)).fetchall()
+
+    conn.close()
+    return render_template('part_detail.html',
+        part=part, rfqs=rfqs, quotes=quotes,
+        pos=pos, invoices=invoices, ros=ros)
+
+
 @app.route('/inventory/edit/<int:pid>', methods=['POST'])
 @login_required
 def edit_part(pid):

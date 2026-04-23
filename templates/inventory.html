@@ -30,21 +30,41 @@
       <table class="table table-hover mb-0" id="invTable">
         <thead class="table-light">
           <tr>
-            <th class="ps-3">Part Number</th>
-            <th>Description</th>
-            <th>Cond</th>
-            <th>Qty</th>
-            <th>Unit Cost</th>
-            <th>Unit Price</th>
-            <th>Location</th>
-            <th>UOM</th>
+            <th class="ps-3 sortable" data-col="0" data-type="text">
+              Part Number <span class="sort-icon">↕</span>
+            </th>
+            <th class="sortable" data-col="1" data-type="text">
+              Description <span class="sort-icon">↕</span>
+            </th>
+            <th class="sortable" data-col="2" data-type="text">
+              Cond <span class="sort-icon">↕</span>
+            </th>
+            <th class="sortable" data-col="3" data-type="num">
+              Qty <span class="sort-icon">↕</span>
+            </th>
+            <th class="sortable" data-col="4" data-type="num">
+              Unit Cost <span class="sort-icon">↕</span>
+            </th>
+            <th class="sortable" data-col="5" data-type="num">
+              Unit Price <span class="sort-icon">↕</span>
+            </th>
+            <th class="sortable" data-col="6" data-type="text">
+              Location <span class="sort-icon">↕</span>
+            </th>
+            <th class="sortable" data-col="7" data-type="text">
+              UOM <span class="sort-icon">↕</span>
+            </th>
             <th></th>
           </tr>
         </thead>
         <tbody>
         {% for p in parts %}
         <tr id="row-{{ p.id }}">
-          <td class="ps-3"><code class="text-navy fw-bold">{{ p.part_number }}</code></td>
+          <td class="ps-3">
+            <a href="{{ url_for('part_detail', pid=p.id) }}" class="text-decoration-none">
+              <code class="text-navy fw-bold">{{ p.part_number }}</code>
+            </a>
+          </td>
           <td>{{ p.description or '—' }}</td>
           <td><span class="badge text-bg-secondary">{{ p.condition }}</span></td>
           <td class="fw-semibold {% if p.quantity == 0 %}text-danger{% endif %}">{{ p.quantity }}</td>
@@ -210,5 +230,68 @@ async function saveRow(e, id) {
   if (data.success) location.reload();
   else alert('Save failed: ' + (data.error || 'unknown error'));
 }
+
+// ── Column Sorting ────────────────────────────────────────────────────────────
+(function () {
+  const table  = document.getElementById('invTable');
+  const tbody  = table.querySelector('tbody');
+  let lastCol  = null;
+  let lastDir  = 'asc';
+
+  // Natural sort: handles mixed alphanumeric like "011-00883-20" vs "2524440-6"
+  function naturalVal(str) {
+    // Split into numeric and non-numeric chunks for correct ordering
+    return str.replace(/(\d+)/g, m => m.padStart(20, '0')).toLowerCase();
+  }
+
+  table.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col     = parseInt(th.dataset.col);
+      const type    = th.dataset.type;          // 'text' or 'num'
+      const dir     = (lastCol === col && lastDir === 'asc') ? 'desc' : 'asc';
+
+      // Update header indicators and icons
+      table.querySelectorAll('th.sortable').forEach(h => {
+        h.classList.remove('asc','desc');
+        h.querySelector('.sort-icon').textContent = '↕';
+      });
+      th.classList.add(dir);
+      th.querySelector('.sort-icon').textContent = dir === 'asc' ? '↑' : '↓';
+
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort((a, b) => {
+        const aCell = a.cells[col];
+        const bCell = b.cells[col];
+        if (!aCell || !bCell) return 0;
+
+        const aRaw = (aCell.innerText || aCell.textContent).trim();
+        const bRaw = (bCell.innerText || bCell.textContent).trim();
+
+        let cmp;
+        if (type === 'num') {
+          const aNum = parseFloat(aRaw.replace(/[^0-9.\-]/g, '')) || 0;
+          const bNum = parseFloat(bRaw.replace(/[^0-9.\-]/g, '')) || 0;
+          cmp = aNum - bNum;
+        } else {
+          // Natural alpha-numeric sort (1 < 2 < 10 < A < B)
+          cmp = naturalVal(aRaw).localeCompare(naturalVal(bRaw));
+        }
+        return dir === 'asc' ? cmp : -cmp;
+      });
+
+      rows.forEach(r => tbody.appendChild(r));   // re-append in sorted order
+      lastCol = col;
+      lastDir = dir;
+    });
+  });
+})();
 </script>
+
+<style>
+  th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
+  th.sortable:hover { background:#e9ecef; }
+  .sort-icon { color:#ccc; font-size:.7rem; margin-left:3px; }
+  th.sortable.asc  .sort-icon,
+  th.sortable.desc .sort-icon { color:#1a3c6e; font-weight:900; }
+</style>
 {% endblock %}
