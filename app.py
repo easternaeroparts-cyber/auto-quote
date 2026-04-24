@@ -779,6 +779,37 @@ def init_db():
         "ALTER TABLE inventory ADD COLUMN rec_date TEXT",
         "ALTER TABLE inventory ADD COLUMN exp_date TEXT",
         "ALTER TABLE inventory ADD COLUMN sl_number TEXT",
+        # Extended inventory fields (manual add form)
+        "ALTER TABLE inventory ADD COLUMN nsn TEXT",
+        "ALTER TABLE inventory ADD COLUMN list_price REAL DEFAULT 0",
+        "ALTER TABLE inventory ADD COLUMN core_charges REAL DEFAULT 0",
+        "ALTER TABLE inventory ADD COLUMN cycle_date TEXT",
+        "ALTER TABLE inventory ADD COLUMN labor_time TEXT",
+        "ALTER TABLE inventory ADD COLUMN min_stock INTEGER DEFAULT 0",
+        "ALTER TABLE inventory ADD COLUMN faa_ads TEXT",
+        "ALTER TABLE inventory ADD COLUMN easa_ads TEXT",
+        "ALTER TABLE inventory ADD COLUMN alert_note TEXT",
+        "ALTER TABLE inventory ADD COLUMN aircraft TEXT",
+        "ALTER TABLE inventory ADD COLUMN gl_category TEXT DEFAULT '1200 | Inventory - rotables'",
+        "ALTER TABLE inventory ADD COLUMN is_hazmat INTEGER DEFAULT 0",
+        "ALTER TABLE inventory ADD COLUMN is_serialized INTEGER DEFAULT 0",
+        "ALTER TABLE inventory ADD COLUMN has_shelf_life INTEGER DEFAULT 0",
+        "ALTER TABLE inventory ADD COLUMN part_category TEXT DEFAULT 'OEM'",
+        "ALTER TABLE inventory ADD COLUMN model_number TEXT",
+        "ALTER TABLE inventory ADD COLUMN marketplaces TEXT",
+        "ALTER TABLE inventory ADD COLUMN notes TEXT",
+        "ALTER TABLE inventory ADD COLUMN service_bulletin TEXT",
+        # Part documents (PDF uploads linked to inventory items)
+        """CREATE TABLE IF NOT EXISTS part_documents (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            part_id     INTEGER NOT NULL,
+            filename    TEXT NOT NULL,
+            filepath    TEXT NOT NULL,
+            mimetype    TEXT DEFAULT 'application/pdf',
+            label       TEXT,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (part_id) REFERENCES inventory(id)
+        )""",
     ]
     migrations = migrations + erp_migrations
 
@@ -1457,20 +1488,28 @@ def dashboard():
 def inventory():
     q = request.args.get('q', '')
     conn = get_db()
+    base_query = """
+        SELECT i.*, COUNT(pd.id) AS doc_count
+        FROM inventory i
+        LEFT JOIN part_documents pd ON pd.part_id = i.id
+        {where}
+        GROUP BY i.id
+        ORDER BY i.part_number
+    """
     if q:
         like = f'%{q.upper()}%'
         parts = conn.execute(
-            """SELECT * FROM inventory
-               WHERE UPPER(part_number)     LIKE ?
-                  OR UPPER(description)     LIKE ?
-                  OR UPPER(manufacturer)    LIKE ?
-                  OR UPPER(alt_part_number) LIKE ?
-                  OR UPPER(item_group)      LIKE ?
-               ORDER BY part_number""",
+            base_query.format(where="""
+               WHERE UPPER(i.part_number)     LIKE ?
+                  OR UPPER(i.description)     LIKE ?
+                  OR UPPER(i.manufacturer)    LIKE ?
+                  OR UPPER(i.alt_part_number) LIKE ?
+                  OR UPPER(i.item_group)      LIKE ?
+            """),
             (like, like, like, like, like)
         ).fetchall()
     else:
-        parts = conn.execute("SELECT * FROM inventory ORDER BY part_number").fetchall()
+        parts = conn.execute(base_query.format(where='')).fetchall()
     total = conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0]
     conn.close()
     return render_template('inventory.html', parts=parts, total=total, q=q)
@@ -1715,6 +1754,80 @@ def upload_inventory():
     return redirect(url_for('inventory'))
 
 
+@app.route('/inventory/add', methods=['POST'])
+@login_required
+def add_part():
+    """Manually add a new part to inventory."""
+    f = request.form
+    def fget(k, default=''):
+        return (f.get(k) or default).strip() if isinstance(default, str) else f.get(k) or default
+
+    pn = fget('part_number').upper()
+    if not pn:
+        return jsonify({'success': False, 'error': 'Part number is required'})
+
+    conn = get_db()
+    try:
+        conn.execute('''
+            INSERT INTO inventory (
+                part_number, description, manufacturer, alt_part_number,
+                serial_number, condition, quantity, qty_avail,
+                unit_cost, unit_price, list_price, core_charges,
+                location, uom, item_group,
+                nsn, cycle_date, labor_time, min_stock,
+                faa_ads, easa_ads, alert_note,
+                aircraft, gl_category,
+                is_hazmat, is_serialized, has_shelf_life,
+                part_category, model_number, marketplaces,
+                notes, service_bulletin,
+                updated_at
+            ) VALUES (
+                ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
+                CURRENT_TIMESTAMP
+            )''', (
+            pn,
+            fget('description'),
+            fget('manufacturer'),
+            fget('alt_part_number').upper(),
+            fget('serial_number'),
+            fget('condition', 'SV').upper(),
+            int(f.get('quantity') or 0),
+            int(f.get('qty_avail') or 0),
+            float(f.get('unit_cost') or 0),
+            float(f.get('unit_price') or 0),
+            float(f.get('list_price') or 0),
+            float(f.get('core_charges') or 0),
+            fget('location'),
+            fget('uom', 'EA'),
+            fget('item_group'),
+            fget('nsn'),
+            fget('cycle_date'),
+            fget('labor_time'),
+            int(f.get('min_stock') or 0),
+            fget('faa_ads'),
+            fget('easa_ads'),
+            fget('alert_note'),
+            fget('aircraft'),
+            fget('gl_category', '1200 | Inventory - rotables'),
+            1 if f.get('is_hazmat') else 0,
+            1 if f.get('is_serialized') else 0,
+            1 if f.get('has_shelf_life') else 0,
+            fget('part_category', 'OEM'),
+            fget('model_number'),
+            fget('marketplaces'),
+            fget('notes'),
+            fget('service_bulletin'),
+        ))
+        conn.commit()
+        new_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        conn.close()
+        return jsonify({'success': True, 'id': new_id, 'part_number': pn})
+    except Exception as e:
+        conn.close()
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/inventory/delete/<int:pid>', methods=['POST'])
 @login_required
 def delete_part(pid):
@@ -1724,6 +1837,56 @@ def delete_part(pid):
     conn.close()
     flash('Part removed.', 'success')
     return redirect(url_for('inventory'))
+
+
+@app.route('/api/part-history/<int:pid>')
+@login_required
+def part_history_api(pid):
+    """Return latest 3 quotes, POs, invoices, and ROs for a part (by part_number)."""
+    conn = get_db()
+    part = conn.execute('SELECT part_number FROM inventory WHERE id=?', (pid,)).fetchone()
+    if not part:
+        conn.close()
+        return jsonify({'error': 'not found'}), 404
+    pn = part['part_number']
+
+    def rows(sql, *args):
+        return [dict(r) for r in conn.execute(sql, *args).fetchall()]
+
+    quotes = rows("""
+        SELECT qi.quote_id as id, q.quote_number, q.customer_name, q.status,
+               qi.unit_price, qi.condition, q.created_at
+        FROM quote_items qi JOIN quotes q ON qi.quote_id=q.id
+        WHERE UPPER(qi.part_number)=UPPER(?)
+        ORDER BY q.created_at DESC LIMIT 3
+    """, (pn,))
+
+    pos = rows("""
+        SELECT pi.po_id as id, p.po_number, p.vendor_name, p.status,
+               pi.unit_price, pi.condition, p.created_at
+        FROM po_items pi JOIN purchase_orders p ON pi.po_id=p.id
+        WHERE UPPER(pi.part_number)=UPPER(?)
+        ORDER BY p.created_at DESC LIMIT 3
+    """, (pn,))
+
+    invoices = rows("""
+        SELECT ii.invoice_id as id, inv.invoice_number, inv.invoice_for, inv.status,
+               ii.unit_price, ii.condition, inv.created_at
+        FROM invoice_items ii JOIN invoices inv ON ii.invoice_id=inv.id
+        WHERE UPPER(ii.part_number)=UPPER(?)
+        ORDER BY inv.created_at DESC LIMIT 3
+    """, (pn,))
+
+    ros = rows("""
+        SELECT r.id, r.ro_number, r.customer_name, r.status,
+               r.created_at
+        FROM repair_orders r
+        WHERE UPPER(r.part_number)=UPPER(?)
+        ORDER BY r.created_at DESC LIMIT 3
+    """, (pn,))
+
+    conn.close()
+    return jsonify({'quotes': quotes, 'pos': pos, 'invoices': invoices, 'ros': ros, 'pn': pn})
 
 
 @app.route('/inventory/part/<int:pid>')
@@ -1808,7 +1971,7 @@ def edit_part(pid):
     conn.execute('''
         UPDATE inventory SET
             part_number=?, alt_part_number=?, description=?, manufacturer=?,
-            condition=?, quantity=?, qty_avail=?,
+            serial_number=?, condition=?, quantity=?, qty_avail=?,
             unit_cost=?, unit_price=?, location=?, uom=?,
             updated_at=CURRENT_TIMESTAMP
         WHERE id=?''',
@@ -1816,6 +1979,7 @@ def edit_part(pid):
          request.form.get('alt_part_number', '').strip().upper(),
          request.form.get('description', ''),
          request.form.get('manufacturer', ''),
+         request.form.get('serial_number', '').strip(),
          request.form.get('condition', 'SV').strip().upper(),
          int(request.form.get('quantity', 0)),
          qty_avail,
@@ -1825,6 +1989,91 @@ def edit_part(pid):
          request.form.get('uom', 'EA'),
          pid))
     conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/api/part-docs/<int:pid>')
+@login_required
+def part_docs_api(pid):
+    """Return list of uploaded documents for a part."""
+    conn = get_db()
+    docs = conn.execute(
+        'SELECT * FROM part_documents WHERE part_id=? ORDER BY uploaded_at DESC', (pid,)
+    ).fetchall()
+    conn.close()
+    return jsonify([dict(d) for d in docs])
+
+
+@app.route('/inventory/part/<int:pid>/attach', methods=['POST'])
+@login_required
+def part_attach(pid):
+    """Upload a PDF document for an inventory part."""
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'success': False, 'error': 'No file provided'})
+
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext != '.pdf':
+        return jsonify({'success': False, 'error': 'Only PDF files are allowed'})
+
+    label     = (request.form.get('label') or '').strip()
+    safe_name = re.sub(r'[^\w\.\-]', '_', f.filename)
+    upload_dir = os.path.join(UPLOAD_FOLDER, 'parts', str(pid))
+    os.makedirs(upload_dir, exist_ok=True)
+    filepath = os.path.join(upload_dir, safe_name)
+    f.save(filepath)
+
+    mime = 'application/pdf'
+    _compress_file(filepath, ext, mime)
+
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO part_documents (part_id, filename, filepath, mimetype, label) VALUES (?,?,?,?,?)',
+        (pid, safe_name, filepath, mime, label or None))
+    conn.commit()
+    doc_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+    conn.close()
+
+    return jsonify({
+        'success':     True,
+        'id':          doc_id,
+        'filename':    safe_name,
+        'label':       label,
+        'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M'),
+    })
+
+
+@app.route('/inventory/part/<int:pid>/doc/<int:doc_id>/view')
+@login_required
+def part_doc_view(pid, doc_id):
+    """Serve a part document for in-browser viewing."""
+    conn = get_db()
+    row  = conn.execute(
+        'SELECT * FROM part_documents WHERE id=? AND part_id=?', (doc_id, pid)
+    ).fetchone()
+    conn.close()
+    if not row:
+        return 'Not found', 404
+    return send_file(row['filepath'], mimetype=row['mimetype'],
+                     as_attachment=False, download_name=row['filename'])
+
+
+@app.route('/inventory/part/<int:pid>/doc/<int:doc_id>/delete', methods=['POST'])
+@login_required
+def part_doc_delete(pid, doc_id):
+    """Delete a part document."""
+    conn = get_db()
+    row  = conn.execute(
+        'SELECT * FROM part_documents WHERE id=? AND part_id=?', (doc_id, pid)
+    ).fetchone()
+    if row:
+        try:
+            os.remove(row['filepath'])
+        except OSError:
+            pass
+        conn.execute('DELETE FROM part_documents WHERE id=?', (doc_id,))
+        conn.commit()
     conn.close()
     return jsonify({'success': True})
 
@@ -5034,12 +5283,79 @@ def scheduled_fetch():
         except Exception as e:
             print(f'[Scheduler] Fetch error: {e}')
 
+
+# ─── Auto Quote Cleanup (30-day retention) ───────────────────────────────────
+def cleanup_old_quotes():
+    """
+    Delete quotes older than 30 days EXCEPT:
+      - The most recent quote for each customer email (last reference)
+      - Quotes with no customer email (keep as manual reference)
+    Also cascades to quote_items and quote_attachments.
+    """
+    with app.app_context():
+        try:
+            conn = get_db()
+
+            # Find IDs to delete: older than 30 days AND not the newest per customer
+            # Subquery keeps the MAX(id) per customer_email as the "last reference"
+            to_delete = conn.execute("""
+                SELECT id FROM quotes
+                WHERE created_at < datetime('now', '-30 days')
+                AND (customer_email IS NULL OR customer_email = ''
+                     OR id NOT IN (
+                         SELECT MAX(id) FROM quotes
+                         WHERE customer_email IS NOT NULL AND customer_email != ''
+                         GROUP BY customer_email
+                     ))
+            """).fetchall()
+
+            if not to_delete:
+                conn.close()
+                return
+
+            ids = [row[0] for row in to_delete]
+            placeholders = ','.join('?' * len(ids))
+
+            # Delete attachments from disk
+            att_rows = conn.execute(
+                f'SELECT filepath FROM quote_attachments WHERE quote_id IN ({placeholders})', ids
+            ).fetchall()
+            for att in att_rows:
+                try:
+                    if att['filepath'] and os.path.exists(att['filepath']):
+                        os.remove(att['filepath'])
+                except Exception:
+                    pass
+
+            # Cascade delete
+            conn.execute(f'DELETE FROM quote_attachments WHERE quote_id IN ({placeholders})', ids)
+            conn.execute(f'DELETE FROM quote_items WHERE quote_id IN ({placeholders})', ids)
+            conn.execute(f'DELETE FROM quotes WHERE id IN ({placeholders})', ids)
+            conn.commit()
+            conn.close()
+            print(f'[Cleanup] Deleted {len(ids)} quotes older than 30 days.')
+        except Exception as e:
+            print(f'[Cleanup] Error during quote cleanup: {e}')
+
+
+@app.route('/admin/cleanup-quotes', methods=['POST'])
+@login_required
+def manual_cleanup_quotes():
+    """Manual trigger for quote cleanup — available from Settings."""
+    cleanup_old_quotes()
+    flash('Quote cleanup complete. Quotes older than 30 days have been removed, keeping the last reference per customer.', 'success')
+    return redirect(url_for('settings'))
+
+
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler(daemon=True)
     scheduler.add_job(scheduled_fetch, 'interval', minutes=5, id='auto_fetch')
+    # Run quote cleanup once per day at 02:00
+    scheduler.add_job(cleanup_old_quotes, 'cron', hour=2, minute=0, id='quote_cleanup')
     scheduler.start()
     print('[Scheduler] Auto email fetch started — runs every 5 minutes.')
+    print('[Scheduler] Quote cleanup scheduled — runs daily at 02:00.')
 except Exception as e:
     print(f'[Scheduler] Could not start scheduler: {e}')
 
