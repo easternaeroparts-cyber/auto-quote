@@ -419,7 +419,7 @@
         </div>
         <iframe id="previewFrame" src="about:blank"
                 style="width:100%;height:700px;border:none;display:block"
-                onload="document.getElementById('previewSpinner').style.display='none'">
+                onload="if(this.src!=='about:blank') document.getElementById('previewSpinner').style.display='none'">
         </iframe>
       </div>
       <div class="modal-footer py-2 justify-content-between">

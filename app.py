@@ -2490,20 +2490,47 @@ def delete_attachment(quote_id, att_id):
 @login_required
 def preview_quote_email(quote_id):
     """Return the exact HTML email that would be sent — for in-app preview."""
-    conn        = get_db()
-    quote       = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
-    rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
-    items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
-    attachments = conn.execute(
-        'SELECT * FROM quote_attachments WHERE quote_id=? AND verified=1', (quote_id,)).fetchall()
-    settings    = get_settings()
-    conn.close()
+    try:
+        conn        = get_db()
+        quote       = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
+        if not quote:
+            conn.close()
+            return '<p style="color:red;font-family:sans-serif;padding:20px">Quote not found.</p>', 404
 
-    html = build_quote_email(
-        dict(quote), dict(rfq), [dict(i) for i in items],
-        dict(settings), [dict(a) for a in attachments]
-    )
-    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+        rfq_row = None
+        if quote['rfq_id']:
+            rfq_row = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
+
+        # Build a minimal rfq dict if none exists
+        rfq_d = dict(rfq_row) if rfq_row else {
+            'customer_name': quote.get('customer_name', ''),
+            'customer_email': '',
+            'company': '',
+            'customer_phone': '',
+            'customer_address': '',
+            'rfq_number': '',
+            'source': 'manual',
+        }
+
+        items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
+        attachments = conn.execute(
+            'SELECT * FROM quote_attachments WHERE quote_id=? AND verified=1', (quote_id,)).fetchall()
+        settings    = get_settings()
+        conn.close()
+
+        html = build_quote_email(
+            dict(quote), rfq_d, [dict(i) for i in items],
+            dict(settings), [dict(a) for a in attachments]
+        )
+        return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+    except Exception as e:
+        import traceback
+        err = traceback.format_exc()
+        print(f'[preview_quote_email] ERROR: {e}\n{err}')
+        return f'''<html><body style="font-family:sans-serif;padding:24px">
+            <h3 style="color:#dc2626">Preview Error</h3>
+            <pre style="background:#f3f4f6;padding:16px;border-radius:6px;font-size:12px;overflow:auto">{err}</pre>
+        </body></html>''', 500, {'Content-Type': 'text/html; charset=utf-8'}
 
 
 @app.route('/quotes/<int:quote_id>/send', methods=['POST'])
