@@ -15,9 +15,10 @@
 <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
   <i class="bi bi-printer"></i> Print / PDF
 </button>
-<button class="btn btn-sm btn-outline-info no-print" onclick="openEmailPreview()">
+<a href="{{ url_for('preview_quote_email', quote_id=quote.id) }}" target="_blank"
+   class="btn btn-sm btn-outline-info no-print">
   <i class="bi bi-eye"></i> Preview Email
-</button>
+</a>
 <form method="post" action="{{ url_for('quote_convert_to_invoice', quote_id=quote.id) }}" class="d-inline no-print"
       onsubmit="return confirm('Create an invoice from this quote?')">
   <button type="submit" class="btn btn-sm btn-outline-success fw-semibold">
@@ -1401,41 +1402,8 @@ async function saveItem() {
 })();
 
 // ── Email Preview ─────────────────────────────────────────────────────────────
-async function loadEmailPreview() {
-  const frame   = document.getElementById('previewFrame');
-  const spinner = document.getElementById('previewSpinner');
-
-  spinner.style.display = 'flex';
-  // Clear previous content
-  frame.srcdoc = '';
-
-  try {
-    const resp = await fetch('{{ url_for("preview_quote_email", quote_id=quote.id) }}', {
-      credentials: 'same-origin'
-    });
-    const html = await resp.text();
-    // Write directly into the iframe document — works in all browsers including Safari
-    frame.srcdoc = html;
-    // Hide spinner immediately — srcdoc onload is unreliable in Safari
-    spinner.style.display = 'none';
-  } catch (err) {
-    spinner.style.display = 'none';
-    const doc = frame.contentDocument || frame.contentWindow.document;
-    doc.open();
-    doc.write(`<html><body style="font-family:sans-serif;padding:24px">
-      <h3 style="color:#dc2626">Failed to load preview</h3>
-      <pre style="font-size:12px">${String(err)}</pre>
-    </body></html>`);
-    doc.close();
-  }
-}
-
 function openEmailPreview() {
-  const modal = new bootstrap.Modal(document.getElementById('emailPreviewModal'), {backdrop:'static'});
-  document.getElementById('previewToAddr').textContent = '{{ rfq.customer_email or "(no email on file)" }}';
-  modal.show();
-  // Small delay so modal is visible before fetch starts
-  setTimeout(loadEmailPreview, 100);
+  window.open('{{ url_for("preview_quote_email", quote_id=quote.id) }}', '_blank');
 }
 </script>
 {% endblock %}
