@@ -31,14 +31,14 @@
   <div class="card-body p-0">
     <table class="table table-hover mb-0" style="table-layout:fixed;width:100%;">
       <colgroup>
-        <col style="width:200px">   <!-- RFQ # -->
-        <col style="width:140px">   <!-- Customer -->
+        <col style="width:185px">   <!-- RFQ # -->
+        <col style="width:125px">   <!-- Customer -->
         <col>                        <!-- Company (flexible) -->
-        <col style="width:90px">    <!-- Source -->
-        <col style="width:70px">    <!-- Parts -->
-        <col style="width:80px">    <!-- Status -->
-        <col style="width:120px">   <!-- Date -->
-        <col style="width:90px">    <!-- Actions -->
+        <col style="width:85px">    <!-- Source -->
+        <col style="width:62px">    <!-- Parts -->
+        <col style="width:70px">    <!-- Status -->
+        <col style="width:132px">   <!-- Date -->
+        <col style="width:105px">   <!-- Actions -->
       </colgroup>
       <thead class="table-light">
         <tr>
@@ -67,16 +67,18 @@
         <td style="white-space:nowrap">{{ r.item_count }} part{{ 's' if r.item_count != 1 }}</td>
         <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
         <td style="white-space:nowrap"><small class="text-muted">{{ r.created_at[:16] }}</small></td>
-        <td class="text-end pe-3 d-flex gap-1 justify-content-end">
-          <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-primary py-0">
-            <i class="bi bi-eye"></i> View
-          </a>
-          <form action="{{ url_for('rfq_delete', rfq_id=r.id) }}" method="post"
-                onsubmit="return confirm('Delete this RFQ?')">
-            <button class="btn btn-sm btn-outline-danger py-0">
-              <i class="bi bi-trash"></i>
-            </button>
-          </form>
+        <td class="pe-2" style="white-space:nowrap">
+          <div class="d-flex gap-1 justify-content-end flex-nowrap">
+            <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-primary py-0" style="white-space:nowrap">
+              <i class="bi bi-eye"></i> View
+            </a>
+            <form action="{{ url_for('rfq_delete', rfq_id=r.id) }}" method="post"
+                  onsubmit="return confirm('Delete this RFQ?')">
+              <button class="btn btn-sm btn-outline-danger py-0">
+                <i class="bi bi-trash"></i>
+              </button>
+            </form>
+          </div>
         </td>
       </tr>
       {% else %}

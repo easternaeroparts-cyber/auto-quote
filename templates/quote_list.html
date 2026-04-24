@@ -13,19 +13,21 @@
   <div class="card-body p-0">
     <table class="table table-hover mb-0" style="table-layout:fixed;width:100%">
       <colgroup>
-        <col style="width:160px">  <!-- Quote # -->
-        <col style="width:130px">  <!-- Customer -->
-        <col>                       <!-- Company (flexible) -->
-        <col style="width:90px">   <!-- Total -->
-        <col style="width:70px">   <!-- Status -->
-        <col style="width:100px">  <!-- Date -->
-        <col style="width:210px">  <!-- Actions -->
+        <col style="width:155px">  <!-- Quote # -->
+        <col style="width:120px">  <!-- Customer -->
+        <col style="width:160px">  <!-- Company -->
+        <col style="width:160px">  <!-- Email -->
+        <col style="width:95px">   <!-- Total -->
+        <col style="width:62px">   <!-- Status -->
+        <col style="width:90px">   <!-- Date -->
+        <col style="width:205px">  <!-- Actions -->
       </colgroup>
       <thead class="table-light">
         <tr>
           <th class="ps-3">Quote #</th>
           <th>Customer</th>
           <th>Company</th>
+          <th>Email</th>
           <th>Total</th>
           <th>Status</th>
           <th style="white-space:nowrap">Date</th>
@@ -42,6 +44,7 @@
         </td>
         <td class="fw-semibold" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ q.customer_name or '—' }}</td>
         <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><small class="text-muted">{{ q.company or '—' }}</small></td>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><small class="text-muted">{{ q.customer_email or '—' }}</small></td>
         <td class="fw-bold" style="white-space:nowrap">${{ '{:,.2f}'.format(q.total_amount) }}</td>
         <td><span class="badge badge-{{ q.status }}">{{ q.status }}</span></td>
         <td style="white-space:nowrap"><small class="text-muted">{{ q.created_at[:10] }}</small></td>
@@ -66,7 +69,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="text-center py-5 text-muted">No quotes yet.</td></tr>
+      <tr><td colspan="8" class="text-center py-5 text-muted">No quotes yet.</td></tr>
       {% endfor %}
       </tbody>
     </table>
