@@ -1844,49 +1844,58 @@ def delete_part(pid):
 def part_history_api(pid):
     """Return latest 3 quotes, POs, invoices, and ROs for a part (by part_number)."""
     conn = get_db()
-    part = conn.execute('SELECT part_number FROM inventory WHERE id=?', (pid,)).fetchone()
-    if not part:
+    try:
+        part = conn.execute('SELECT part_number FROM inventory WHERE id=?', (pid,)).fetchone()
+        if not part:
+            conn.close()
+            return jsonify({'error': 'not found'}), 404
+        pn = part['part_number']
+
+        def safe_rows(sql, param):
+            try:
+                return [dict(r) for r in conn.execute(sql, (param,)).fetchall()]
+            except Exception:
+                return []
+
+        quotes = safe_rows("""
+            SELECT qi.quote_id as id, q.quote_number, q.customer_name, q.status,
+                   qi.unit_price, q.created_at
+            FROM quote_items qi JOIN quotes q ON qi.quote_id=q.id
+            WHERE UPPER(qi.part_number)=UPPER(?)
+            ORDER BY q.created_at DESC LIMIT 3
+        """, pn)
+
+        pos = safe_rows("""
+            SELECT pi.po_id as id, p.po_number, p.vendor_name, p.status,
+                   pi.unit_price, p.created_at
+            FROM po_items pi JOIN purchase_orders p ON pi.po_id=p.id
+            WHERE UPPER(pi.part_number)=UPPER(?)
+            ORDER BY p.created_at DESC LIMIT 3
+        """, pn)
+
+        invoices = safe_rows("""
+            SELECT ii.invoice_id as id, inv.invoice_number,
+                   inv.invoice_for as customer_name, inv.status,
+                   ii.unit_price, inv.created_at
+            FROM invoice_items ii JOIN invoices inv ON ii.invoice_id=inv.id
+            WHERE UPPER(ii.part_number)=UPPER(?)
+            ORDER BY inv.created_at DESC LIMIT 3
+        """, pn)
+
+        ros = safe_rows("""
+            SELECT ri.ro_id as id, r.ro_number, r.vendor_name, r.status,
+                   r.created_at
+            FROM ro_items ri JOIN repair_orders r ON ri.ro_id=r.id
+            WHERE UPPER(ri.part_number)=UPPER(?)
+            ORDER BY r.created_at DESC LIMIT 3
+        """, pn)
+
         conn.close()
-        return jsonify({'error': 'not found'}), 404
-    pn = part['part_number']
+        return jsonify({'quotes': quotes, 'pos': pos, 'invoices': invoices, 'ros': ros, 'pn': pn})
 
-    def rows(sql, *args):
-        return [dict(r) for r in conn.execute(sql, *args).fetchall()]
-
-    quotes = rows("""
-        SELECT qi.quote_id as id, q.quote_number, q.customer_name, q.status,
-               qi.unit_price, qi.condition, q.created_at
-        FROM quote_items qi JOIN quotes q ON qi.quote_id=q.id
-        WHERE UPPER(qi.part_number)=UPPER(?)
-        ORDER BY q.created_at DESC LIMIT 3
-    """, (pn,))
-
-    pos = rows("""
-        SELECT pi.po_id as id, p.po_number, p.vendor_name, p.status,
-               pi.unit_price, pi.condition, p.created_at
-        FROM po_items pi JOIN purchase_orders p ON pi.po_id=p.id
-        WHERE UPPER(pi.part_number)=UPPER(?)
-        ORDER BY p.created_at DESC LIMIT 3
-    """, (pn,))
-
-    invoices = rows("""
-        SELECT ii.invoice_id as id, inv.invoice_number, inv.invoice_for, inv.status,
-               ii.unit_price, ii.condition, inv.created_at
-        FROM invoice_items ii JOIN invoices inv ON ii.invoice_id=inv.id
-        WHERE UPPER(ii.part_number)=UPPER(?)
-        ORDER BY inv.created_at DESC LIMIT 3
-    """, (pn,))
-
-    ros = rows("""
-        SELECT ri.ro_id as id, r.ro_number, r.vendor_name, r.status,
-               ri.total_price as unit_price, r.created_at
-        FROM ro_items ri JOIN repair_orders r ON ri.ro_id=r.id
-        WHERE UPPER(ri.part_number)=UPPER(?)
-        ORDER BY r.created_at DESC LIMIT 3
-    """, (pn,))
-
-    conn.close()
-    return jsonify({'quotes': quotes, 'pos': pos, 'invoices': invoices, 'ros': ros, 'pn': pn})
+    except Exception as e:
+        conn.close()
+        return jsonify({'quotes': [], 'pos': [], 'invoices': [], 'ros': [], 'pn': '', 'error': str(e)})
 
 
 @app.route('/inventory/part/<int:pid>')

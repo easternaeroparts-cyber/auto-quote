@@ -414,9 +414,9 @@
 
 <!-- Document Viewer Modal -->
 <div class="modal fade" id="docViewerModal" tabindex="-1">
-  <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:960px;height:92vh;margin:4vh auto">
-    <div class="modal-content" style="height:100%;display:flex;flex-direction:column">
-      <div class="modal-header py-2 border-bottom flex-shrink-0">
+  <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:960px">
+    <div class="modal-content">
+      <div class="modal-header py-2 border-bottom">
         <div class="d-flex align-items-center gap-3 flex-grow-1 overflow-hidden">
           <i class="bi bi-file-earmark-pdf-fill text-danger fs-5 flex-shrink-0"></i>
           <div class="overflow-hidden">
@@ -438,20 +438,20 @@
           <button class="btn-close ms-1" data-bs-dismiss="modal"></button>
         </div>
       </div>
-      <div class="modal-body p-0" style="flex:1 1 auto;overflow:hidden;position:relative;min-height:0">
-        <div id="dvLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#f8f9fa">
-          <div class="text-center text-muted">
+      <div class="modal-body p-0" id="dvBody" style="position:relative">
+        <div id="dvLoading" style="display:flex;align-items:center;justify-content:center;background:#f8f9fa">
+          <div class="text-center text-muted py-5">
             <div class="spinner-border spinner-border-sm mb-2"></div>
             <div class="small">Loading document…</div>
           </div>
         </div>
-        <div id="dvEmpty" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#f8f9fa">
-          <div class="text-center text-muted">
+        <div id="dvEmpty" style="display:none;align-items:center;justify-content:center;background:#f8f9fa">
+          <div class="text-center text-muted py-5">
             <i class="bi bi-file-earmark-x fs-1 d-block mb-2 text-secondary"></i>
             No documents for this part.
           </div>
         </div>
-        <iframe id="dvFrame" src="" style="position:absolute;inset:0;width:100%;height:100%;border:none;display:none"></iframe>
+        <iframe id="dvFrame" src="" style="width:100%;border:none;display:none;vertical-align:top"></iframe>
       </div>
     </div>
   </div>
@@ -980,10 +980,14 @@ async function saveRow(e, id) {
     el.style.display = 'block';
     try {
       const res  = await fetch('/api/part-history/'+pid, {credentials:'same-origin'});
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
+      if (data.error && !data.pn) throw new Error(data.error);
       render(pid, data);
     } catch(e) {
-      el.innerHTML = '<div style="padding:14px;color:red;font-size:.8rem">Error loading history</div>';
+      el.innerHTML = `<div style="padding:14px;color:#dc2626;font-size:.8rem">
+        <i class="bi bi-exclamation-circle me-1"></i>Could not load history: ${e.message}
+      </div>`;
     }
   }
 
@@ -1200,24 +1204,44 @@ document.getElementById('addPartModal').addEventListener('hidden.bs.modal', func
 
 // ── Document Viewer ────────────────────────────────────────────────────────────
 (function() {
-  let _dvDocs   = [];   // array of doc objects for current part
-  let _dvIdx    = 0;    // currently shown index
+  let _dvDocs   = [];
+  let _dvIdx    = 0;
   let _dvPartId = null;
   let _dvModal  = null;
+
+  const modalEl  = document.getElementById('docViewerModal');
+  const bodyEl   = document.getElementById('dvBody');
+  const frameEl  = document.getElementById('dvFrame');
+  const loadEl   = document.getElementById('dvLoading');
+  const emptyEl  = document.getElementById('dvEmpty');
+
+  // Calculate and apply a concrete pixel height to the body + frame
+  function sizeViewer() {
+    const headerH = modalEl.querySelector('.modal-header').offsetHeight;
+    const vh      = window.innerHeight;
+    const bodyH   = Math.round(vh * 0.88) - headerH;
+    bodyEl.style.height  = bodyH + 'px';
+    frameEl.style.height = bodyH + 'px';
+    loadEl.style.height  = bodyH + 'px';
+    emptyEl.style.height = bodyH + 'px';
+  }
+
+  // Re-size whenever modal finishes opening or window resizes
+  modalEl.addEventListener('shown.bs.modal', sizeViewer);
+  window.addEventListener('resize', function() {
+    if (modalEl.classList.contains('show')) sizeViewer();
+  });
 
   window.openDocViewer = async function(pid, pn) {
     _dvPartId = pid;
     _dvIdx    = 0;
     _dvDocs   = [];
 
-    // Show modal with loading state
-    const modalEl = document.getElementById('docViewerModal');
     if (!_dvModal) _dvModal = new bootstrap.Modal(modalEl);
 
     dvState('loading');
     _dvModal.show();
 
-    // Update modal header part number while loading
     document.getElementById('dvFilename').textContent = pn + ' — loading…';
     document.getElementById('dvLabel').textContent    = '';
     document.getElementById('dvCounter').textContent  = '';
@@ -1225,16 +1249,13 @@ document.getElementById('addPartModal').addEventListener('hidden.bs.modal', func
     try {
       const res = await fetch('/api/part-docs/'+pid, {credentials:'same-origin'});
       _dvDocs = await res.json();
-    } catch(e) {
-      _dvDocs = [];
-    }
+    } catch(e) { _dvDocs = []; }
 
     if (!_dvDocs.length) {
       dvState('empty');
       document.getElementById('dvFilename').textContent = pn;
       return;
     }
-
     dvShow(0);
   };
 
@@ -1255,25 +1276,21 @@ document.getElementById('addPartModal').addEventListener('hidden.bs.modal', func
       _dvDocs.length > 1 ? (idx+1) + ' / ' + _dvDocs.length : '';
     document.getElementById('dvDownload').href = url;
 
-    // Prev / Next button state
     document.getElementById('dvPrev').disabled = (idx === 0);
     document.getElementById('dvNext').disabled = (idx === _dvDocs.length - 1);
 
-    // Load iframe
     dvState('loading');
-    const frame = document.getElementById('dvFrame');
-    frame.onload = () => dvState('frame');
-    frame.src    = url;
+    frameEl.onload = () => dvState('frame');
+    frameEl.src    = url;
   }
 
   function dvState(state) {
-    document.getElementById('dvLoading').style.display = state === 'loading' ? 'flex'  : 'none';
-    document.getElementById('dvEmpty').style.display   = state === 'empty'   ? 'flex'  : 'none';
-    document.getElementById('dvFrame').style.display   = state === 'frame'   ? 'block' : 'none';
+    loadEl.style.display  = state === 'loading' ? 'flex'  : 'none';
+    emptyEl.style.display = state === 'empty'   ? 'flex'  : 'none';
+    frameEl.style.display = state === 'frame'   ? 'block' : 'none';
   }
 
-  // Keyboard nav while modal is open
-  document.getElementById('docViewerModal').addEventListener('keydown', function(e) {
+  modalEl.addEventListener('keydown', function(e) {
     if (e.key === 'ArrowLeft')  dvNav(-1);
     if (e.key === 'ArrowRight') dvNav(1);
     if (e.key === 'Escape') _dvModal && _dvModal.hide();
