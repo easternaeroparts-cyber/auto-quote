@@ -438,20 +438,22 @@
           <button class="btn-close ms-1" data-bs-dismiss="modal"></button>
         </div>
       </div>
-      <div class="modal-body p-0" id="dvBody" style="position:relative">
-        <div id="dvLoading" style="display:flex;align-items:center;justify-content:center;background:#f8f9fa">
+      <div class="modal-body p-0" id="dvBody" style="position:relative;overflow:hidden">
+        <div id="dvLoading" style="display:flex;align-items:center;justify-content:center;background:#f8f9fa;width:100%">
           <div class="text-center text-muted py-5">
             <div class="spinner-border spinner-border-sm mb-2"></div>
             <div class="small">Loading document…</div>
           </div>
         </div>
-        <div id="dvEmpty" style="display:none;align-items:center;justify-content:center;background:#f8f9fa">
+        <div id="dvEmpty" style="display:none;align-items:center;justify-content:center;background:#f8f9fa;width:100%">
           <div class="text-center text-muted py-5">
             <i class="bi bi-file-earmark-x fs-1 d-block mb-2 text-secondary"></i>
             No documents for this part.
           </div>
         </div>
-        <iframe id="dvFrame" src="" style="width:100%;border:none;display:none;vertical-align:top"></iframe>
+        <!-- embed renders PDF scaled-to-fit in all browsers including Safari -->
+        <embed id="dvFrame" src="" type="application/pdf"
+               style="width:100%;border:none;display:none;vertical-align:top">
       </div>
     </div>
   </div>
@@ -1280,8 +1282,9 @@ document.getElementById('addPartModal').addEventListener('hidden.bs.modal', func
     document.getElementById('dvNext').disabled = (idx === _dvDocs.length - 1);
 
     dvState('loading');
-    frameEl.onload = () => dvState('frame');
-    frameEl.src    = url;
+    frameEl.src = url;
+    // embed doesn't fire onload reliably — show after short delay
+    setTimeout(() => dvState('frame'), 800);
   }
 
   function dvState(state) {

@@ -1851,27 +1851,36 @@ def part_history_api(pid):
             return jsonify({'error': 'not found'}), 404
         pn = part['part_number']
 
-        def safe_rows(sql, param):
+        # Normalize a PN: strip dashes, slashes, spaces for fuzzy matching
+        def norm_pn(p):
+            return re.sub(r'[\-/\s]', '', p).upper()
+
+        npn = norm_pn(pn)
+
+        def safe_rows(sql, params):
             try:
-                return [dict(r) for r in conn.execute(sql, (param,)).fetchall()]
+                return [dict(r) for r in conn.execute(sql, params).fetchall()]
             except Exception:
                 return []
 
+        # Each query matches on exact PN OR normalized PN (ignoring dashes/slashes/spaces)
         quotes = safe_rows("""
             SELECT qi.quote_id as id, q.quote_number, q.customer_name, q.status,
                    qi.unit_price, q.created_at
             FROM quote_items qi JOIN quotes q ON qi.quote_id=q.id
             WHERE UPPER(qi.part_number)=UPPER(?)
+               OR UPPER(REPLACE(REPLACE(REPLACE(qi.part_number,'-',''),'/',''),' ',''))=?
             ORDER BY q.created_at DESC LIMIT 3
-        """, pn)
+        """, (pn, npn))
 
         pos = safe_rows("""
             SELECT pi.po_id as id, p.po_number, p.vendor_name, p.status,
                    pi.unit_price, p.created_at
             FROM po_items pi JOIN purchase_orders p ON pi.po_id=p.id
             WHERE UPPER(pi.part_number)=UPPER(?)
+               OR UPPER(REPLACE(REPLACE(REPLACE(pi.part_number,'-',''),'/',''),' ',''))=?
             ORDER BY p.created_at DESC LIMIT 3
-        """, pn)
+        """, (pn, npn))
 
         invoices = safe_rows("""
             SELECT ii.invoice_id as id, inv.invoice_number,
@@ -1879,16 +1888,18 @@ def part_history_api(pid):
                    ii.unit_price, inv.created_at
             FROM invoice_items ii JOIN invoices inv ON ii.invoice_id=inv.id
             WHERE UPPER(ii.part_number)=UPPER(?)
+               OR UPPER(REPLACE(REPLACE(REPLACE(ii.part_number,'-',''),'/',''),' ',''))=?
             ORDER BY inv.created_at DESC LIMIT 3
-        """, pn)
+        """, (pn, npn))
 
         ros = safe_rows("""
             SELECT ri.ro_id as id, r.ro_number, r.vendor_name, r.status,
                    r.created_at
             FROM ro_items ri JOIN repair_orders r ON ri.ro_id=r.id
             WHERE UPPER(ri.part_number)=UPPER(?)
+               OR UPPER(REPLACE(REPLACE(REPLACE(ri.part_number,'-',''),'/',''),' ',''))=?
             ORDER BY r.created_at DESC LIMIT 3
-        """, pn)
+        """, (pn, npn))
 
         conn.close()
         return jsonify({'quotes': quotes, 'pos': pos, 'invoices': invoices, 'ros': ros, 'pn': pn})
