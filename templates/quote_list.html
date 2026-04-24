@@ -11,45 +11,52 @@
 {% block content %}
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0">
+    <table class="table table-hover mb-0" style="table-layout:fixed;width:100%">
+      <colgroup>
+        <col style="width:160px">  <!-- Quote # -->
+        <col style="width:130px">  <!-- Customer -->
+        <col>                       <!-- Company (flexible) -->
+        <col style="width:90px">   <!-- Total -->
+        <col style="width:70px">   <!-- Status -->
+        <col style="width:100px">  <!-- Date -->
+        <col style="width:210px">  <!-- Actions -->
+      </colgroup>
       <thead class="table-light">
         <tr>
           <th class="ps-3">Quote #</th>
           <th>Customer</th>
           <th>Company</th>
-          <th>Email</th>
           <th>Total</th>
-          <th>Markup</th>
           <th>Status</th>
-          <th>Created</th>
-          <th>Sent</th>
+          <th style="white-space:nowrap">Date</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
       {% for q in quotes %}
       <tr>
-        <td class="ps-3"><a href="{{ url_for('quote_view', quote_id=q.id) }}" class="fw-semibold text-decoration-none"><code>{{ q.quote_number }}</code></a></td>
-        <td class="fw-semibold">{{ q.customer_name or '—' }}</td>
-        <td><small class="text-muted">{{ q.company or '—' }}</small></td>
-        <td><small class="text-muted">{{ q.customer_email or '—' }}</small></td>
-        <td class="fw-bold">${{ '{:,.2f}'.format(q.total_amount) }}</td>
-        <td><small>{{ q.markup_percent }}%</small></td>
+        <td class="ps-3" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          <a href="{{ url_for('quote_view', quote_id=q.id) }}" class="fw-semibold text-decoration-none">
+            <code>{{ q.quote_number }}</code>
+          </a>
+        </td>
+        <td class="fw-semibold" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ q.customer_name or '—' }}</td>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><small class="text-muted">{{ q.company or '—' }}</small></td>
+        <td class="fw-bold" style="white-space:nowrap">${{ '{:,.2f}'.format(q.total_amount) }}</td>
         <td><span class="badge badge-{{ q.status }}">{{ q.status }}</span></td>
-        <td><small class="text-muted">{{ q.created_at[:10] }}</small></td>
-        <td><small class="text-muted">{{ q.sent_at[:10] if q.sent_at else '—' }}</small></td>
-        <td class="text-end pe-3">
-          <div class="d-flex gap-1 justify-content-end flex-wrap">
-            <a href="{{ url_for('quote_view', quote_id=q.id) }}" class="btn btn-sm btn-outline-secondary py-0">
+        <td style="white-space:nowrap"><small class="text-muted">{{ q.created_at[:10] }}</small></td>
+        <td class="text-end pe-2">
+          <div class="d-flex gap-1 justify-content-end flex-nowrap">
+            <a href="{{ url_for('quote_view', quote_id=q.id) }}" class="btn btn-sm btn-outline-secondary py-0" style="white-space:nowrap">
               <i class="bi bi-eye"></i> View
             </a>
             <form method="post" action="{{ url_for('quote_convert_to_invoice', quote_id=q.id) }}"
                   class="d-inline" onsubmit="return confirm('Create invoice from {{ q.quote_number }}?')">
-              <button type="submit" class="btn btn-sm btn-outline-success py-0">
+              <button type="submit" class="btn btn-sm btn-outline-success py-0" style="white-space:nowrap">
                 <i class="bi bi-receipt"></i> Invoice
               </button>
             </form>
-            <button type="button"
+            <button type="button" style="white-space:nowrap"
               class="btn btn-sm py-0 {% if q.status == 'sent' %}btn-outline-secondary{% else %}btn-gold fw-semibold{% endif %}"
               onclick="openSendModal({{ q.id }}, '{{ q.quote_number }}', '{{ q.customer_name or '' }}', '{{ q.customer_email or '' }}', '{{ q.status }}')">
               <i class="bi bi-send{% if q.status == 'sent' %}-fill{% endif %}"></i>
@@ -59,7 +66,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="10" class="text-center py-5 text-muted">No quotes yet.</td></tr>
+      <tr><td colspan="7" class="text-center py-5 text-muted">No quotes yet.</td></tr>
       {% endfor %}
       </tbody>
     </table>
