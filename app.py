@@ -1878,10 +1878,10 @@ def part_history_api(pid):
     """, (pn,))
 
     ros = rows("""
-        SELECT r.id, r.ro_number, r.customer_name, r.status,
-               r.created_at
-        FROM repair_orders r
-        WHERE UPPER(r.part_number)=UPPER(?)
+        SELECT ri.ro_id as id, r.ro_number, r.vendor_name, r.status,
+               ri.total_price as unit_price, r.created_at
+        FROM ro_items ri JOIN repair_orders r ON ri.ro_id=r.id
+        WHERE UPPER(ri.part_number)=UPPER(?)
         ORDER BY r.created_at DESC LIMIT 3
     """, (pn,))
 
@@ -1963,31 +1963,59 @@ def part_detail(pid):
 @app.route('/inventory/edit/<int:pid>', methods=['POST'])
 @login_required
 def edit_part(pid):
+    f = request.form
+    def fg(k, default=''):
+        return (f.get(k) or default).strip() if isinstance(default, str) else f.get(k) or default
+
     conn = get_db()
-    try:
-        qty_avail = int(request.form.get('qty_avail', request.form.get('quantity', 0)))
-    except:
-        qty_avail = 0
     conn.execute('''
         UPDATE inventory SET
             part_number=?, alt_part_number=?, description=?, manufacturer=?,
             serial_number=?, condition=?, quantity=?, qty_avail=?,
-            unit_cost=?, unit_price=?, location=?, uom=?,
+            unit_cost=?, unit_price=?, list_price=?, core_charges=?,
+            location=?, uom=?,
+            nsn=?, cycle_date=?, labor_time=?, min_stock=?,
+            faa_ads=?, easa_ads=?, alert_note=?,
+            aircraft=?, gl_category=?,
+            is_hazmat=?, is_serialized=?, has_shelf_life=?,
+            part_category=?, model_number=?, marketplaces=?,
+            notes=?, service_bulletin=?,
             updated_at=CURRENT_TIMESTAMP
         WHERE id=?''',
-        (request.form['part_number'].strip().upper(),
-         request.form.get('alt_part_number', '').strip().upper(),
-         request.form.get('description', ''),
-         request.form.get('manufacturer', ''),
-         request.form.get('serial_number', '').strip(),
-         request.form.get('condition', 'SV').strip().upper(),
-         int(request.form.get('quantity', 0)),
-         qty_avail,
-         float(request.form.get('unit_cost', 0)),
-         float(request.form.get('unit_price', 0)),
-         request.form.get('location', ''),
-         request.form.get('uom', 'EA'),
-         pid))
+        (
+            fg('part_number').upper(),
+            fg('alt_part_number').upper(),
+            fg('description'),
+            fg('manufacturer'),
+            fg('serial_number'),
+            fg('condition', 'SV').upper(),
+            int(f.get('quantity') or 0),
+            int(f.get('qty_avail') or 0),
+            float(f.get('unit_cost') or 0),
+            float(f.get('unit_price') or 0),
+            float(f.get('list_price') or 0),
+            float(f.get('core_charges') or 0),
+            fg('location'),
+            fg('uom', 'EA'),
+            fg('nsn'),
+            fg('cycle_date'),
+            fg('labor_time'),
+            int(f.get('min_stock') or 0),
+            fg('faa_ads'),
+            fg('easa_ads'),
+            fg('alert_note'),
+            fg('aircraft'),
+            fg('gl_category', '1200 | Inventory - rotables'),
+            1 if f.get('is_hazmat') else 0,
+            1 if f.get('is_serialized') else 0,
+            1 if f.get('has_shelf_life') else 0,
+            fg('part_category', 'OEM'),
+            fg('model_number'),
+            fg('marketplaces'),
+            fg('notes'),
+            fg('service_bulletin'),
+            pid,
+        ))
     conn.commit()
     conn.close()
     return jsonify({'success': True})

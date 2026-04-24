@@ -414,13 +414,13 @@
 
 <!-- Document Viewer Modal -->
 <div class="modal fade" id="docViewerModal" tabindex="-1">
-  <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:900px">
-    <div class="modal-content" style="height:90vh">
-      <div class="modal-header py-2 border-bottom">
+  <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:960px;height:92vh;margin:4vh auto">
+    <div class="modal-content" style="height:100%;display:flex;flex-direction:column">
+      <div class="modal-header py-2 border-bottom flex-shrink-0">
         <div class="d-flex align-items-center gap-3 flex-grow-1 overflow-hidden">
           <i class="bi bi-file-earmark-pdf-fill text-danger fs-5 flex-shrink-0"></i>
           <div class="overflow-hidden">
-            <div class="fw-semibold text-truncate" id="dvFilename" style="max-width:500px"></div>
+            <div class="fw-semibold text-truncate" id="dvFilename" style="max-width:540px"></div>
             <div class="text-muted small" id="dvLabel"></div>
           </div>
         </div>
@@ -438,20 +438,20 @@
           <button class="btn-close ms-1" data-bs-dismiss="modal"></button>
         </div>
       </div>
-      <div class="modal-body p-0" style="flex:1;overflow:hidden;position:relative">
-        <div id="dvLoading" class="d-flex align-items-center justify-content-center h-100 text-muted">
-          <div class="text-center">
+      <div class="modal-body p-0" style="flex:1 1 auto;overflow:hidden;position:relative;min-height:0">
+        <div id="dvLoading" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#f8f9fa">
+          <div class="text-center text-muted">
             <div class="spinner-border spinner-border-sm mb-2"></div>
             <div class="small">Loading document…</div>
           </div>
         </div>
-        <div id="dvEmpty" class="d-flex align-items-center justify-content-center h-100 text-muted d-none">
-          <div class="text-center">
+        <div id="dvEmpty" style="position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#f8f9fa">
+          <div class="text-center text-muted">
             <i class="bi bi-file-earmark-x fs-1 d-block mb-2 text-secondary"></i>
             No documents for this part.
           </div>
         </div>
-        <iframe id="dvFrame" src="" style="width:100%;height:100%;border:none;display:none"></iframe>
+        <iframe id="dvFrame" src="" style="position:absolute;inset:0;width:100%;height:100%;border:none;display:none"></iframe>
       </div>
     </div>
   </div>
@@ -463,103 +463,259 @@
 const rows = {};
 {% for p in parts %}
 rows[{{ p.id }}] = {
-  part_number:   '{{ p.part_number }}',
-  description:   '{{ (p.description or '')|replace("'","\\'")|replace('"','\\"') }}',
-  serial_number: '{{ (p.serial_number or '')|replace("'","\\'")|replace('"','\\"') }}',
-  condition:     '{{ p.condition }}',
-  quantity:      {{ p.quantity }},
-  unit_cost:     {{ p.unit_cost or 0 }},
-  unit_price:    {{ p.unit_price or 0 }},
-  location:      '{{ (p.location or '')|replace("'","\\'")|replace('"','\\"') }}',
-  uom:           '{{ p.uom }}'
+  part_number:     '{{ p.part_number }}',
+  alt_part_number: '{{ (p.alt_part_number or '')|replace("'","\\'")|replace('"','\\"') }}',
+  description:     '{{ (p.description or '')|replace("'","\\'")|replace('"','\\"') }}',
+  serial_number:   '{{ (p.serial_number or '')|replace("'","\\'")|replace('"','\\"') }}',
+  manufacturer:    '{{ (p.manufacturer or '')|replace("'","\\'")|replace('"','\\"') }}',
+  condition:       '{{ p.condition or "SV" }}',
+  quantity:        {{ p.quantity or 0 }},
+  qty_avail:       {{ p.qty_avail or 0 }},
+  unit_cost:       {{ p.unit_cost or 0 }},
+  unit_price:      {{ p.unit_price or 0 }},
+  list_price:      {{ p.list_price or 0 }},
+  core_charges:    {{ p.core_charges or 0 }},
+  location:        '{{ (p.location or '')|replace("'","\\'")|replace('"','\\"') }}',
+  uom:             '{{ p.uom or "EA" }}',
+  nsn:             '{{ (p.nsn or '')|replace("'","\\'")|replace('"','\\"') }}',
+  cycle_date:      '{{ p.cycle_date or "" }}',
+  labor_time:      '{{ (p.labor_time or '')|replace("'","\\'")|replace('"','\\"') }}',
+  min_stock:       {{ p.min_stock or 0 }},
+  faa_ads:         '{{ (p.faa_ads or '')|replace("'","\\'")|replace('"','\\"') }}',
+  easa_ads:        '{{ (p.easa_ads or '')|replace("'","\\'")|replace('"','\\"') }}',
+  alert_note:      '{{ (p.alert_note or '')|replace("'","\\'")|replace('"','\\"') }}',
+  aircraft:        '{{ (p.aircraft or '')|replace("'","\\'")|replace('"','\\"') }}',
+  gl_category:     '{{ (p.gl_category or "1200 | Inventory - rotables")|replace("'","\\'")|replace('"','\\"') }}',
+  is_hazmat:       {{ 1 if p.is_hazmat else 0 }},
+  is_serialized:   {{ 1 if p.is_serialized else 0 }},
+  has_shelf_life:  {{ 1 if p.has_shelf_life else 0 }},
+  part_category:   '{{ p.part_category or "OEM" }}',
+  model_number:    '{{ (p.model_number or '')|replace("'","\\'")|replace('"','\\"') }}',
+  marketplaces:    '{{ (p.marketplaces or '')|replace("'","\\'")|replace('"','\\"') }}',
+  notes:           '{{ (p.notes or '')|replace("'","\\'")|replace('"','\\"') }}',
+  service_bulletin:'{{ (p.service_bulletin or '')|replace("'","\\'")|replace('"','\\"') }}'
 };
 {% endfor %}
 
 function editRow(id) {
   const p = rows[id];
+  const conds = ['OH','AR','SV','NE','RP','NS','FN'];
+  const uoms  = ['EA','FT','IN','M','LB','KG','L','GAL','PR','SET','KIT'];
+  const cats  = ['OEM','PMA','DER','Standard','Consumable','Expendable','Rotable','Repairable','Tool','GSE'];
+
   document.getElementById('editModalTitle').textContent = 'Edit Part — ' + p.part_number;
   document.getElementById('editBody').innerHTML = `
-    <ul class="nav nav-tabs px-3 pt-2" role="tablist">
+    <ul class="nav nav-tabs px-3 pt-2 flex-shrink-0" role="tablist">
       <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="tab-details-btn-${id}"
-          data-bs-toggle="tab" data-bs-target="#tab-details-${id}" type="button" role="tab">
+        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-details-${id}" type="button" role="tab">
           <i class="bi bi-pencil"></i> Details
         </button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="tab-docs-btn-${id}"
-          data-bs-toggle="tab" data-bs-target="#tab-docs-${id}" type="button" role="tab"
+        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-docs-${id}" type="button" role="tab"
           onclick="loadPartDocs(${id})">
           <i class="bi bi-file-earmark-pdf text-danger"></i> Documents
         </button>
       </li>
     </ul>
-    <div class="tab-content">
+    <div class="tab-content" style="overflow-y:auto;max-height:calc(85vh - 130px)">
+
+      <!-- ── Details tab ── -->
       <div class="tab-pane fade show active p-3" id="tab-details-${id}" role="tabpanel">
         <form onsubmit="saveRow(event,${id})">
-          <div class="row g-2">
-            <div class="col-6">
-              <label class="form-label">Part Number</label>
-              <input name="part_number" class="form-control form-control-sm" value="${p.part_number}" required>
+
+          <!-- Top bar: PN / Condition / Qty / Qty Avail -->
+          <div class="row g-2 mb-3 pb-3 border-bottom">
+            <div class="col-md-4">
+              <label class="form-label form-label-sm fw-semibold">Part Number <span class="text-danger">*</span></label>
+              <input name="part_number" class="form-control form-control-sm font-monospace text-uppercase"
+                     value="${p.part_number}" required>
             </div>
-            <div class="col-6">
-              <label class="form-label">Condition</label>
+            <div class="col-md-3">
+              <label class="form-label form-label-sm fw-semibold">Condition</label>
               <select name="condition" class="form-select form-select-sm">
-                ${['OH','AR','SV','NE','RP','NS','FN'].map(c =>
-                  `<option value="${c}" ${p.condition===c?'selected':''}>${c}</option>`
-                ).join('')}
+                ${conds.map(c=>`<option value="${c}"${p.condition===c?' selected':''}>${c}</option>`).join('')}
               </select>
             </div>
-            <div class="col-9">
-              <label class="form-label">Description</label>
-              <input name="description" class="form-control form-control-sm" value="${p.description}">
+            <div class="col-md-2">
+              <label class="form-label form-label-sm fw-semibold">Qty On Hand</label>
+              <input name="quantity" type="number" min="0" class="form-control form-control-sm" value="${p.quantity}">
             </div>
-            <div class="col-3">
-              <label class="form-label">Serial Number</label>
-              <input name="serial_number" class="form-control form-control-sm font-monospace" value="${p.serial_number}" placeholder="—">
-            </div>
-            <div class="col-4">
-              <label class="form-label">Qty</label>
-              <input name="quantity" type="number" class="form-control form-control-sm" value="${p.quantity}">
-            </div>
-            <div class="col-4">
-              <label class="form-label">Unit Cost</label>
-              <input name="unit_cost" type="number" step="0.01" class="form-control form-control-sm" value="${p.unit_cost}">
-            </div>
-            <div class="col-4">
-              <label class="form-label">Unit Price</label>
-              <input name="unit_price" type="number" step="0.01" class="form-control form-control-sm" value="${p.unit_price}">
-            </div>
-            <div class="col-6">
-              <label class="form-label">Location</label>
-              <input name="location" class="form-control form-control-sm" value="${p.location}">
-            </div>
-            <div class="col-6">
-              <label class="form-label">UOM</label>
-              <input name="uom" class="form-control form-control-sm" value="${p.uom}">
+            <div class="col-md-3">
+              <label class="form-label form-label-sm fw-semibold">Qty Available</label>
+              <input name="qty_avail" type="number" min="0" class="form-control form-control-sm" value="${p.qty_avail}">
             </div>
           </div>
-          <div class="mt-3 text-end">
+
+          <div class="row g-3">
+            <!-- LEFT -->
+            <div class="col-md-6">
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Description <span class="text-danger">*</span></label>
+                <input name="description" class="form-control form-control-sm" value="${p.description}" required>
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">NSN</label>
+                <input name="nsn" class="form-control form-control-sm font-monospace" value="${p.nsn}" placeholder="National Stock Number">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Manufacturer</label>
+                <input name="manufacturer" class="form-control form-control-sm" value="${p.manufacturer}">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Alternate Part #</label>
+                <input name="alt_part_number" class="form-control form-control-sm font-monospace text-uppercase"
+                       value="${p.alt_part_number}">
+              </div>
+              <div class="row g-2 mb-2">
+                <div class="col-6">
+                  <label class="form-label form-label-sm">Master Cost</label>
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">$</span>
+                    <input name="unit_cost" type="number" step="0.01" min="0" class="form-control form-control-sm" value="${p.unit_cost}">
+                  </div>
+                </div>
+                <div class="col-6">
+                  <label class="form-label form-label-sm">Master Sell</label>
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">$</span>
+                    <input name="unit_price" type="number" step="0.01" min="0" class="form-control form-control-sm" value="${p.unit_price}">
+                  </div>
+                </div>
+              </div>
+              <div class="row g-2 mb-2">
+                <div class="col-6">
+                  <label class="form-label form-label-sm">List Price</label>
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">$</span>
+                    <input name="list_price" type="number" step="0.01" min="0" class="form-control form-control-sm" value="${p.list_price}">
+                  </div>
+                </div>
+                <div class="col-6">
+                  <label class="form-label form-label-sm">Core Charges</label>
+                  <div class="input-group input-group-sm">
+                    <span class="input-group-text">$</span>
+                    <input name="core_charges" type="number" step="0.01" min="0" class="form-control form-control-sm" value="${p.core_charges}">
+                  </div>
+                </div>
+              </div>
+              <div class="row g-2 mb-2">
+                <div class="col-6">
+                  <label class="form-label form-label-sm">Cycle Date</label>
+                  <input name="cycle_date" type="date" class="form-control form-control-sm" value="${p.cycle_date}">
+                </div>
+                <div class="col-6">
+                  <label class="form-label form-label-sm">Labor Time</label>
+                  <input name="labor_time" class="form-control form-control-sm" value="${p.labor_time}" placeholder="e.g. 2.5 hrs">
+                </div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Minimum Stock Required</label>
+                <input name="min_stock" type="number" min="0" class="form-control form-control-sm" value="${p.min_stock}">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">FAA AD's</label>
+                <input name="faa_ads" class="form-control form-control-sm" value="${p.faa_ads}">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">EASA AD's</label>
+                <input name="easa_ads" class="form-control form-control-sm" value="${p.easa_ads}">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Alert Note</label>
+                <textarea name="alert_note" class="form-control form-control-sm" rows="2">${p.alert_note}</textarea>
+              </div>
+            </div>
+
+            <!-- RIGHT -->
+            <div class="col-md-6">
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Aircraft</label>
+                <input name="aircraft" class="form-control form-control-sm" value="${p.aircraft}" placeholder="e.g. B737, A320">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Unit of Measure</label>
+                <select name="uom" class="form-select form-select-sm">
+                  ${uoms.map(u=>`<option value="${u}"${p.uom===u?' selected':''}>${u}</option>`).join('')}
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">GL Category</label>
+                <input name="gl_category" class="form-control form-control-sm" value="${p.gl_category}">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Location</label>
+                <input name="location" class="form-control form-control-sm" value="${p.location}">
+              </div>
+              <div class="mb-3 pb-2 border-bottom">
+                <div class="d-flex gap-4 pt-1">
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_hazmat" id="eh_hazmat_${id}"
+                           ${p.is_hazmat?'checked':''}>
+                    <label class="form-check-label form-label-sm" for="eh_hazmat_${id}">Hazmat</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="is_serialized" id="eh_ser_${id}"
+                           ${p.is_serialized?'checked':''}>
+                    <label class="form-check-label form-label-sm" for="eh_ser_${id}">It's Serialized?</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="has_shelf_life" id="eh_shelf_${id}"
+                           ${p.has_shelf_life?'checked':''}>
+                    <label class="form-check-label form-label-sm" for="eh_shelf_${id}">Has Shelf Life?</label>
+                  </div>
+                </div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Part Category</label>
+                <select name="part_category" class="form-select form-select-sm">
+                  ${cats.map(c=>`<option value="${c}"${p.part_category===c?' selected':''}>${c}</option>`).join('')}
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Model #</label>
+                <input name="model_number" class="form-control form-control-sm" value="${p.model_number}">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Serial Number</label>
+                <input name="serial_number" class="form-control form-control-sm font-monospace"
+                       value="${p.serial_number}" placeholder="—">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Marketplaces</label>
+                <input name="marketplaces" class="form-control form-control-sm" value="${p.marketplaces}"
+                       placeholder="ILS, Locatory…">
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Notes</label>
+                <textarea name="notes" class="form-control form-control-sm" rows="2">${p.notes}</textarea>
+              </div>
+              <div class="mb-2">
+                <label class="form-label form-label-sm">Service Bulletin</label>
+                <textarea name="service_bulletin" class="form-control form-control-sm" rows="2">${p.service_bulletin}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-3 pt-2 border-top text-end">
             <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
             <button type="submit" class="btn btn-navy btn-sm ms-2"><i class="bi bi-save"></i> Save</button>
           </div>
         </form>
       </div>
 
+      <!-- ── Documents tab ── -->
       <div class="tab-pane fade p-3" id="tab-docs-${id}" role="tabpanel">
-        <!-- Document list -->
         <div id="docs-list-${id}" class="mb-3">
           <div class="text-muted small py-2">Click the Documents tab to load files.</div>
         </div>
         <hr class="my-2">
-        <!-- Upload form -->
         <div class="bg-light rounded p-3">
           <div class="fw-semibold small mb-2"><i class="bi bi-upload"></i> Upload PDF Document</div>
           <div class="row g-2 align-items-end">
             <div class="col-5">
               <label class="form-label small mb-1">Label <span class="text-muted fw-normal">(optional)</span></label>
-              <input id="doc-label-${id}" class="form-control form-control-sm"
-                placeholder="e.g. 8130, CoC, Test Report">
+              <input id="doc-label-${id}" class="form-control form-control-sm" placeholder="e.g. 8130, CoC, Test Report">
             </div>
             <div class="col-5">
               <label class="form-label small mb-1">PDF File</label>
@@ -575,7 +731,29 @@ function editRow(id) {
         </div>
       </div>
     </div>`;
+  // Make modal wider for all these fields
+  const dlg = document.querySelector('#editModal .modal-dialog');
+  if (dlg) dlg.style.maxWidth = '860px';
   new bootstrap.Modal(document.getElementById('editModal')).show();
+}
+
+function updateDocIcon(pid, hasDoc) {
+  const row = document.getElementById('row-' + pid);
+  if (!row) return;
+  const btn = row.querySelector('.doc-indicator');
+  if (!btn) return;
+  const icon = btn.querySelector('i');
+  if (hasDoc) {
+    btn.style.opacity = '1';
+    btn.title = 'View documents';
+    icon.className = 'bi bi-file-earmark-pdf-fill';
+    icon.style.color = '#16a34a';
+  } else {
+    btn.style.opacity = '.25';
+    btn.title = 'No documents';
+    icon.className = 'bi bi-file-earmark-pdf';
+    icon.style.color = '#6c757d';
+  }
 }
 
 async function loadPartDocs(pid) {
@@ -631,6 +809,7 @@ async function uploadPartDoc(pid) {
       fileInput.value = '';
       document.getElementById('doc-label-'+pid).value = '';
       loadPartDocs(pid);
+      updateDocIcon(pid, true);
     } else {
       status.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle"></i> ${data.error||'Upload failed'}</span>`;
     }
@@ -645,7 +824,13 @@ async function deletePartDoc(pid, docId, btn) {
   try {
     const res  = await fetch('/inventory/part/'+pid+'/doc/'+docId+'/delete', {method:'POST', credentials:'same-origin'});
     const data = await res.json();
-    if (data.success) loadPartDocs(pid);
+    if (data.success) {
+      await loadPartDocs(pid);
+      // Check remaining doc count from the refreshed list
+      const listEl = document.getElementById('docs-list-'+pid);
+      const remaining = listEl ? listEl.querySelectorAll('.border').length : 0;
+      updateDocIcon(pid, remaining > 0);
+    }
   } catch(e) {
     btn.disabled = false;
     alert('Delete failed — please try again.');
@@ -937,26 +1122,61 @@ document.getElementById('addPartModal').addEventListener('hidden.bs.modal', func
     input.focus();
   };
 
-  // Highlight matching text in PN and Description cells
-  function highlight(cell, tokens) {
-    const original = cell.dataset.original || (cell.dataset.original = cell.innerHTML);
-    if (!tokens.length) { cell.innerHTML = original; return; }
-    let html = original;
-    tokens.forEach(t => {
-      if (!t) return;
-      const esc = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      html = html.replace(new RegExp(`(${esc})`, 'gi'),
-        '<mark style="background:#fff3cd;padding:0;border-radius:2px">$1</mark>');
+  // Safe highlight: walks only text nodes so HTML attributes are never touched
+  function highlightTextNodes(root, tokens) {
+    // Remove any existing marks first
+    root.querySelectorAll('mark.inv-hl').forEach(m => {
+      m.replaceWith(document.createTextNode(m.textContent));
     });
-    cell.innerHTML = html;
+    // Normalize merged adjacent text nodes
+    root.normalize();
+    if (!tokens.length) return;
+
+    const esc = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const re  = new RegExp(`(${esc})`, 'gi');
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        // Skip text inside script/style/mark tags
+        const p = node.parentElement;
+        if (!p) return NodeFilter.FILTER_REJECT;
+        const tag = p.tagName;
+        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'MARK') return NodeFilter.FILTER_REJECT;
+        // Only highlight if text has a match
+        return re.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      }
+    });
+
+    const hits = [];
+    let node;
+    re.lastIndex = 0;
+    while ((node = walker.nextNode())) hits.push(node);
+
+    hits.forEach(textNode => {
+      const frag = document.createDocumentFragment();
+      let last = 0;
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(textNode.nodeValue)) !== null) {
+        if (m.index > last) frag.appendChild(document.createTextNode(textNode.nodeValue.slice(last, m.index)));
+        const mark = document.createElement('mark');
+        mark.className = 'inv-hl';
+        mark.textContent = m[0];
+        frag.appendChild(mark);
+        last = m.index + m[0].length;
+      }
+      if (last < textNode.nodeValue.length) frag.appendChild(document.createTextNode(textNode.nodeValue.slice(last)));
+      textNode.parentNode.replaceChild(frag, textNode);
+    });
   }
 
   function applyHighlight() {
     const tokens = input.value.trim().toUpperCase().split(/\s+/).filter(Boolean);
     Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
       if (tr.cells.length <= 1) return;
+      // Cols 0 (PN), 1 (Desc), 2 (S/N) only
       [0, 1, 2].forEach(ci => {
-        if (tr.cells[ci]) highlight(tr.cells[ci], tokens);
+        if (tr.cells[ci]) highlightTextNodes(tr.cells[ci], tokens);
       });
     });
   }
@@ -1047,10 +1267,9 @@ document.getElementById('addPartModal').addEventListener('hidden.bs.modal', func
   }
 
   function dvState(state) {
-    document.getElementById('dvLoading').classList.toggle('d-none', state !== 'loading');
-    document.getElementById('dvEmpty').classList.toggle('d-none',   state !== 'empty');
-    const frame = document.getElementById('dvFrame');
-    frame.style.display = state === 'frame' ? 'block' : 'none';
+    document.getElementById('dvLoading').style.display = state === 'loading' ? 'flex'  : 'none';
+    document.getElementById('dvEmpty').style.display   = state === 'empty'   ? 'flex'  : 'none';
+    document.getElementById('dvFrame').style.display   = state === 'frame'   ? 'block' : 'none';
   }
 
   // Keyboard nav while modal is open
@@ -1069,5 +1288,6 @@ document.getElementById('addPartModal').addEventListener('hidden.bs.modal', func
   th.sortable.asc  .sort-icon,
   th.sortable.desc .sort-icon { color:#1a3c6e; font-weight:900; }
   .doc-indicator:hover { opacity:1 !important; transform:scale(1.15); transition:transform .1s; }
+  mark.inv-hl { background:#fff3cd; padding:0; border-radius:2px; color:inherit; }
 </style>
 {% endblock %}
