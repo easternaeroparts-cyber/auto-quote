@@ -401,7 +401,7 @@
           <span class="badge bg-secondary fw-normal" id="previewToAddr" style="font-size:.75rem"></span>
         </div>
         <div class="ms-auto d-flex gap-2">
-          <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('previewFrame').src=document.getElementById('previewFrame').src">
+          <button class="btn btn-sm btn-outline-secondary" onclick="loadEmailPreview()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
           </button>
           <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
@@ -417,9 +417,9 @@
             <div class="small">Building email preview…</div>
           </div>
         </div>
-        <iframe id="previewFrame" src="about:blank"
+        <iframe id="previewFrame"
                 style="width:100%;height:700px;border:none;display:block"
-                onload="if(this.src!=='about:blank') document.getElementById('previewSpinner').style.display='none'">
+                onload="document.getElementById('previewSpinner').style.display='none'">
         </iframe>
       </div>
       <div class="modal-footer py-2 justify-content-between">
@@ -1402,22 +1402,32 @@ async function saveItem() {
 })();
 
 // ── Email Preview ─────────────────────────────────────────────────────────────
+async function loadEmailPreview() {
+  const frame   = document.getElementById('previewFrame');
+  const spinner = document.getElementById('previewSpinner');
+  spinner.style.display = 'flex';
+  frame.removeAttribute('srcdoc');
+
+  try {
+    const resp = await fetch('{{ url_for("preview_quote_email", quote_id=quote.id) }}', {
+      credentials: 'same-origin'
+    });
+    const html = await resp.text();
+    frame.srcdoc = html;
+    // srcdoc triggers onload once rendered
+  } catch (err) {
+    frame.srcdoc = `<html><body style="font-family:sans-serif;padding:24px">
+      <h3 style="color:#dc2626">Network Error</h3>
+      <pre>${err}</pre></body></html>`;
+    spinner.style.display = 'none';
+  }
+}
+
 function openEmailPreview() {
   const modal = new bootstrap.Modal(document.getElementById('emailPreviewModal'), {backdrop:'static'});
-  const frame  = document.getElementById('previewFrame');
-  const spinner = document.getElementById('previewSpinner');
-
-  // Reset state
-  spinner.style.display = 'flex';
-  frame.src = 'about:blank';
-
-  // Show customer email in badge
-  const toEl = document.getElementById('previewToAddr');
-  toEl.textContent = '{{ rfq.customer_email or "(no email on file)" }}';
-
-  // Load the preview
-  frame.src = '{{ url_for("preview_quote_email", quote_id=quote.id) }}';
+  document.getElementById('previewToAddr').textContent = '{{ rfq.customer_email or "(no email on file)" }}';
   modal.show();
+  loadEmailPreview();
 }
 </script>
 {% endblock %}
