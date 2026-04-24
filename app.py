@@ -3670,6 +3670,7 @@ def _fetch_imap(settings):
                 # and fill in description if the email didn't provide one.
                 inv_match = match_inventory(pn, conn)
                 if inv_match:
+                    inv_match = dict(inv_match)              # sqlite3.Row → dict
                     pn   = inv_match['part_number']          # canonical PN
                     desc = desc or inv_match.get('description') or desc
                     # Use inventory condition only if email didn't supply one
