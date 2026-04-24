@@ -32,12 +32,12 @@
     <table class="table table-hover mb-0" style="table-layout:fixed;width:100%;">
       <colgroup>
         <col style="width:185px">   <!-- RFQ # -->
-        <col style="width:125px">   <!-- Customer -->
+        <col style="width:120px">   <!-- Customer -->
         <col>                        <!-- Company (flexible) -->
-        <col style="width:85px">    <!-- Source -->
+        <col style="width:120px">   <!-- Source -->
         <col style="width:62px">    <!-- Parts -->
-        <col style="width:70px">    <!-- Status -->
-        <col style="width:132px">   <!-- Date -->
+        <col style="width:68px">    <!-- Status -->
+        <col style="width:130px">   <!-- Date -->
         <col style="width:105px">   <!-- Actions -->
       </colgroup>
       <thead class="table-light">
@@ -58,8 +58,8 @@
         <td class="ps-3" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><code>{{ r.rfq_number }}</code></td>
         <td class="fw-semibold" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.customer_name or '(Unknown)' }}</td>
         <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><small class="text-muted">{{ r.company or '—' }}</small></td>
-        <td>
-          <span class="badge text-bg-light">
+        <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          <span class="badge text-bg-light" style="white-space:nowrap">
             {% if r.source == 'email' %}<i class="bi bi-envelope"></i>{% elif r.source == 'ils' %}<i class="bi bi-globe"></i>{% endif %}
             {{ r.source }}
           </span>
