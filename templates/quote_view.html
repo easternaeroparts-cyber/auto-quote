@@ -418,8 +418,7 @@
           </div>
         </div>
         <iframe id="previewFrame"
-                style="width:100%;height:700px;border:none;display:block"
-                onload="document.getElementById('previewSpinner').style.display='none'">
+                style="width:100%;height:700px;border:none;display:block">
         </iframe>
       </div>
       <div class="modal-footer py-2 justify-content-between">
@@ -1405,21 +1404,29 @@ async function saveItem() {
 async function loadEmailPreview() {
   const frame   = document.getElementById('previewFrame');
   const spinner = document.getElementById('previewSpinner');
+
   spinner.style.display = 'flex';
-  frame.removeAttribute('srcdoc');
+  // Clear previous content
+  frame.srcdoc = '';
 
   try {
     const resp = await fetch('{{ url_for("preview_quote_email", quote_id=quote.id) }}', {
       credentials: 'same-origin'
     });
     const html = await resp.text();
+    // Write directly into the iframe document — works in all browsers including Safari
     frame.srcdoc = html;
-    // srcdoc triggers onload once rendered
-  } catch (err) {
-    frame.srcdoc = `<html><body style="font-family:sans-serif;padding:24px">
-      <h3 style="color:#dc2626">Network Error</h3>
-      <pre>${err}</pre></body></html>`;
+    // Hide spinner immediately — srcdoc onload is unreliable in Safari
     spinner.style.display = 'none';
+  } catch (err) {
+    spinner.style.display = 'none';
+    const doc = frame.contentDocument || frame.contentWindow.document;
+    doc.open();
+    doc.write(`<html><body style="font-family:sans-serif;padding:24px">
+      <h3 style="color:#dc2626">Failed to load preview</h3>
+      <pre style="font-size:12px">${String(err)}</pre>
+    </body></html>`);
+    doc.close();
   }
 }
 
@@ -1427,7 +1434,8 @@ function openEmailPreview() {
   const modal = new bootstrap.Modal(document.getElementById('emailPreviewModal'), {backdrop:'static'});
   document.getElementById('previewToAddr').textContent = '{{ rfq.customer_email or "(no email on file)" }}';
   modal.show();
-  loadEmailPreview();
+  // Small delay so modal is visible before fetch starts
+  setTimeout(loadEmailPreview, 100);
 }
 </script>
 {% endblock %}
