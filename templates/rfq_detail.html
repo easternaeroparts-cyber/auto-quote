@@ -6,6 +6,12 @@
 <a href="{{ url_for('rfq_list') }}" class="btn btn-sm btn-outline-secondary">
   <i class="bi bi-arrow-left"></i> Back
 </a>
+<form action="{{ url_for('rfq_delete', rfq_id=rfq.id) }}" method="post" class="d-inline"
+      onsubmit="return confirm('Delete {{ rfq.rfq_number }}? This cannot be undone.')">
+  <button class="btn btn-sm btn-outline-danger">
+    <i class="bi bi-trash"></i> Delete RFQ
+  </button>
+</form>
 {% endblock %}
 
 {% block content %}
