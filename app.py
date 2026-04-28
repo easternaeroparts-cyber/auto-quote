@@ -1852,9 +1852,9 @@ def part_history_api(pid):
             return jsonify({'error': 'not found'}), 404
         pn = part['part_number']
 
-        # Normalize a PN: strip dashes, slashes, spaces for fuzzy matching
+        # Normalize a PN: strip ALL non-alphanumeric chars for maximum fuzzy matching
         def norm_pn(p):
-            return re.sub(r'[\-/\s]', '', p).upper()
+            return re.sub(r'[^A-Z0-9]', '', (p or '').upper())
 
         npn = norm_pn(pn)
 
@@ -1864,41 +1864,49 @@ def part_history_api(pid):
             except Exception:
                 return []
 
-        # Each query matches on exact PN OR normalized PN (ignoring dashes/slashes/spaces)
-        quotes = safe_rows("""
+        # Match on exact PN OR fully-normalized PN (strips dashes, slashes, spaces, dots, underscores, etc.)
+        # SQLite inline normalization strips the same set of chars
+        _norm_sql = "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(" \
+                    "REPLACE(col,'.','')" \
+                    ",'-',''),'/',''),' ',''),'_',''),'(',''),')','')" \
+                    ")"
+
+        def pn_where(col):
+            return (f"UPPER({col})=UPPER(?)"
+                    f" OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+                    f"REPLACE({col},'.','')"
+                    f",'-',''),'/',''),' ',''),'_',''),'(',''),')',''))=?")
+
+        quotes = safe_rows(f"""
             SELECT qi.quote_id as id, q.quote_number, q.customer_name, q.status,
                    qi.unit_price, q.created_at
             FROM quote_items qi JOIN quotes q ON qi.quote_id=q.id
-            WHERE UPPER(qi.part_number)=UPPER(?)
-               OR UPPER(REPLACE(REPLACE(REPLACE(qi.part_number,'-',''),'/',''),' ',''))=?
+            WHERE {pn_where('qi.part_number')}
             ORDER BY q.created_at DESC LIMIT 3
         """, (pn, npn))
 
-        pos = safe_rows("""
+        pos = safe_rows(f"""
             SELECT pi.po_id as id, p.po_number, p.vendor_name, p.status,
                    pi.unit_price, p.created_at
             FROM po_items pi JOIN purchase_orders p ON pi.po_id=p.id
-            WHERE UPPER(pi.part_number)=UPPER(?)
-               OR UPPER(REPLACE(REPLACE(REPLACE(pi.part_number,'-',''),'/',''),' ',''))=?
+            WHERE {pn_where('pi.part_number')}
             ORDER BY p.created_at DESC LIMIT 3
         """, (pn, npn))
 
-        invoices = safe_rows("""
+        invoices = safe_rows(f"""
             SELECT ii.invoice_id as id, inv.invoice_number,
                    inv.invoice_for as customer_name, inv.status,
                    ii.unit_price, inv.created_at
             FROM invoice_items ii JOIN invoices inv ON ii.invoice_id=inv.id
-            WHERE UPPER(ii.part_number)=UPPER(?)
-               OR UPPER(REPLACE(REPLACE(REPLACE(ii.part_number,'-',''),'/',''),' ',''))=?
+            WHERE {pn_where('ii.part_number')}
             ORDER BY inv.created_at DESC LIMIT 3
         """, (pn, npn))
 
-        ros = safe_rows("""
+        ros = safe_rows(f"""
             SELECT ri.ro_id as id, r.ro_number, r.vendor_name, r.status,
                    r.created_at
             FROM ro_items ri JOIN repair_orders r ON ri.ro_id=r.id
-            WHERE UPPER(ri.part_number)=UPPER(?)
-               OR UPPER(REPLACE(REPLACE(REPLACE(ri.part_number,'-',''),'/',''),' ',''))=?
+            WHERE {pn_where('ri.part_number')}
             ORDER BY r.created_at DESC LIMIT 3
         """, (pn, npn))
 
@@ -1922,58 +1930,65 @@ def part_detail(pid):
         return redirect(url_for('inventory'))
 
     pn = part['part_number']
+    npn = re.sub(r'[^A-Z0-9]', '', pn.upper())
+
+    def _pw(col):
+        return (f"UPPER({col})=UPPER(?)"
+                f" OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
+                f"REPLACE({col},'.','')"
+                f",'-',''),'/',''),' ',''),'_',''),'(',''),')',''))=?")
 
     # RFQs that requested this PN
-    rfqs = conn.execute("""
+    rfqs = conn.execute(f"""
         SELECT r.id, r.rfq_number, r.customer_name, r.company,
                r.created_at, r.status, i.quantity, i.condition
         FROM rfq_items i
         JOIN rfqs r ON i.rfq_id = r.id
-        WHERE UPPER(i.part_number) = ?
+        WHERE {_pw('i.part_number')}
         ORDER BY r.created_at DESC
-    """, (pn,)).fetchall()
+    """, (pn, npn)).fetchall()
 
     # Quotes
-    quotes = conn.execute("""
+    quotes = conn.execute(f"""
         SELECT q.id, q.quote_number, r.customer_name, r.company,
                q.created_at, q.status,
                i.quantity_requested, i.unit_price, i.condition
         FROM quote_items i
         JOIN quotes q ON i.quote_id = q.id
         LEFT JOIN rfqs r ON q.rfq_id = r.id
-        WHERE UPPER(i.part_number) = ?
+        WHERE {_pw('i.part_number')}
         ORDER BY q.created_at DESC
-    """, (pn,)).fetchall()
+    """, (pn, npn)).fetchall()
 
     # Purchase Orders
-    pos = conn.execute("""
+    pos = conn.execute(f"""
         SELECT p.id, p.po_number, p.vendor_name, p.created_at, p.status,
                i.quantity, i.unit_price, i.condition, i.serial_number
         FROM po_items i
         JOIN purchase_orders p ON i.po_id = p.id
-        WHERE UPPER(i.part_number) = ?
+        WHERE {_pw('i.part_number')}
         ORDER BY p.created_at DESC
-    """, (pn,)).fetchall()
+    """, (pn, npn)).fetchall()
 
     # Invoices
-    invoices = conn.execute("""
+    invoices = conn.execute(f"""
         SELECT inv.id, inv.invoice_number, inv.invoice_for, inv.created_at,
                i.quantity, i.unit_price, i.condition, i.serial_number
         FROM invoice_items i
         JOIN invoices inv ON i.invoice_id = inv.id
-        WHERE UPPER(i.part_number) = ?
+        WHERE {_pw('i.part_number')}
         ORDER BY inv.created_at DESC
-    """, (pn,)).fetchall()
+    """, (pn, npn)).fetchall()
 
     # Repair Orders
-    ros = conn.execute("""
+    ros = conn.execute(f"""
         SELECT r.id, r.ro_number, r.customer_name, r.created_at, r.status,
                i.description, i.quantity, i.condition
         FROM ro_items i
         JOIN repair_orders r ON i.ro_id = r.id
-        WHERE UPPER(i.part_number) = ?
+        WHERE {_pw('i.part_number')}
         ORDER BY r.created_at DESC
-    """, (pn,)).fetchall()
+    """, (pn, npn)).fetchall()
 
     conn.close()
     return render_template('part_detail.html',
@@ -4038,6 +4053,7 @@ def api_last_quote_for_pn():
     exclude_qid = request.args.get('exclude_quote', 0, type=int)
     if not pn:
         return jsonify({'found': False})
+    npn = re.sub(r'[^A-Z0-9]', '', pn.upper())
     conn = get_db()
     row  = conn.execute('''
         SELECT qi.unit_price, qi.condition, qi.lead_time, qi.price_type,
@@ -4045,9 +4061,12 @@ def api_last_quote_for_pn():
                q.quote_number, q.created_at
         FROM quote_items qi
         JOIN quotes q ON qi.quote_id = q.id
-        WHERE qi.part_number = ? AND q.id != ? AND q.status = 'sent'
+        WHERE (UPPER(qi.part_number)=UPPER(?)
+           OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
+              REPLACE(qi.part_number,'.',''),'-',''),'/',''),' ',''),'_',''),'(',''),')',''))=?)
+          AND q.id != ? AND q.status = 'sent'
         ORDER BY q.created_at DESC LIMIT 1
-    ''', (pn, exclude_qid)).fetchone()
+    ''', (pn, npn, exclude_qid)).fetchone()
     conn.close()
     if not row:
         return jsonify({'found': False})
