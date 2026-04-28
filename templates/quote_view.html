@@ -240,7 +240,8 @@
                 '{{ (it.condition or 'SV')|replace("'","\\'") }}',
                 '{{ it.part_number|replace("'","\\'") }}',
                 {{ 1 if it.no_quote else 0 }},
-                '{{ (it.description or '')|replace("'","\\'") }}'
+                '{{ (it.description or '')|replace("'","\\'") }}',
+                '{{ (it.serial_number or '')|replace("'","\\'") }}'
               )">
               <i class="bi bi-pencil"></i>
             </button>
@@ -256,6 +257,7 @@
       <div class="row">
         <div class="col-md-6">
           <span class="text-muted">Condition:</span> {{ it.condition or 'SV' }}<br>
+          {% if it.serial_number %}<span class="text-muted">S/N:</span> <span id="sn-{{ it.id }}">{{ it.serial_number }}</span><br>{% else %}<span id="sn-{{ it.id }}" style="display:none"></span>{% endif %}
           <span class="text-muted">Warranty:</span> <span id="warranty-{{ it.id }}">{{ it.warranty or '—' }}</span><br>
           <span class="text-muted">Trace To:</span> <span id="trace-{{ it.id }}">{{ it.trace_to or it.description or '—' }}</span>
         </div>
@@ -265,6 +267,15 @@
           {% if not it.matched %}<span class="badge text-bg-danger">Not in Inventory</span>{% else %}<span class="badge text-bg-success">In Stock ({{ it.quantity_available }} avail)</span>{% endif %}
         </div>
       </div>
+      {% if it.notes %}
+      <div class="mt-1 pt-1" style="border-top:1px solid #e9ecef">
+        <span class="text-muted">Notes:</span> <span id="notes-{{ it.id }}" class="fst-italic">{{ it.notes }}</span>
+      </div>
+      {% else %}
+      <div id="notes-{{ it.id }}-wrap" style="display:none" class="mt-1 pt-1" style="border-top:1px solid #e9ecef">
+        <span class="text-muted">Notes:</span> <span id="notes-{{ it.id }}" class="fst-italic"></span>
+      </div>
+      {% endif %}
     </div>
   </div>
   {% endfor %}
@@ -627,6 +638,10 @@
             <label class="form-label fw-semibold">Description</label>
             <input type="text" id="editDescription" class="form-control"
                    placeholder="Auto-filled from inventory or type manually">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Serial Number (SN)</label>
+            <input type="text" id="editSN" class="form-control text-uppercase" placeholder="e.g. 12345ABC">
           </div>
           <div class="col-md-4">
             <label class="form-label">Unit Price ({{ quote.currency or 'USD' }})</label>
@@ -1108,7 +1123,7 @@ function toggleAddNoQuote(checked) {
 
 function toggleNoQuote(checked) {
   const fields = ['editPrice','editQty','editLeadTime','editPriceType','editCondition',
-                  'editWarranty','editTraceTo','editTagType','editTaggedBy','editNotes'];
+                  'editWarranty','editTraceTo','editTagType','editTaggedBy','editNotes','editSN'];
   fields.forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.disabled = checked; el.style.opacity = checked ? '0.35' : '1'; }
@@ -1123,10 +1138,11 @@ function toggleNoQuote(checked) {
   if (checked) document.getElementById('pnSuggestion').classList.add('d-none');
 }
 
-function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo, tagType, taggedBy, condition, partNumber, noQuote, description) {
+function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo, tagType, taggedBy, condition, partNumber, noQuote, description, sn) {
   document.getElementById('editItemId').value      = id;
   document.getElementById('editPartNumber').value  = partNumber || '';
   document.getElementById('editDescription').value = description || '';
+  document.getElementById('editSN').value          = sn || '';
   document.getElementById('editPrice').value       = price;
   document.getElementById('editQty').value         = qty;
   document.getElementById('editNotes').value       = notes;
@@ -1240,6 +1256,7 @@ async function saveItem() {
   const noQuote     = document.getElementById('editNoQuote').checked;
   const partNumber  = document.getElementById('editPartNumber').value.trim().toUpperCase();
   const description = document.getElementById('editDescription').value.trim();
+  const sn          = document.getElementById('editSN').value.trim().toUpperCase();
   const price       = noQuote ? 0 : parseFloat(document.getElementById('editPrice').value);
   const qty         = parseInt(document.getElementById('editQty').value);
   const notes       = document.getElementById('editNotes').value;
@@ -1254,7 +1271,7 @@ async function saveItem() {
   const res  = await fetch(`/quotes/{{ quote.id }}/update-item`, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({item_id:id, part_number:partNumber, description,
-      unit_price:price, quantity_requested:qty, notes,
+      serial_number:sn, unit_price:price, quantity_requested:qty, notes,
       lead_time:leadTime, price_type:ptype, warranty, trace_to:traceTo, tag_type:tagType,
       tagged_by:taggedBy, condition, no_quote: noQuote})
   });
@@ -1279,6 +1296,17 @@ async function saveItem() {
     document.getElementById(`tagtype-${id}`).textContent  = tagType;
     document.getElementById(`taggedby-${id}`).textContent = taggedBy;
     document.getElementById(`cond-${id}`).textContent     = condition;
+    // Update SN display
+    const snEl = document.getElementById(`sn-${id}`);
+    if (snEl) { snEl.textContent = sn; snEl.style.display = sn ? '' : 'none';
+      const snRow = snEl.previousSibling; }
+    // Update Notes display
+    const notesEl = document.getElementById(`notes-${id}`);
+    if (notesEl) {
+      notesEl.textContent = notes;
+      const wrap = document.getElementById(`notes-${id}-wrap`);
+      if (wrap) wrap.style.display = notes ? '' : 'none';
+    }
     const fmtTotal = data.total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     document.getElementById('grandTotal').textContent  = fmtTotal;
     document.getElementById('headerTotal').textContent = fmtTotal;
@@ -1286,6 +1314,19 @@ async function saveItem() {
       document.getElementById('quoteNumber').textContent = data.quote_number;
       document.title = data.quote_number;
     }
+
+    // Rebuild the edit button's onclick so re-opening the modal shows fresh saved values
+    const editBtn = document.querySelector(`#item-row-${id} button[onclick*="editItem(${id},"]`);
+    if (editBtn) {
+      const esc = s => (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      editBtn.setAttribute('onclick',
+        `editItem(${id}, ${noQuote ? 0 : price}, ${qty},` +
+        `'${esc(notes)}','${esc(leadTime)}','${esc(ptype)}','${esc(warranty)}',` +
+        `'${esc(traceTo)}','${esc(tagType)}','${esc(taggedBy)}','${esc(condition)}',` +
+        `'${esc(partNumber)}',${noQuote ? 1 : 0},'${esc(description)}','${esc(sn)}')`
+      );
+    }
+
     _closeModal();
   }
 }

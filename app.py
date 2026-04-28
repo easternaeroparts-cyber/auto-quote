@@ -518,6 +518,7 @@ def init_db():
         "ALTER TABLE rfqs ADD COLUMN address TEXT",
         "ALTER TABLE customer_profiles ADD COLUMN address TEXT",
         "ALTER TABLE quote_items ADD COLUMN no_quote INTEGER DEFAULT 0",
+        "ALTER TABLE quote_items ADD COLUMN serial_number TEXT",
         """CREATE TABLE IF NOT EXISTS quote_attachments (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             quote_id    INTEGER NOT NULL,
@@ -2557,10 +2558,12 @@ def update_quote_item(quote_id):
     conn = get_db()
     pn   = (data.get('part_number') or '').strip().upper()
     desc = (data.get('description') or '').strip()
+    sn = (data.get('serial_number') or '').strip().upper() or None
     conn.execute('''UPDATE quote_items SET
         part_number=?, description=?,
         unit_price=?, quantity_requested=?, extended_price=?, notes=?,
-        lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?, condition=?, no_quote=?
+        lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?, condition=?, no_quote=?,
+        serial_number=?
         WHERE id=? AND quote_id=?''',
         (pn or None, desc or None,
          price, qty, ext, notes,
@@ -2572,6 +2575,7 @@ def update_quote_item(quote_id):
          data.get('tagged_by', ''),
          data.get('condition', 'SV'),
          no_quote,
+         sn,
          iid, quote_id))
     total = conn.execute('SELECT COALESCE(SUM(extended_price),0) FROM quote_items WHERE quote_id=?', (quote_id,)).fetchone()[0]
     conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (total, quote_id))
@@ -3456,6 +3460,8 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
         trace    = it['trace_to'] or it['description'] or '—'
         tag_type = it['tag_type'] or '—'
         tagged   = it['tagged_by'] or '—'
+        sn_val   = (it.get('serial_number') or '').strip()
+        notes_val= (it.get('notes') or '').strip()
 
         # Clean description
         desc_raw   = (it['description'] or '—')
@@ -3529,10 +3535,12 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
     <tr>
       <td colspan="6" style="padding:0 12px 14px">
         <table cellspacing="0" style="font-size:13px;color:#374151">
+          {f'<tr><td style="padding:2px 16px 2px 0;color:#6b7280">S/N:</td><td>{sn_val}</td></tr>' if sn_val else ''}
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Warranty:</td><td>{warranty}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Trace To:</td><td>{trace}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tag Type:</td><td>{tag_type}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tagged by:</td><td>{tagged}</td></tr>
+          {f'<tr><td style="padding:2px 16px 2px 0;color:#6b7280">Notes:</td><td style="font-style:italic">{notes_val}</td></tr>' if notes_val else ''}
         </table>
       </td>
     </tr>
