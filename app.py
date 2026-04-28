@@ -3667,6 +3667,26 @@ def rfq_delete(rfq_id):
     return redirect(url_for('rfq_list'))
 
 
+@app.route('/rfqs/bulk-delete', methods=['POST'])
+@login_required
+def rfq_bulk_delete():
+    ids = request.get_json(force=True).get('ids', [])
+    if not ids:
+        return jsonify({'ok': False, 'error': 'No IDs provided'})
+    conn = get_db()
+    for rfq_id in ids:
+        rfq = conn.execute('SELECT * FROM rfqs WHERE id=?', (rfq_id,)).fetchone()
+        if rfq:
+            msg_id = rfq['email_message_id']
+            if msg_id:
+                conn.execute('INSERT OR IGNORE INTO imported_emails (message_id) VALUES (?)', (msg_id,))
+            conn.execute('DELETE FROM rfq_items WHERE rfq_id=?', (rfq_id,))
+            conn.execute('DELETE FROM rfqs WHERE id=?', (rfq_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'deleted': len(ids)})
+
+
 # ─── Routes: Email Fetch (IMAP) ──────────────────────────────────────────────
 
 @app.route('/rfqs/fetch-email', methods=['POST'])
