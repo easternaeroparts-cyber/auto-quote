@@ -6,12 +6,6 @@
 <a href="{{ url_for('rfq_list') }}" class="btn btn-sm btn-outline-secondary">
   <i class="bi bi-arrow-left"></i> Back
 </a>
-<form action="{{ url_for('rfq_delete', rfq_id=rfq.id) }}" method="post" class="d-inline"
-      onsubmit="return confirm('Delete {{ rfq.rfq_number }}? This cannot be undone.')">
-  <button class="btn btn-sm btn-outline-danger">
-    <i class="bi bi-trash"></i> Delete RFQ
-  </button>
-</form>
 {% endblock %}
 
 {% block content %}
@@ -47,6 +41,7 @@
     <div class="card">
       <div class="card-body">
         {% if quotes %}
+          {# Quote already exists — link directly to the most recent one #}
           <a href="{{ url_for('quote_view', quote_id=quotes[0].id) }}" class="btn btn-navy w-100 fw-semibold">
             <i class="bi bi-file-earmark-text"></i> View Quote
           </a>
@@ -58,14 +53,13 @@
             <input type="hidden" name="markup" value="{{ settings.get('default_markup', 30) }}">
             <input type="hidden" name="valid_days" value="{{ settings.get('quote_valid_days', 30) }}">
             <input type="hidden" name="currency" value="USD">
-            <button type="submit" class="btn btn-gold w-100 fw-semibold mb-2">
+            <button type="submit" class="btn btn-gold w-100 fw-semibold">
               <i class="bi bi-magic"></i> Generate Quote
             </button>
           </form>
         {% endif %}
       </div>
     </div>
-
   </div>
 
   <!-- Parts list -->
@@ -144,7 +138,4 @@
   </div>
 
 </div>
-
-{% endblock %}
-
 {% endblock %}

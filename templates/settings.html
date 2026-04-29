@@ -152,27 +152,6 @@
   </button>
 </div>
 </form>
-
-<!-- Data Retention -->
-<div class="card mt-4 border-danger">
-  <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-    <strong><i class="bi bi-trash3 text-danger"></i> Data Retention</strong>
-    <span class="badge bg-danger-subtle text-danger">Auto-runs daily at 02:00</span>
-  </div>
-  <div class="card-body">
-    <p class="text-muted small mb-3">
-      Quotes older than <strong>30 days</strong> are automatically deleted each night.
-      The <strong>most recent quote per customer</strong> is always kept as a pricing reference,
-      even if it is older than 30 days.
-    </p>
-    <form method="post" action="{{ url_for('manual_cleanup_quotes') }}"
-          onsubmit="return confirm('Run quote cleanup now? Quotes older than 30 days will be deleted (last quote per customer is kept).')">
-      <button type="submit" class="btn btn-sm btn-outline-danger">
-        <i class="bi bi-trash"></i> Run Cleanup Now
-      </button>
-    </form>
-  </div>
-</div>
 {% endblock %}
 
 {% block scripts %}

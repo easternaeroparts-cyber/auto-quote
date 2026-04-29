@@ -1,9 +1,9 @@
 """
-Eastern Aero Pty Ltd — Auto Quote System
+Eastern Aero Parts — Auto Quote System
 A Rotabull-style aviation parts quoting application.
 """
 
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, send_file
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
@@ -20,8 +20,6 @@ from datetime import datetime
 from functools import wraps
 import urllib.request
 import json
-import mimetypes
-import traceback
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'aero-quote-secret-change-in-production')
@@ -211,243 +209,10 @@ def init_db():
             active        INTEGER DEFAULT 1,
             created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
-
-        CREATE TABLE IF NOT EXISTS vendors (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            name            TEXT NOT NULL,
-            phone           TEXT,
-            fax             TEXT,
-            email           TEXT,
-            website         TEXT,
-            payment_method  TEXT DEFAULT 'Check',
-            terms           TEXT DEFAULT '30 days',
-            credit_limit    REAL DEFAULT 0,
-            balance         REAL DEFAULT 0,
-            account_number  TEXT,
-            min_po          REAL DEFAULT 0,
-            tax_id          TEXT,
-            tax_percent     REAL DEFAULT 0,
-            gl_account      TEXT DEFAULT '1200 | Inventory - rotables',
-            status          TEXT DEFAULT 'Active',
-            currency        TEXT DEFAULT 'USD',
-            tags            TEXT,
-            notes           TEXT,
-            billing_name    TEXT,
-            billing_address TEXT,
-            billing_city    TEXT,
-            billing_state   TEXT,
-            billing_zip     TEXT,
-            billing_country TEXT DEFAULT 'USA',
-            shipping_name   TEXT,
-            shipping_address TEXT,
-            shipping_city   TEXT,
-            shipping_state  TEXT,
-            shipping_zip    TEXT,
-            shipping_country TEXT DEFAULT 'USA',
-            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS customers (
-            id                      INTEGER PRIMARY KEY AUTOINCREMENT,
-            name                    TEXT NOT NULL,
-            phone                   TEXT,
-            fax                     TEXT,
-            email                   TEXT,
-            payment_method          TEXT DEFAULT 'Check',
-            payment_terms           TEXT DEFAULT 'COD',
-            credit_limit            REAL DEFAULT 0,
-            balance                 REAL DEFAULT 0,
-            hourly_rate             REAL DEFAULT 100,
-            tax_id                  TEXT,
-            tax_percent             REAL DEFAULT 0,
-            vat_number              TEXT,
-            date_format             TEXT DEFAULT 'mm-yyyy',
-            sales_person            TEXT,
-            purchasing_person       TEXT,
-            customer_service_rep    TEXT,
-            shipping_service        TEXT,
-            status                  TEXT DEFAULT 'Active',
-            required_part_categories TEXT,
-            currency                TEXT DEFAULT 'USD',
-            tags                    TEXT,
-            statement_notes         TEXT,
-            invoice_notes           TEXT,
-            notes                   TEXT,
-            related_vendor_id       INTEGER,
-            billing_name            TEXT,
-            billing_address         TEXT,
-            billing_city            TEXT,
-            billing_state           TEXT,
-            billing_zip             TEXT,
-            billing_country         TEXT DEFAULT 'USA',
-            shipping_name           TEXT,
-            shipping_address        TEXT,
-            shipping_city           TEXT,
-            shipping_state          TEXT,
-            shipping_zip            TEXT,
-            shipping_country        TEXT DEFAULT 'USA',
-            created_at              TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS invoice_attachments (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_id  INTEGER NOT NULL,
-            label       TEXT DEFAULT 'Customer PO',
-            filename    TEXT NOT NULL,
-            filepath    TEXT NOT NULL,
-            mimetype    TEXT,
-            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (invoice_id) REFERENCES invoices(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS contacts (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            entity_type TEXT NOT NULL,
-            entity_id   INTEGER NOT NULL,
-            first_name  TEXT,
-            last_name   TEXT,
-            title       TEXT,
-            email       TEXT,
-            phone       TEXT,
-            mobile      TEXT,
-            is_primary  INTEGER DEFAULT 0,
-            notes       TEXT,
-            created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS purchase_orders (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            po_number        TEXT UNIQUE,
-            vendor_name      TEXT,
-            vendor_address   TEXT,
-            ship_to_name     TEXT DEFAULT 'Eastern Aero Pty Ltd',
-            ship_to_address  TEXT DEFAULT '10 Composure St\nMorayfield QLD 4506 Australia',
-            date             TEXT,
-            ship_date        TEXT,
-            terms            TEXT DEFAULT 'Net 30',
-            ship_via         TEXT,
-            shipping_account TEXT,
-            subtotal         REAL DEFAULT 0,
-            shipping         REAL DEFAULT 0,
-            tax_rate         REAL DEFAULT 0,
-            sales_tax        REAL DEFAULT 0,
-            grand_total      REAL DEFAULT 0,
-            notes            TEXT,
-            status           TEXT DEFAULT 'draft',
-            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS po_items (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            po_id       INTEGER,
-            part_number TEXT,
-            description TEXT,
-            condition   TEXT,
-            quantity    REAL DEFAULT 1,
-            unit_price  REAL DEFAULT 0,
-            total_price REAL DEFAULT 0,
-            FOREIGN KEY (po_id) REFERENCES purchase_orders(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS invoices (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_number   TEXT UNIQUE,
-            invoice_for      TEXT,
-            customer_name    TEXT,
-            customer_address TEXT,
-            reference        TEXT,
-            due_date         TEXT,
-            subtotal         REAL DEFAULT 0,
-            adjustments      REAL DEFAULT 0,
-            grand_total      REAL DEFAULT 0,
-            notes            TEXT,
-            status           TEXT DEFAULT 'draft',
-            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS invoice_items (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            invoice_id  INTEGER,
-            part_number TEXT,
-            description TEXT,
-            condition   TEXT,
-            quantity    REAL DEFAULT 1,
-            unit_price  REAL DEFAULT 0,
-            total_price REAL DEFAULT 0,
-            FOREIGN KEY (invoice_id) REFERENCES invoices(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS packing_slips (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            ps_number        TEXT UNIQUE,
-            date             TEXT,
-            terms            TEXT,
-            po_number        TEXT,
-            invoice_number   TEXT,
-            ship_date        TEXT,
-            ship_via         TEXT,
-            shipping_account TEXT,
-            vendor_name      TEXT,
-            vendor_address   TEXT,
-            ship_to_name     TEXT,
-            ship_to_address  TEXT,
-            notes            TEXT,
-            pallet_dims      TEXT,
-            weight_lbs       REAL DEFAULT 0,
-            status           TEXT DEFAULT 'draft',
-            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS ps_items (
-            id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            ps_id             INTEGER,
-            part_number       TEXT,
-            description       TEXT,
-            serial_number     TEXT,
-            quantity          REAL DEFAULT 1,
-            country_of_origin TEXT DEFAULT 'USA',
-            hs_code           TEXT,
-            FOREIGN KEY (ps_id) REFERENCES packing_slips(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS repair_orders (
-            id               INTEGER PRIMARY KEY AUTOINCREMENT,
-            ro_number        TEXT UNIQUE,
-            vendor_name      TEXT,
-            vendor_address   TEXT,
-            ship_to_name     TEXT DEFAULT 'Eastern Aero Pty Ltd',
-            ship_to_address  TEXT DEFAULT '10 Composure St\nMorayfield QLD 4506 Australia',
-            date             TEXT,
-            ship_date        TEXT,
-            terms            TEXT DEFAULT 'Net 30',
-            ship_via         TEXT,
-            shipping_account TEXT,
-            subtotal         REAL DEFAULT 0,
-            shipping         REAL DEFAULT 0,
-            tax_rate         REAL DEFAULT 0,
-            sales_tax        REAL DEFAULT 0,
-            grand_total      REAL DEFAULT 0,
-            notes            TEXT,
-            status           TEXT DEFAULT 'draft',
-            created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS ro_items (
-            id             INTEGER PRIMARY KEY AUTOINCREMENT,
-            ro_id          INTEGER,
-            part_number    TEXT,
-            description    TEXT,
-            serial_number  TEXT,
-            quantity       REAL DEFAULT 1,
-            work_requested TEXT,
-            avg_cost       REAL DEFAULT 0,
-            total_price    REAL DEFAULT 0,
-            FOREIGN KEY (ro_id) REFERENCES repair_orders(id)
-        );
     ''')
 
     defaults = {
-        'company_name':    'Eastern Aero Pty Ltd',
+        'company_name':    'Eastern Aero Parts',
         'company_email':   'easternaeroparts@gmail.com',
         'company_phone':   '',
         'company_address': '',
@@ -518,7 +283,6 @@ def init_db():
         "ALTER TABLE rfqs ADD COLUMN address TEXT",
         "ALTER TABLE customer_profiles ADD COLUMN address TEXT",
         "ALTER TABLE quote_items ADD COLUMN no_quote INTEGER DEFAULT 0",
-        "ALTER TABLE quote_items ADD COLUMN serial_number TEXT",
         """CREATE TABLE IF NOT EXISTS quote_attachments (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             quote_id    INTEGER NOT NULL,
@@ -532,289 +296,6 @@ def init_db():
         "ALTER TABLE quote_attachments ADD COLUMN serial_number TEXT",
         "ALTER TABLE quote_attachments ADD COLUMN verified INTEGER DEFAULT 0",
     ]
-    # ERP vendor/customer migrations — extend existing vendors table if needed
-    erp_migrations = [
-        "ALTER TABLE vendors ADD COLUMN fax TEXT",
-        "ALTER TABLE vendors ADD COLUMN website TEXT",
-        "ALTER TABLE vendors ADD COLUMN payment_method TEXT DEFAULT 'Check'",
-        "ALTER TABLE vendors ADD COLUMN terms TEXT DEFAULT '30 days'",
-        "ALTER TABLE vendors ADD COLUMN credit_limit REAL DEFAULT 0",
-        "ALTER TABLE vendors ADD COLUMN balance REAL DEFAULT 0",
-        "ALTER TABLE vendors ADD COLUMN account_number TEXT",
-        "ALTER TABLE vendors ADD COLUMN min_po REAL DEFAULT 0",
-        "ALTER TABLE vendors ADD COLUMN tax_id TEXT",
-        "ALTER TABLE vendors ADD COLUMN tax_percent REAL DEFAULT 0",
-        "ALTER TABLE vendors ADD COLUMN gl_account TEXT DEFAULT '1200 | Inventory - rotables'",
-        "ALTER TABLE vendors ADD COLUMN status TEXT DEFAULT 'Active'",
-        "ALTER TABLE vendors ADD COLUMN currency TEXT DEFAULT 'USD'",
-        "ALTER TABLE vendors ADD COLUMN tags TEXT",
-        "ALTER TABLE vendors ADD COLUMN billing_name TEXT",
-        "ALTER TABLE vendors ADD COLUMN billing_address TEXT",
-        "ALTER TABLE vendors ADD COLUMN billing_city TEXT",
-        "ALTER TABLE vendors ADD COLUMN billing_state TEXT",
-        "ALTER TABLE vendors ADD COLUMN billing_zip TEXT",
-        "ALTER TABLE vendors ADD COLUMN billing_country TEXT DEFAULT 'USA'",
-        "ALTER TABLE vendors ADD COLUMN shipping_name TEXT",
-        "ALTER TABLE vendors ADD COLUMN shipping_address TEXT",
-        "ALTER TABLE vendors ADD COLUMN shipping_city TEXT",
-        "ALTER TABLE vendors ADD COLUMN shipping_state TEXT",
-        "ALTER TABLE vendors ADD COLUMN shipping_zip TEXT",
-        "ALTER TABLE vendors ADD COLUMN shipping_country TEXT DEFAULT 'USA'",
-        # ERP tables — safety net in case executescript didn't reach them on an existing DB
-        """CREATE TABLE IF NOT EXISTS customers (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, fax TEXT,
-            email TEXT, payment_method TEXT DEFAULT 'Check', payment_terms TEXT DEFAULT 'COD',
-            credit_limit REAL DEFAULT 0, balance REAL DEFAULT 0, hourly_rate REAL DEFAULT 100,
-            tax_id TEXT, tax_percent REAL DEFAULT 0, vat_number TEXT, date_format TEXT DEFAULT 'mm-yyyy',
-            sales_person TEXT, purchasing_person TEXT, customer_service_rep TEXT, shipping_service TEXT,
-            status TEXT DEFAULT 'Active', required_part_categories TEXT, currency TEXT DEFAULT 'USD',
-            tags TEXT, statement_notes TEXT, invoice_notes TEXT, notes TEXT, related_vendor_id INTEGER,
-            billing_name TEXT, billing_address TEXT, billing_city TEXT, billing_state TEXT,
-            billing_zip TEXT, billing_country TEXT DEFAULT 'USA', shipping_name TEXT, shipping_address TEXT,
-            shipping_city TEXT, shipping_state TEXT, shipping_zip TEXT, shipping_country TEXT DEFAULT 'USA',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-        """CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, entity_type TEXT NOT NULL, entity_id INTEGER NOT NULL,
-            first_name TEXT, last_name TEXT, title TEXT, email TEXT, phone TEXT, mobile TEXT,
-            is_primary INTEGER DEFAULT 0, notes TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-        """CREATE TABLE IF NOT EXISTS invoice_attachments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER NOT NULL,
-            label TEXT DEFAULT 'Customer PO', filename TEXT NOT NULL, filepath TEXT NOT NULL,
-            mimetype TEXT, uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-        """CREATE TABLE IF NOT EXISTS purchase_orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, po_number TEXT UNIQUE, vendor_name TEXT,
-            vendor_address TEXT, ship_to_name TEXT DEFAULT 'Eastern Aero Pty Ltd',
-            ship_to_address TEXT, date TEXT, ship_date TEXT, terms TEXT DEFAULT 'Net 30',
-            ship_via TEXT, shipping_account TEXT, subtotal REAL DEFAULT 0, shipping REAL DEFAULT 0,
-            tax_rate REAL DEFAULT 0, sales_tax REAL DEFAULT 0, grand_total REAL DEFAULT 0,
-            notes TEXT, status TEXT DEFAULT 'draft', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-        """CREATE TABLE IF NOT EXISTS po_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, po_id INTEGER, part_number TEXT,
-            description TEXT, condition TEXT, quantity REAL DEFAULT 1,
-            unit_price REAL DEFAULT 0, total_price REAL DEFAULT 0)""",
-        """CREATE TABLE IF NOT EXISTS invoices (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_number TEXT UNIQUE, invoice_for TEXT,
-            customer_name TEXT, customer_address TEXT, reference TEXT, due_date TEXT,
-            subtotal REAL DEFAULT 0, adjustments REAL DEFAULT 0, grand_total REAL DEFAULT 0,
-            notes TEXT, status TEXT DEFAULT 'draft', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-        """CREATE TABLE IF NOT EXISTS invoice_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER, part_number TEXT,
-            description TEXT, condition TEXT, quantity REAL DEFAULT 1,
-            unit_price REAL DEFAULT 0, total_price REAL DEFAULT 0)""",
-        """CREATE TABLE IF NOT EXISTS packing_slips (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, ps_number TEXT UNIQUE, date TEXT, terms TEXT,
-            po_number TEXT, invoice_number TEXT, ship_date TEXT, ship_via TEXT, shipping_account TEXT,
-            vendor_name TEXT, vendor_address TEXT, ship_to_name TEXT, ship_to_address TEXT,
-            notes TEXT, pallet_dims TEXT, weight_lbs REAL DEFAULT 0, status TEXT DEFAULT 'draft',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-        """CREATE TABLE IF NOT EXISTS ps_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, ps_id INTEGER, part_number TEXT, description TEXT,
-            serial_number TEXT, quantity REAL DEFAULT 1, country_of_origin TEXT DEFAULT 'USA', hs_code TEXT)""",
-        """CREATE TABLE IF NOT EXISTS repair_orders (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, ro_number TEXT UNIQUE, vendor_name TEXT,
-            vendor_address TEXT, ship_to_name TEXT DEFAULT 'Eastern Aero Pty Ltd', ship_to_address TEXT,
-            date TEXT, ship_date TEXT, terms TEXT DEFAULT 'Net 30', ship_via TEXT, shipping_account TEXT,
-            subtotal REAL DEFAULT 0, shipping REAL DEFAULT 0, tax_rate REAL DEFAULT 0,
-            sales_tax REAL DEFAULT 0, grand_total REAL DEFAULT 0, notes TEXT,
-            status TEXT DEFAULT 'draft', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-        """CREATE TABLE IF NOT EXISTS ro_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, ro_id INTEGER, part_number TEXT, description TEXT,
-            serial_number TEXT, quantity REAL DEFAULT 1, work_requested TEXT,
-            avg_cost REAL DEFAULT 0, total_price REAL DEFAULT 0)""",
-        # ALTER TABLE migrations for ERP tables — adds any missing columns to existing tables
-        "ALTER TABLE purchase_orders ADD COLUMN vendor_name TEXT",
-        "ALTER TABLE purchase_orders ADD COLUMN vendor_address TEXT",
-        "ALTER TABLE purchase_orders ADD COLUMN ship_to_name TEXT DEFAULT 'Eastern Aero Pty Ltd'",
-        "ALTER TABLE purchase_orders ADD COLUMN ship_to_address TEXT",
-        "ALTER TABLE purchase_orders ADD COLUMN date TEXT",
-        "ALTER TABLE purchase_orders ADD COLUMN ship_date TEXT",
-        "ALTER TABLE purchase_orders ADD COLUMN terms TEXT DEFAULT 'Net 30'",
-        "ALTER TABLE purchase_orders ADD COLUMN ship_via TEXT",
-        "ALTER TABLE purchase_orders ADD COLUMN shipping_account TEXT",
-        "ALTER TABLE purchase_orders ADD COLUMN subtotal REAL DEFAULT 0",
-        "ALTER TABLE purchase_orders ADD COLUMN shipping REAL DEFAULT 0",
-        "ALTER TABLE purchase_orders ADD COLUMN tax_rate REAL DEFAULT 0",
-        "ALTER TABLE purchase_orders ADD COLUMN sales_tax REAL DEFAULT 0",
-        "ALTER TABLE purchase_orders ADD COLUMN grand_total REAL DEFAULT 0",
-        "ALTER TABLE purchase_orders ADD COLUMN notes TEXT",
-        "ALTER TABLE purchase_orders ADD COLUMN status TEXT DEFAULT 'draft'",
-        "ALTER TABLE purchase_orders ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-        "ALTER TABLE po_items ADD COLUMN part_number TEXT",
-        "ALTER TABLE po_items ADD COLUMN description TEXT",
-        "ALTER TABLE po_items ADD COLUMN serial_number TEXT",
-        "ALTER TABLE po_items ADD COLUMN condition TEXT",
-        "ALTER TABLE po_items ADD COLUMN quantity REAL DEFAULT 1",
-        "ALTER TABLE po_items ADD COLUMN unit_price REAL DEFAULT 0",
-        "ALTER TABLE po_items ADD COLUMN total_price REAL DEFAULT 0",
-        "ALTER TABLE invoices ADD COLUMN invoice_number TEXT",
-        "ALTER TABLE invoices ADD COLUMN invoice_for TEXT",
-        "ALTER TABLE invoices ADD COLUMN customer_name TEXT",
-        "ALTER TABLE invoices ADD COLUMN customer_address TEXT",
-        "ALTER TABLE invoices ADD COLUMN reference TEXT",
-        "ALTER TABLE invoices ADD COLUMN due_date TEXT",
-        "ALTER TABLE invoices ADD COLUMN subtotal REAL DEFAULT 0",
-        "ALTER TABLE invoices ADD COLUMN adjustments REAL DEFAULT 0",
-        "ALTER TABLE invoices ADD COLUMN grand_total REAL DEFAULT 0",
-        "ALTER TABLE invoices ADD COLUMN notes TEXT",
-        "ALTER TABLE invoices ADD COLUMN status TEXT DEFAULT 'draft'",
-        "ALTER TABLE invoices ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-        "ALTER TABLE invoice_items ADD COLUMN part_number TEXT",
-        "ALTER TABLE invoice_items ADD COLUMN description TEXT",
-        "ALTER TABLE invoice_items ADD COLUMN serial_number TEXT",
-        "ALTER TABLE invoice_items ADD COLUMN condition TEXT",
-        "ALTER TABLE invoice_items ADD COLUMN quantity REAL DEFAULT 1",
-        "ALTER TABLE invoice_items ADD COLUMN unit_price REAL DEFAULT 0",
-        "ALTER TABLE invoice_items ADD COLUMN total_price REAL DEFAULT 0",
-        "ALTER TABLE invoice_items ADD COLUMN notes TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN ps_number TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN date TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN terms TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN po_number TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN invoice_number TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN ship_date TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN ship_via TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN shipping_account TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN vendor_name TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN vendor_address TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN ship_to_name TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN ship_to_address TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN notes TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN pallet_dims TEXT",
-        "ALTER TABLE packing_slips ADD COLUMN weight_lbs REAL DEFAULT 0",
-        "ALTER TABLE packing_slips ADD COLUMN status TEXT DEFAULT 'draft'",
-        "ALTER TABLE packing_slips ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-        "ALTER TABLE ps_items ADD COLUMN part_number TEXT",
-        "ALTER TABLE ps_items ADD COLUMN description TEXT",
-        "ALTER TABLE ps_items ADD COLUMN serial_number TEXT",
-        "ALTER TABLE ps_items ADD COLUMN quantity REAL DEFAULT 1",
-        "ALTER TABLE ps_items ADD COLUMN country_of_origin TEXT DEFAULT 'USA'",
-        "ALTER TABLE ps_items ADD COLUMN hs_code TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN vendor_name TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN vendor_address TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN ship_to_name TEXT DEFAULT 'Eastern Aero Pty Ltd'",
-        "ALTER TABLE repair_orders ADD COLUMN ship_to_address TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN date TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN ship_date TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN terms TEXT DEFAULT 'Net 30'",
-        "ALTER TABLE repair_orders ADD COLUMN ship_via TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN shipping_account TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN subtotal REAL DEFAULT 0",
-        "ALTER TABLE repair_orders ADD COLUMN shipping REAL DEFAULT 0",
-        "ALTER TABLE repair_orders ADD COLUMN tax_rate REAL DEFAULT 0",
-        "ALTER TABLE repair_orders ADD COLUMN sales_tax REAL DEFAULT 0",
-        "ALTER TABLE repair_orders ADD COLUMN grand_total REAL DEFAULT 0",
-        "ALTER TABLE repair_orders ADD COLUMN notes TEXT",
-        "ALTER TABLE repair_orders ADD COLUMN status TEXT DEFAULT 'draft'",
-        "ALTER TABLE repair_orders ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-        "ALTER TABLE ro_items ADD COLUMN part_number TEXT",
-        "ALTER TABLE ro_items ADD COLUMN description TEXT",
-        "ALTER TABLE ro_items ADD COLUMN serial_number TEXT",
-        "ALTER TABLE ro_items ADD COLUMN quantity REAL DEFAULT 1",
-        "ALTER TABLE ro_items ADD COLUMN work_requested TEXT",
-        "ALTER TABLE ro_items ADD COLUMN avg_cost REAL DEFAULT 0",
-        "ALTER TABLE ro_items ADD COLUMN total_price REAL DEFAULT 0",
-        "ALTER TABLE invoice_attachments ADD COLUMN label TEXT DEFAULT 'Customer PO'",
-        "ALTER TABLE invoice_attachments ADD COLUMN filename TEXT",
-        "ALTER TABLE invoice_attachments ADD COLUMN filepath TEXT",
-        "ALTER TABLE invoice_attachments ADD COLUMN mimetype TEXT",
-        "ALTER TABLE invoice_attachments ADD COLUMN uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-        # customers table column migrations
-        "ALTER TABLE customers ADD COLUMN phone TEXT",
-        "ALTER TABLE customers ADD COLUMN fax TEXT",
-        "ALTER TABLE customers ADD COLUMN email TEXT",
-        "ALTER TABLE customers ADD COLUMN payment_method TEXT DEFAULT 'Check'",
-        "ALTER TABLE customers ADD COLUMN payment_terms TEXT DEFAULT 'COD'",
-        "ALTER TABLE customers ADD COLUMN credit_limit REAL DEFAULT 0",
-        "ALTER TABLE customers ADD COLUMN balance REAL DEFAULT 0",
-        "ALTER TABLE customers ADD COLUMN hourly_rate REAL DEFAULT 100",
-        "ALTER TABLE customers ADD COLUMN tax_id TEXT",
-        "ALTER TABLE customers ADD COLUMN tax_percent REAL DEFAULT 0",
-        "ALTER TABLE customers ADD COLUMN vat_number TEXT",
-        "ALTER TABLE customers ADD COLUMN date_format TEXT DEFAULT 'mm-yyyy'",
-        "ALTER TABLE customers ADD COLUMN sales_person TEXT",
-        "ALTER TABLE customers ADD COLUMN purchasing_person TEXT",
-        "ALTER TABLE customers ADD COLUMN customer_service_rep TEXT",
-        "ALTER TABLE customers ADD COLUMN shipping_service TEXT",
-        "ALTER TABLE customers ADD COLUMN status TEXT DEFAULT 'Active'",
-        "ALTER TABLE customers ADD COLUMN required_part_categories TEXT",
-        "ALTER TABLE customers ADD COLUMN currency TEXT DEFAULT 'USD'",
-        "ALTER TABLE customers ADD COLUMN tags TEXT",
-        "ALTER TABLE customers ADD COLUMN statement_notes TEXT",
-        "ALTER TABLE customers ADD COLUMN invoice_notes TEXT",
-        "ALTER TABLE customers ADD COLUMN notes TEXT",
-        "ALTER TABLE customers ADD COLUMN related_vendor_id INTEGER",
-        "ALTER TABLE customers ADD COLUMN billing_name TEXT",
-        "ALTER TABLE customers ADD COLUMN billing_address TEXT",
-        "ALTER TABLE customers ADD COLUMN billing_city TEXT",
-        "ALTER TABLE customers ADD COLUMN billing_state TEXT",
-        "ALTER TABLE customers ADD COLUMN billing_zip TEXT",
-        "ALTER TABLE customers ADD COLUMN billing_country TEXT DEFAULT 'USA'",
-        "ALTER TABLE customers ADD COLUMN shipping_name TEXT",
-        "ALTER TABLE customers ADD COLUMN shipping_address TEXT",
-        "ALTER TABLE customers ADD COLUMN shipping_city TEXT",
-        "ALTER TABLE customers ADD COLUMN shipping_state TEXT",
-        "ALTER TABLE customers ADD COLUMN shipping_zip TEXT",
-        "ALTER TABLE customers ADD COLUMN shipping_country TEXT DEFAULT 'USA'",
-        "ALTER TABLE customers ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-        # contacts table column migrations
-        "ALTER TABLE contacts ADD COLUMN entity_type TEXT",
-        "ALTER TABLE contacts ADD COLUMN entity_id INTEGER",
-        "ALTER TABLE contacts ADD COLUMN first_name TEXT",
-        "ALTER TABLE contacts ADD COLUMN last_name TEXT",
-        "ALTER TABLE contacts ADD COLUMN title TEXT",
-        "ALTER TABLE contacts ADD COLUMN email TEXT",
-        "ALTER TABLE contacts ADD COLUMN phone TEXT",
-        "ALTER TABLE contacts ADD COLUMN mobile TEXT",
-        "ALTER TABLE contacts ADD COLUMN is_primary INTEGER DEFAULT 0",
-        "ALTER TABLE contacts ADD COLUMN notes TEXT",
-        "ALTER TABLE contacts ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-        # Inventory extra fields from stockline CSV
-        "ALTER TABLE inventory ADD COLUMN manufacturer TEXT",
-        "ALTER TABLE inventory ADD COLUMN alt_part_number TEXT",
-        "ALTER TABLE inventory ADD COLUMN serial_number TEXT",
-        "ALTER TABLE inventory ADD COLUMN item_group TEXT",
-        "ALTER TABLE inventory ADD COLUMN qty_reserved INTEGER DEFAULT 0",
-        "ALTER TABLE inventory ADD COLUMN qty_avail INTEGER DEFAULT 0",
-        "ALTER TABLE inventory ADD COLUMN traceable_to TEXT",
-        "ALTER TABLE inventory ADD COLUMN tag_type TEXT",
-        "ALTER TABLE inventory ADD COLUMN cert_number TEXT",
-        "ALTER TABLE inventory ADD COLUMN rec_date TEXT",
-        "ALTER TABLE inventory ADD COLUMN exp_date TEXT",
-        "ALTER TABLE inventory ADD COLUMN sl_number TEXT",
-        # Extended inventory fields (manual add form)
-        "ALTER TABLE inventory ADD COLUMN nsn TEXT",
-        "ALTER TABLE inventory ADD COLUMN list_price REAL DEFAULT 0",
-        "ALTER TABLE inventory ADD COLUMN core_charges REAL DEFAULT 0",
-        "ALTER TABLE inventory ADD COLUMN cycle_date TEXT",
-        "ALTER TABLE inventory ADD COLUMN labor_time TEXT",
-        "ALTER TABLE inventory ADD COLUMN min_stock INTEGER DEFAULT 0",
-        "ALTER TABLE inventory ADD COLUMN faa_ads TEXT",
-        "ALTER TABLE inventory ADD COLUMN easa_ads TEXT",
-        "ALTER TABLE inventory ADD COLUMN alert_note TEXT",
-        "ALTER TABLE inventory ADD COLUMN aircraft TEXT",
-        "ALTER TABLE inventory ADD COLUMN gl_category TEXT DEFAULT '1200 | Inventory - rotables'",
-        "ALTER TABLE inventory ADD COLUMN is_hazmat INTEGER DEFAULT 0",
-        "ALTER TABLE inventory ADD COLUMN is_serialized INTEGER DEFAULT 0",
-        "ALTER TABLE inventory ADD COLUMN has_shelf_life INTEGER DEFAULT 0",
-        "ALTER TABLE inventory ADD COLUMN part_category TEXT DEFAULT 'OEM'",
-        "ALTER TABLE inventory ADD COLUMN model_number TEXT",
-        "ALTER TABLE inventory ADD COLUMN marketplaces TEXT",
-        "ALTER TABLE inventory ADD COLUMN notes TEXT",
-        "ALTER TABLE inventory ADD COLUMN service_bulletin TEXT",
-        # Part documents (PDF uploads linked to inventory items)
-        """CREATE TABLE IF NOT EXISTS part_documents (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            part_id     INTEGER NOT NULL,
-            filename    TEXT NOT NULL,
-            filepath    TEXT NOT NULL,
-            mimetype    TEXT DEFAULT 'application/pdf',
-            label       TEXT,
-            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (part_id) REFERENCES inventory(id)
-        )""",
-    ]
-    migrations = migrations + erp_migrations
-
     for sql in migrations:
         try:
             conn.execute(sql)
@@ -973,24 +454,6 @@ def parse_rfq_text(text):
     """
     items = []
     seen  = set()
-
-    # ── Strip email signature and quoted reply content ────────────────────────
-    # Email signatures start with "-- " (RFC 3676) or "--\n" on a line by itself,
-    # or with common sign-off words. Quoted replies start with "> " etc.
-    SIG_SEP = re.compile(
-        r'(?m)'
-        r'(?:^--\s*$'                                              # RFC sig delimiter
-        r'|^-{3,}\s*$'                                            # --- alone on line
-        r'|^_{3,}\s*$'                                            # ___ alone on line
-        r'|^-{3,}\s*(?:original\s+message|forwarded\s+message)'   # Outlook separators
-        r'|^On .{5,120} wrote:\s*$'                               # Gmail/Outlook thread
-        r'|^>+\s)',                                               # quoted lines
-        re.I
-    )
-    m_sep = SIG_SEP.search(text)
-    if m_sep:
-        text = text[:m_sep.start()]
-
     lines = [l.rstrip() for l in text.split('\n')]
 
     # Words that are definitely NOT part numbers
@@ -1034,18 +497,10 @@ def parse_rfq_text(text):
         r'(?:part[\s_]?n(?:o|umber|r)?\.?|p/?n|description|desc|qty|quantity|s/?n\.?)',
         re.I)
 
-    # Pattern that means this line is an inline key:value, NOT a table header
-    # e.g. "PN: HC-B3TN-3D" or "Part No: 12345" — value is on the same line
-    INLINE_KV = re.compile(
-        r'(?:P/?N|PART\s*(?:NO\.?|NUMBER|#))[:\s]+[A-Z0-9]', re.I)
-
     header_idx = None
     col_pn = col_desc = col_qty = col_cond = None
 
     for i, line in enumerate(lines):
-        # Skip lines that are clearly inline key:value (not a header row)
-        if INLINE_KV.search(line):
-            continue
         if HEADER_KEYWORDS.search(line):
             # Try to split this header row
             for delim in ('\t', '|', ','):
@@ -1238,17 +693,6 @@ def parse_rfq_text(text):
             qty  = 1
             desc = ''
             cond = 'SV'
-            # Extract condition from COND: label OR from parentheses on the same
-            # line after the PN, e.g. "PN: HC-B3TN-3D        (OH)"
-            m_c = COND_PAT.search(line)
-            if m_c:
-                cond = m_c.group(1).upper()
-            else:
-                # Look for (XX) parenthetical condition code after the PN match
-                rest = line[m_pn.end():]
-                m_paren = re.search(r'\(\s*([A-Z]{1,4})\s*\)', rest, re.I)
-                if m_paren:
-                    cond = m_paren.group(1).upper()
             m_q = QTY_PAT.search(line)
             if not m_q and i + 1 < len(lines):
                 m_q = QTY_PAT.search(lines[i + 1])
@@ -1257,6 +701,8 @@ def parse_rfq_text(text):
                 except: pass
             m_d = DESC_PAT.search(line)
             if m_d: desc = m_d.group(1)
+            m_c = COND_PAT.search(line)
+            if m_c: cond = m_c.group(1)
             add(pn, desc, qty, cond)
             continue
 
@@ -1280,59 +726,18 @@ def parse_rfq_text(text):
 
 
 def match_inventory(part_number, conn):
-    """
-    Return the best inventory match for a part number using a tiered strategy:
-      1. Exact match (case-insensitive, ignoring spaces/dashes/slashes)
-      2. Inventory PN contains the queried PN as a substring
-      3. Queried PN contains an inventory PN as a substring
-      4. Token-overlap: if the cleaned tokens of both PNs share the same core token
-
-    Returns the matched inventory row (sqlite3.Row) or None.
-    Also returns a 'match_confidence' key if you access result['_confidence'].
-    """
-    if not part_number:
-        return None
-
-    clean = re.sub(r'[\s\-/\.]', '', part_number.upper())
-
-    # Tier 1: exact stripped match
+    """Return best inventory match for a part number (exact → partial)."""
+    clean = re.sub(r'[\s\-/]', '', part_number.upper())
     row = conn.execute(
-        "SELECT * FROM inventory WHERE UPPER(REPLACE(REPLACE(REPLACE(REPLACE(part_number,' ',''),'-',''),'/',''),'.',''))=?",
+        "SELECT * FROM inventory WHERE UPPER(REPLACE(REPLACE(REPLACE(part_number,' ',''),'-',''),'/',''))=?",
         (clean,)
     ).fetchone()
-    if row:
-        return row
-
-    # Tier 2: inventory PN contains queried PN (e.g. "HC-B3TN-3D" in "HC-B3TN-3D-MOD")
-    row = conn.execute(
-        "SELECT * FROM inventory WHERE UPPER(part_number) LIKE ?",
-        (f'%{part_number.upper()}%',)
-    ).fetchone()
-    if row:
-        return row
-
-    # Tier 3: queried PN contains an inventory PN (e.g. longer queried than stored)
-    # Fetch all and check in Python (only if inventory is reasonably small)
-    rows = conn.execute(
-        "SELECT * FROM inventory WHERE length(part_number) >= 4"
-    ).fetchall()
-    for r in rows:
-        inv_clean = re.sub(r'[\s\-/\.]', '', (r['part_number'] or '').upper())
-        if inv_clean and len(inv_clean) >= 4 and inv_clean in clean:
-            return r
-
-    # Tier 4: token overlap — split both PNs on non-alphanumeric boundaries
-    # and check if the longest shared token is >= 5 chars
-    q_tokens = set(re.split(r'[^A-Z0-9]', part_number.upper()))
-    q_tokens = {t for t in q_tokens if len(t) >= 5}
-    if q_tokens:
-        for r in rows:
-            inv_tokens = set(re.split(r'[^A-Z0-9]', (r['part_number'] or '').upper()))
-            inv_tokens = {t for t in inv_tokens if len(t) >= 5}
-            if q_tokens & inv_tokens:   # non-empty intersection
-                return r
-
-    return None
+    if not row:
+        row = conn.execute(
+            "SELECT * FROM inventory WHERE UPPER(part_number) LIKE ?",
+            (f'%{part_number.upper()}%',)
+        ).fetchone()
+    return row
 
 
 # ─── Routes: Dashboard ───────────────────────────────────────────────────────
@@ -1490,74 +895,16 @@ def dashboard():
 def inventory():
     q = request.args.get('q', '')
     conn = get_db()
-    base_query = """
-        SELECT i.*, COUNT(pd.id) AS doc_count
-        FROM inventory i
-        LEFT JOIN part_documents pd ON pd.part_id = i.id
-        {where}
-        GROUP BY i.id
-        ORDER BY i.part_number
-    """
     if q:
-        like = f'%{q.upper()}%'
         parts = conn.execute(
-            base_query.format(where="""
-               WHERE UPPER(i.part_number)     LIKE ?
-                  OR UPPER(i.description)     LIKE ?
-                  OR UPPER(i.manufacturer)    LIKE ?
-                  OR UPPER(i.alt_part_number) LIKE ?
-                  OR UPPER(i.item_group)      LIKE ?
-            """),
-            (like, like, like, like, like)
+            "SELECT * FROM inventory WHERE UPPER(part_number) LIKE ? OR UPPER(description) LIKE ? ORDER BY part_number",
+            (f'%{q.upper()}%', f'%{q.upper()}%')
         ).fetchall()
     else:
-        parts = conn.execute(base_query.format(where='')).fetchall()
+        parts = conn.execute("SELECT * FROM inventory ORDER BY part_number").fetchall()
     total = conn.execute("SELECT COUNT(*) FROM inventory").fetchone()[0]
     conn.close()
     return render_template('inventory.html', parts=parts, total=total, q=q)
-
-
-@app.route('/api/inventory-search')
-@login_required
-def inventory_search():
-    """Return inventory rows matching a PN prefix/substring — for autocomplete."""
-    q = request.args.get('q', '').strip().upper()
-    if len(q) < 1:
-        return jsonify([])
-    conn = get_db()
-    # Prioritise: starts-with match first, then contains
-    like_start    = f'{q}%'
-    like_contains = f'%{q}%'
-    rows = conn.execute("""
-        SELECT part_number, description, condition, unit_cost, unit_price,
-               location, uom, manufacturer, alt_part_number, qty_avail, quantity
-        FROM inventory
-        WHERE UPPER(part_number) LIKE ?
-           OR UPPER(REPLACE(REPLACE(part_number,'-',''),'/','')) LIKE ?
-           OR UPPER(description)  LIKE ?
-           OR UPPER(alt_part_number) LIKE ?
-        ORDER BY
-          CASE WHEN UPPER(part_number) LIKE ? THEN 0 ELSE 1 END,
-          part_number
-        LIMIT 12
-    """, (like_contains, like_contains, like_contains, like_contains, like_start)).fetchall()
-    conn.close()
-    result = []
-    for r in rows:
-        avail = r['qty_avail'] if r['qty_avail'] is not None else r['quantity']
-        result.append({
-            'part_number':  r['part_number'],
-            'description':  r['description'] or '',
-            'condition':    r['condition'] or 'SV',
-            'unit_cost':    r['unit_cost'] or 0,
-            'unit_price':   r['unit_price'] or 0,
-            'location':     r['location'] or '',
-            'uom':          r['uom'] or 'EA',
-            'manufacturer': r['manufacturer'] or '',
-            'alt_pn':       r['alt_part_number'] or '',
-            'qty_avail':    avail or 0,
-        })
-    return jsonify(result)
 
 
 @app.route('/inventory/upload', methods=['POST'])
@@ -1573,261 +920,79 @@ def upload_inventory():
 
     try:
         df = pd.read_csv(path) if f.filename.lower().endswith('.csv') else pd.read_excel(path)
-        # Keep original column names for display; work with uppercased copy for detection
-        orig_cols = list(df.columns)
-        upper_cols = [c.strip().upper() for c in orig_cols]
-        df.columns = upper_cols  # replace with uppercased names
-
-        def detect_col(candidates, exclude_patterns=None):
-            """Return first column name whose uppercased form contains any candidate string.
-               exclude_patterns: list of substrings that would DISQUALIFY a column if present."""
-            for col in upper_cols:
-                if exclude_patterns and any(ex in col for ex in exclude_patterns):
-                    continue
-                if any(cand in col for cand in candidates):
-                    return col
-            return None
+        df.columns = [c.upper().strip() for c in df.columns]
 
         COL = {}
-        # Part number: "PN" but NOT "PN DESCRIPTION" or "ALT PN"
-        COL['part_number'] = detect_col(['PART NO', 'PART NUM', 'PARTNO', 'P/N'],
-                                         exclude_patterns=['DESC', 'ALT', 'REVISED']) \
-                          or detect_col(['^PN$', 'PN '],
-                                         exclude_patterns=['DESC', 'ALT', 'REVISED'])
-        # Fallback: find exact "PN" column
-        if not COL['part_number']:
-            for col in upper_cols:
-                if col.strip() == 'PN':
-                    COL['part_number'] = col
-                    break
+        for c in df.columns:
+            cu = c.upper()
+            if any(x in cu for x in ['PART','P/N','PN','PARTNO','PART_NUM','PART NO']):
+                COL.setdefault('part_number', c)
+            elif 'DESC' in cu:
+                COL.setdefault('description', c)
+            elif 'COND' in cu:
+                COL.setdefault('condition', c)
+            elif cu in ('QTY','QUANTITY','STOCK','ON HAND','ONHAND','QTY ON HAND'):
+                COL.setdefault('quantity', c)
+            elif 'COST' in cu:
+                COL.setdefault('unit_cost', c)
+            elif 'PRICE' in cu or 'SELL' in cu:
+                COL.setdefault('unit_price', c)
+            elif 'LOC' in cu or 'BIN' in cu or 'SHELF' in cu:
+                COL.setdefault('location', c)
+            elif cu in ('UOM','UNIT OF MEASURE'):
+                COL.setdefault('uom', c)
 
-        # Description: must contain DESC, prefer "PN DESCRIPTION" or "DESCRIPTION"
-        COL['description'] = detect_col(['PN DESCRIPTION', 'PART DESCRIPTION', 'DESCRIPTION', ' DESC'])
-        if not COL['description']:
-            COL['description'] = detect_col(['DESC'])
-
-        # Alt Part Number
-        COL['alt_pn'] = detect_col(['ALT PN', 'ALT PART', 'ALTERNATE PN', 'ALTERNATE PART',
-                                     'REVISED PN', 'REVISED PART'])
-
-        # Condition
-        COL['condition'] = detect_col(['COND'])
-
-        # Quantity on hand (prefer "QTY OH", "QTY ON HAND", "QTY AVAIL", then generic QTY)
-        COL['quantity'] = (detect_col(['QTY OH', 'QTY ON HAND', 'ON HAND', 'ONHAND', 'QTY AVAIL'])
-                        or detect_col(['QTY', 'QUANTITY', 'STOCK']))
-
-        # Reserved qty
-        COL['qty_reserved'] = detect_col(['QTY RESERVED', 'RESERVED'])
-
-        # Available qty
-        COL['qty_avail'] = detect_col(['QTY AVAIL', 'AVAIL'])
-
-        # Unit cost
-        COL['unit_cost'] = detect_col(['UNIT COST', 'COST'])
-
-        # Unit price / sell price
-        COL['unit_price'] = detect_col(['UNIT PRICE', 'SELL PRICE', 'LIST PRICE', 'PRICE'])
-
-        # Location
-        COL['location'] = detect_col(['LOCATION', 'LOC', 'BIN', 'SHELF', 'WAREHOUSE'])
-
-        # UOM
-        COL['uom'] = detect_col(['UOM', 'UNIT OF MEASURE', 'UNIT MEASURE'])
-
-        # Manufacturer
-        COL['manufacturer'] = detect_col(['MANUFACTURER', 'MFR', 'MFG', 'MAKE', 'VENDOR'])
-
-        # Item group / category
-        COL['item_group'] = detect_col(['ITEM GROUP', 'ITEM_GROUP', 'CATEGORY', 'GROUP'])
-
-        # Serial number
-        COL['serial_number'] = detect_col(['SER NUM', 'SERIAL NUM', 'SERIAL NO', 'SER NO', 'SERIAL'])
-
-        # Traceability
-        COL['traceable_to'] = detect_col(['TRACEABLE', 'TRACE TO', 'OBTAINED FROM'])
-
-        # Tag info
-        COL['tag_type']    = detect_col(['TAG TYPE'])
-        COL['cert_number'] = detect_col(['CERT NUM', 'CERTIFIED NUM', 'CERT NO'])
-
-        # Dates
-        COL['rec_date'] = detect_col(['REC\'D DATE', 'RECEIVED DATE', 'REC DATE', 'RECV DATE'])
-        COL['exp_date'] = detect_col(['EXP DATE', 'EXPIRY', 'EXPIRATION'])
-
-        # Stockline number
-        COL['sl_number'] = detect_col(['SL NUM', 'STOCKLINE NUM', 'SL NO'])
-
-        if not COL['part_number']:
-            flash('Cannot find a Part Number column. Expected column named "PN", "P/N", or "Part Number".', 'error')
+        if 'part_number' not in COL:
+            flash('Cannot find a Part Number column. Name it "Part Number", "P/N", or "PN".', 'error')
             return redirect(url_for('inventory'))
 
-        conn = get_db()
-        mode = request.form.get('mode', 'merge')
+        conn  = get_db()
+        mode  = request.form.get('mode', 'merge')
         if mode == 'replace':
             conn.execute('DELETE FROM inventory')
 
-        def gv(key, default=''):
-            """Get value for a mapped column, returning default for NaN/None/empty."""
-            col = COL.get(key)
-            if not col:
-                return default
-            val = df[col].iloc[row_idx] if col in df.columns else default
-            s = str(val).strip()
-            return default if s.upper() in ('NAN', 'NONE', '', 'N/A') else s
-
         added = updated = 0
-        for row_idx in range(len(df)):
-            pn = str(df[COL['part_number']].iloc[row_idx]).strip().upper()
+        for _, row in df.iterrows():
+            pn = str(row[COL['part_number']]).strip().upper()
             if not pn or pn in ('NAN', 'NONE', ''):
                 continue
 
-            desc     = gv('description', '').strip().title()
-            alt_pn   = gv('alt_pn', '').strip().upper()
-            cond     = gv('condition', 'SV').strip().upper() or 'SV'
-            loc      = gv('location', '').strip()
-            uom      = gv('uom', 'EA').strip() or 'EA'
-            mfr      = gv('manufacturer', '').strip().title()
-            grp      = gv('item_group', '').strip().title()
-            ser      = gv('serial_number', '').strip()
-            trace    = gv('traceable_to', '').strip()
-            tag_type = gv('tag_type', '').strip()
-            cert_num = gv('cert_number', '').strip()
-            rec_date = gv('rec_date', '').strip()
-            exp_date = gv('exp_date', '').strip()
-            sl_num   = gv('sl_number', '').strip()
+            def g(key, default=''):
+                col = COL.get(key)
+                if not col: return default
+                val = row.get(col, default)
+                return default if str(val).upper() in ('NAN','NONE','') else val
 
-            try: qty      = int(float(gv('quantity', 0)))
-            except: qty   = 0
-            try: qty_res  = int(float(gv('qty_reserved', 0)))
-            except: qty_res = 0
-            try: qty_avail = int(float(gv('qty_avail', qty)))
-            except: qty_avail = qty
-            try: cost  = float(gv('unit_cost', 0))
+            desc  = str(g('description', '')).strip().title()
+            cond  = str(g('condition', 'SV')).strip().upper()
+            loc   = str(g('location', '')).strip()
+            uom   = str(g('uom', 'EA')).strip() or 'EA'
+            try: qty = int(float(g('quantity', 0)))
+            except: qty = 0
+            try: cost = float(g('unit_cost', 0))
             except: cost = 0.0
-            try: price = float(gv('unit_price', 0))
+            try: price = float(g('unit_price', 0))
             except: price = 0.0
 
             exists = conn.execute('SELECT id FROM inventory WHERE part_number=?', (pn,)).fetchone()
             if exists:
-                conn.execute('''
-                    UPDATE inventory SET
-                        description=?, alt_part_number=?, condition=?,
-                        quantity=?, qty_reserved=?, qty_avail=?,
-                        unit_cost=?, unit_price=?, location=?, uom=?,
-                        manufacturer=?, item_group=?, serial_number=?,
-                        traceable_to=?, tag_type=?, cert_number=?,
-                        rec_date=?, exp_date=?, sl_number=?,
-                        updated_at=CURRENT_TIMESTAMP
-                    WHERE part_number=?''',
-                    (desc, alt_pn, cond,
-                     qty, qty_res, qty_avail,
-                     cost, price, loc, uom,
-                     mfr, grp, ser,
-                     trace, tag_type, cert_num,
-                     rec_date, exp_date, sl_num,
-                     pn))
+                conn.execute(
+                    'UPDATE inventory SET description=?,condition=?,quantity=?,unit_cost=?,unit_price=?,location=?,uom=?,updated_at=CURRENT_TIMESTAMP WHERE part_number=?',
+                    (desc, cond, qty, cost, price, loc, uom, pn))
                 updated += 1
             else:
-                conn.execute('''
-                    INSERT INTO inventory
-                        (part_number, description, alt_part_number, condition,
-                         quantity, qty_reserved, qty_avail,
-                         unit_cost, unit_price, location, uom,
-                         manufacturer, item_group, serial_number,
-                         traceable_to, tag_type, cert_number,
-                         rec_date, exp_date, sl_number)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
-                    (pn, desc, alt_pn, cond,
-                     qty, qty_res, qty_avail,
-                     cost, price, loc, uom,
-                     mfr, grp, ser,
-                     trace, tag_type, cert_num,
-                     rec_date, exp_date, sl_num))
+                conn.execute(
+                    'INSERT INTO inventory (part_number,description,condition,quantity,unit_cost,unit_price,location,uom) VALUES (?,?,?,?,?,?,?,?)',
+                    (pn, desc, cond, qty, cost, price, loc, uom))
                 added += 1
 
         conn.commit()
         conn.close()
         flash(f'Inventory updated — {added} added, {updated} updated.', 'success')
     except Exception as e:
-        import traceback
-        flash(f'Error reading file: {e}\n{traceback.format_exc()}', 'error')
+        flash(f'Error reading file: {e}', 'error')
 
     return redirect(url_for('inventory'))
-
-
-@app.route('/inventory/add', methods=['POST'])
-@login_required
-def add_part():
-    """Manually add a new part to inventory."""
-    f = request.form
-    def fget(k, default=''):
-        return (f.get(k) or default).strip() if isinstance(default, str) else f.get(k) or default
-
-    pn = fget('part_number').upper()
-    if not pn:
-        return jsonify({'success': False, 'error': 'Part number is required'})
-
-    conn = get_db()
-    try:
-        conn.execute('''
-            INSERT INTO inventory (
-                part_number, description, manufacturer, alt_part_number,
-                serial_number, condition, quantity, qty_avail,
-                unit_cost, unit_price, list_price, core_charges,
-                location, uom, item_group,
-                nsn, cycle_date, labor_time, min_stock,
-                faa_ads, easa_ads, alert_note,
-                aircraft, gl_category,
-                is_hazmat, is_serialized, has_shelf_life,
-                part_category, model_number, marketplaces,
-                notes, service_bulletin,
-                updated_at
-            ) VALUES (
-                ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-                ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,
-                CURRENT_TIMESTAMP
-            )''', (
-            pn,
-            fget('description'),
-            fget('manufacturer'),
-            fget('alt_part_number').upper(),
-            fget('serial_number'),
-            fget('condition', 'SV').upper(),
-            int(f.get('quantity') or 0),
-            int(f.get('qty_avail') or 0),
-            float(f.get('unit_cost') or 0),
-            float(f.get('unit_price') or 0),
-            float(f.get('list_price') or 0),
-            float(f.get('core_charges') or 0),
-            fget('location'),
-            fget('uom', 'EA'),
-            fget('item_group'),
-            fget('nsn'),
-            fget('cycle_date'),
-            fget('labor_time'),
-            int(f.get('min_stock') or 0),
-            fget('faa_ads'),
-            fget('easa_ads'),
-            fget('alert_note'),
-            fget('aircraft'),
-            fget('gl_category', '1200 | Inventory - rotables'),
-            1 if f.get('is_hazmat') else 0,
-            1 if f.get('is_serialized') else 0,
-            1 if f.get('has_shelf_life') else 0,
-            fget('part_category', 'OEM'),
-            fget('model_number'),
-            fget('marketplaces'),
-            fget('notes'),
-            fget('service_bulletin'),
-        ))
-        conn.commit()
-        new_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
-        conn.close()
-        return jsonify({'success': True, 'id': new_id, 'part_number': pn})
-    except Exception as e:
-        conn.close()
-        return jsonify({'success': False, 'error': str(e)})
 
 
 @app.route('/inventory/delete/<int:pid>', methods=['POST'])
@@ -1841,304 +1006,17 @@ def delete_part(pid):
     return redirect(url_for('inventory'))
 
 
-@app.route('/api/part-history/<int:pid>')
-@login_required
-def part_history_api(pid):
-    """Return latest 3 quotes, POs, invoices, and ROs for a part (by part_number)."""
-    conn = get_db()
-    try:
-        part = conn.execute('SELECT part_number FROM inventory WHERE id=?', (pid,)).fetchone()
-        if not part:
-            conn.close()
-            return jsonify({'error': 'not found'}), 404
-        pn = part['part_number']
-
-        # Normalize a PN: strip ALL non-alphanumeric chars for maximum fuzzy matching
-        def norm_pn(p):
-            return re.sub(r'[^A-Z0-9]', '', (p or '').upper())
-
-        npn = norm_pn(pn)
-
-        def safe_rows(sql, params):
-            try:
-                return [dict(r) for r in conn.execute(sql, params).fetchall()]
-            except Exception:
-                return []
-
-        # Match on exact PN OR fully-normalized PN (strips dashes, slashes, spaces, dots, underscores, etc.)
-        # SQLite inline normalization strips the same set of chars
-        _norm_sql = "UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(" \
-                    "REPLACE(col,'.','')" \
-                    ",'-',''),'/',''),' ',''),'_',''),'(',''),')','')" \
-                    ")"
-
-        def pn_where(col):
-            return (f"UPPER({col})=UPPER(?)"
-                    f" OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
-                    f"REPLACE({col},'.','')"
-                    f",'-',''),'/',''),' ',''),'_',''),'(',''),')',''))=?")
-
-        quotes = safe_rows(f"""
-            SELECT qi.quote_id as id, q.quote_number, q.customer_name, q.status,
-                   qi.unit_price, q.created_at
-            FROM quote_items qi JOIN quotes q ON qi.quote_id=q.id
-            WHERE {pn_where('qi.part_number')}
-            ORDER BY q.created_at DESC LIMIT 3
-        """, (pn, npn))
-
-        pos = safe_rows(f"""
-            SELECT pi.po_id as id, p.po_number, p.vendor_name, p.status,
-                   pi.unit_price, p.created_at
-            FROM po_items pi JOIN purchase_orders p ON pi.po_id=p.id
-            WHERE {pn_where('pi.part_number')}
-            ORDER BY p.created_at DESC LIMIT 3
-        """, (pn, npn))
-
-        invoices = safe_rows(f"""
-            SELECT ii.invoice_id as id, inv.invoice_number,
-                   inv.invoice_for as customer_name, inv.status,
-                   ii.unit_price, inv.created_at
-            FROM invoice_items ii JOIN invoices inv ON ii.invoice_id=inv.id
-            WHERE {pn_where('ii.part_number')}
-            ORDER BY inv.created_at DESC LIMIT 3
-        """, (pn, npn))
-
-        ros = safe_rows(f"""
-            SELECT ri.ro_id as id, r.ro_number, r.vendor_name, r.status,
-                   r.created_at
-            FROM ro_items ri JOIN repair_orders r ON ri.ro_id=r.id
-            WHERE {pn_where('ri.part_number')}
-            ORDER BY r.created_at DESC LIMIT 3
-        """, (pn, npn))
-
-        conn.close()
-        return jsonify({'quotes': quotes, 'pos': pos, 'invoices': invoices, 'ros': ros, 'pn': pn})
-
-    except Exception as e:
-        conn.close()
-        return jsonify({'quotes': [], 'pos': [], 'invoices': [], 'ros': [], 'pn': '', 'error': str(e)})
-
-
-@app.route('/inventory/part/<int:pid>')
-@login_required
-def part_detail(pid):
-    """Detail view for a single part — shows linked RFQs, Quotes, POs, Invoices, ROs."""
-    conn = get_db()
-    part = conn.execute('SELECT * FROM inventory WHERE id=?', (pid,)).fetchone()
-    if not part:
-        flash('Part not found.', 'error')
-        conn.close()
-        return redirect(url_for('inventory'))
-
-    pn = part['part_number']
-    npn = re.sub(r'[^A-Z0-9]', '', pn.upper())
-
-    def _pw(col):
-        return (f"UPPER({col})=UPPER(?)"
-                f" OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE("
-                f"REPLACE({col},'.','')"
-                f",'-',''),'/',''),' ',''),'_',''),'(',''),')',''))=?")
-
-    # RFQs that requested this PN
-    rfqs = conn.execute(f"""
-        SELECT r.id, r.rfq_number, r.customer_name, r.company,
-               r.created_at, r.status, i.quantity, i.condition
-        FROM rfq_items i
-        JOIN rfqs r ON i.rfq_id = r.id
-        WHERE {_pw('i.part_number')}
-        ORDER BY r.created_at DESC
-    """, (pn, npn)).fetchall()
-
-    # Quotes
-    quotes = conn.execute(f"""
-        SELECT q.id, q.quote_number, r.customer_name, r.company,
-               q.created_at, q.status,
-               i.quantity_requested, i.unit_price, i.condition
-        FROM quote_items i
-        JOIN quotes q ON i.quote_id = q.id
-        LEFT JOIN rfqs r ON q.rfq_id = r.id
-        WHERE {_pw('i.part_number')}
-        ORDER BY q.created_at DESC
-    """, (pn, npn)).fetchall()
-
-    # Purchase Orders
-    pos = conn.execute(f"""
-        SELECT p.id, p.po_number, p.vendor_name, p.created_at, p.status,
-               i.quantity, i.unit_price, i.condition, i.serial_number
-        FROM po_items i
-        JOIN purchase_orders p ON i.po_id = p.id
-        WHERE {_pw('i.part_number')}
-        ORDER BY p.created_at DESC
-    """, (pn, npn)).fetchall()
-
-    # Invoices
-    invoices = conn.execute(f"""
-        SELECT inv.id, inv.invoice_number, inv.invoice_for, inv.created_at,
-               i.quantity, i.unit_price, i.condition, i.serial_number
-        FROM invoice_items i
-        JOIN invoices inv ON i.invoice_id = inv.id
-        WHERE {_pw('i.part_number')}
-        ORDER BY inv.created_at DESC
-    """, (pn, npn)).fetchall()
-
-    # Repair Orders
-    ros = conn.execute(f"""
-        SELECT r.id, r.ro_number, r.customer_name, r.created_at, r.status,
-               i.description, i.quantity, i.condition
-        FROM ro_items i
-        JOIN repair_orders r ON i.ro_id = r.id
-        WHERE {_pw('i.part_number')}
-        ORDER BY r.created_at DESC
-    """, (pn, npn)).fetchall()
-
-    conn.close()
-    return render_template('part_detail.html',
-        part=part, rfqs=rfqs, quotes=quotes,
-        pos=pos, invoices=invoices, ros=ros)
-
-
 @app.route('/inventory/edit/<int:pid>', methods=['POST'])
 @login_required
 def edit_part(pid):
-    f = request.form
-    def fg(k, default=''):
-        return (f.get(k) or default).strip() if isinstance(default, str) else f.get(k) or default
-
-    conn = get_db()
-    conn.execute('''
-        UPDATE inventory SET
-            part_number=?, alt_part_number=?, description=?, manufacturer=?,
-            serial_number=?, condition=?, quantity=?, qty_avail=?,
-            unit_cost=?, unit_price=?, list_price=?, core_charges=?,
-            location=?, uom=?,
-            nsn=?, cycle_date=?, labor_time=?, min_stock=?,
-            faa_ads=?, easa_ads=?, alert_note=?,
-            aircraft=?, gl_category=?,
-            is_hazmat=?, is_serialized=?, has_shelf_life=?,
-            part_category=?, model_number=?, marketplaces=?,
-            notes=?, service_bulletin=?,
-            updated_at=CURRENT_TIMESTAMP
-        WHERE id=?''',
-        (
-            fg('part_number').upper(),
-            fg('alt_part_number').upper(),
-            fg('description'),
-            fg('manufacturer'),
-            fg('serial_number'),
-            fg('condition', 'SV').upper(),
-            int(f.get('quantity') or 0),
-            int(f.get('qty_avail') or 0),
-            float(f.get('unit_cost') or 0),
-            float(f.get('unit_price') or 0),
-            float(f.get('list_price') or 0),
-            float(f.get('core_charges') or 0),
-            fg('location'),
-            fg('uom', 'EA'),
-            fg('nsn'),
-            fg('cycle_date'),
-            fg('labor_time'),
-            int(f.get('min_stock') or 0),
-            fg('faa_ads'),
-            fg('easa_ads'),
-            fg('alert_note'),
-            fg('aircraft'),
-            fg('gl_category', '1200 | Inventory - rotables'),
-            1 if f.get('is_hazmat') else 0,
-            1 if f.get('is_serialized') else 0,
-            1 if f.get('has_shelf_life') else 0,
-            fg('part_category', 'OEM'),
-            fg('model_number'),
-            fg('marketplaces'),
-            fg('notes'),
-            fg('service_bulletin'),
-            pid,
-        ))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
-
-
-@app.route('/api/part-docs/<int:pid>')
-@login_required
-def part_docs_api(pid):
-    """Return list of uploaded documents for a part."""
-    conn = get_db()
-    docs = conn.execute(
-        'SELECT * FROM part_documents WHERE part_id=? ORDER BY uploaded_at DESC', (pid,)
-    ).fetchall()
-    conn.close()
-    return jsonify([dict(d) for d in docs])
-
-
-@app.route('/inventory/part/<int:pid>/attach', methods=['POST'])
-@login_required
-def part_attach(pid):
-    """Upload a PDF document for an inventory part."""
-    f = request.files.get('file')
-    if not f or not f.filename:
-        return jsonify({'success': False, 'error': 'No file provided'})
-
-    ext = os.path.splitext(f.filename)[1].lower()
-    if ext != '.pdf':
-        return jsonify({'success': False, 'error': 'Only PDF files are allowed'})
-
-    label     = (request.form.get('label') or '').strip()
-    safe_name = re.sub(r'[^\w\.\-]', '_', f.filename)
-    upload_dir = os.path.join(UPLOAD_FOLDER, 'parts', str(pid))
-    os.makedirs(upload_dir, exist_ok=True)
-    filepath = os.path.join(upload_dir, safe_name)
-    f.save(filepath)
-
-    mime = 'application/pdf'
-    _compress_file(filepath, ext, mime)
-
     conn = get_db()
     conn.execute(
-        'INSERT INTO part_documents (part_id, filename, filepath, mimetype, label) VALUES (?,?,?,?,?)',
-        (pid, safe_name, filepath, mime, label or None))
+        'UPDATE inventory SET part_number=?,description=?,condition=?,quantity=?,unit_cost=?,unit_price=?,location=?,uom=?,updated_at=CURRENT_TIMESTAMP WHERE id=?',
+        (request.form['part_number'].upper(), request.form.get('description',''),
+         request.form.get('condition','SV'), int(request.form.get('quantity',0)),
+         float(request.form.get('unit_cost',0)), float(request.form.get('unit_price',0)),
+         request.form.get('location',''), request.form.get('uom','EA'), pid))
     conn.commit()
-    doc_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
-    conn.close()
-
-    return jsonify({
-        'success':     True,
-        'id':          doc_id,
-        'filename':    safe_name,
-        'label':       label,
-        'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M'),
-    })
-
-
-@app.route('/inventory/part/<int:pid>/doc/<int:doc_id>/view')
-@login_required
-def part_doc_view(pid, doc_id):
-    """Serve a part document for in-browser viewing."""
-    conn = get_db()
-    row  = conn.execute(
-        'SELECT * FROM part_documents WHERE id=? AND part_id=?', (doc_id, pid)
-    ).fetchone()
-    conn.close()
-    if not row:
-        return 'Not found', 404
-    return send_file(row['filepath'], mimetype=row['mimetype'],
-                     as_attachment=False, download_name=row['filename'])
-
-
-@app.route('/inventory/part/<int:pid>/doc/<int:doc_id>/delete', methods=['POST'])
-@login_required
-def part_doc_delete(pid, doc_id):
-    """Delete a part document."""
-    conn = get_db()
-    row  = conn.execute(
-        'SELECT * FROM part_documents WHERE id=? AND part_id=?', (doc_id, pid)
-    ).fetchone()
-    if row:
-        try:
-            os.remove(row['filepath'])
-        except OSError:
-            pass
-        conn.execute('DELETE FROM part_documents WHERE id=?', (doc_id,))
-        conn.commit()
     conn.close()
     return jsonify({'success': True})
 
@@ -2351,85 +1229,6 @@ def create_quote(rfq_id):
 
 # ─── Routes: Quotes ──────────────────────────────────────────────────────────
 
-@app.route('/quotes/new', methods=['GET', 'POST'])
-@login_required
-def quote_new():
-    """Create a standalone quote not tied to any RFQ email."""
-    settings = get_settings()
-    if request.method == 'POST':
-        # Create a bare RFQ-like stub so quote_view works unchanged
-        conn = get_db()
-        cur = conn.execute('''
-            INSERT INTO rfqs (rfq_number, customer_name, customer_email, company, phone,
-                              source, status, notes)
-            VALUES (?,?,?,?,?,?,?,?)
-        ''', (
-            f"MANUAL-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            request.form.get('customer_name', '').strip(),
-            request.form.get('customer_email', '').strip(),
-            request.form.get('company', '').strip(),
-            request.form.get('phone', '').strip(),
-            'manual',
-            'quoted',
-            request.form.get('notes', '').strip(),
-        ))
-        rfq_id = cur.lastrowid
-
-        markup  = float(request.form.get('markup_percent') or settings.get('default_markup', 30))
-        currency = request.form.get('currency', 'USD')
-        valid_days = int(request.form.get('valid_days') or settings.get('quote_valid_days', 30))
-
-        q_num = gen_quote_number('QTE')
-        qcur = conn.execute('''
-            INSERT INTO quotes (quote_number, rfq_id, status, markup_percent,
-                                total_amount, notes, valid_days, currency)
-            VALUES (?,?,?,?,?,?,?,?)
-        ''', (q_num, rfq_id, 'draft', markup, 0, '', valid_days, currency))
-        quote_id = qcur.lastrowid
-
-        # Save line items
-        pns    = request.form.getlist('pn[]')
-        descs  = request.form.getlist('desc[]')
-        conds  = request.form.getlist('cond[]')
-        qtys   = request.form.getlist('qty[]')
-        prices = request.form.getlist('price[]')
-        leads  = request.form.getlist('lead[]')
-        ptypes = request.form.getlist('ptype[]')
-
-        total = 0.0
-        for i, pn in enumerate(pns):
-            if not pn.strip():
-                continue
-            qty   = int(qtys[i] or 1) if i < len(qtys) else 1
-            price = float(prices[i] or 0) if i < len(prices) else 0
-            ext   = round(qty * price, 2)
-            total += ext
-            conn.execute('''
-                INSERT INTO quote_items
-                  (quote_id, part_number, description, condition,
-                   quantity_requested, quantity_available, unit_price, extended_price,
-                   matched, lead_time, price_type, warranty)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-            ''', (
-                quote_id,
-                pn.strip().upper(),
-                descs[i].strip() if i < len(descs) else '',
-                conds[i].strip() if i < len(conds) else 'SV',
-                qty, 0, price, ext, 0,
-                leads[i].strip() if i < len(leads) else 'Stock',
-                ptypes[i].strip() if i < len(ptypes) else 'Outright',
-                '3 Months',
-            ))
-
-        conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (round(total, 2), quote_id))
-        conn.commit()
-        conn.close()
-        flash(f'Quote {q_num} created.', 'success')
-        return redirect(url_for('quote_view', quote_id=quote_id))
-
-    return render_template('quote_new.html', settings=settings)
-
-
 @app.route('/quotes')
 @login_required
 def quote_list():
@@ -2446,120 +1245,15 @@ def quote_list():
 @app.route('/quotes/<int:quote_id>')
 @login_required
 def quote_view(quote_id):
-    conn        = get_db()
+    conn     = get_db()
     quote       = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
-    if not quote:
-        conn.close()
-        flash('Quote not found.', 'error')
-        return redirect(url_for('quote_list'))
-    rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone() if quote['rfq_id'] else None
+    rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
     items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
     attachments = conn.execute('SELECT * FROM quote_attachments WHERE quote_id=? ORDER BY uploaded_at', (quote_id,)).fetchall()
     settings    = get_settings()
     conn.close()
-    # For standalone quotes without an RFQ, create a minimal stub so the template works
-    if rfq is None:
-        import collections
-        stub = collections.defaultdict(str)
-        stub['id']             = 0
-        stub['customer_name']  = ''
-        stub['customer_email'] = ''
-        stub['company']        = ''
-        stub['phone']          = ''
-        stub['source']         = 'manual'
-        stub['raw_email']      = ''
-        stub['customer_ref']   = ''
-        stub['website']        = ''
-        stub['address']        = ''
-        rfq = stub
     return render_template('quote_view.html', quote=quote, rfq=rfq, items=items,
                            attachments=attachments, settings=settings)
-
-
-@app.route('/quotes/<int:quote_id>/convert-to-invoice', methods=['POST'])
-@login_required
-def quote_convert_to_invoice(quote_id):
-    """Create an invoice pre-populated with all data from the quote."""
-    conn  = get_db()
-    quote = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
-    if not quote:
-        conn.close()
-        flash('Quote not found.', 'error')
-        return redirect(url_for('quote_list'))
-
-    rfq = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone() if quote['rfq_id'] else None
-    items = conn.execute(
-        'SELECT * FROM quote_items WHERE quote_id=? AND (no_quote IS NULL OR no_quote=0)',
-        (quote_id,)
-    ).fetchall()
-
-    # Build customer info from RFQ
-    customer_name    = (rfq['customer_name'] if rfq else '') or ''
-    customer_company = (rfq['company']       if rfq else '') or ''
-    customer_email   = (rfq['customer_email'] if rfq else '') or ''
-    customer_ref     = (rfq['customer_ref']  if rfq else '') or ''
-
-    # invoice_for = customer name / company
-    invoice_for = customer_company or customer_name
-
-    # Build customer address block
-    address_parts = []
-    if customer_name and customer_company:
-        address_parts.append(customer_name)
-    if rfq and rfq['address']:
-        address_parts.append(rfq['address'])
-    elif customer_email:
-        address_parts.append(customer_email)
-    customer_address = '\n'.join(address_parts)
-
-    # Calculate totals
-    subtotal = sum((i['extended_price'] or 0) for i in items)
-
-    inv_number = _next_erp_number('INV', 'invoices', 'invoice_number')
-
-    cur = conn.execute('''
-        INSERT INTO invoices
-          (invoice_number, invoice_for, customer_name, customer_address,
-           reference, due_date, subtotal, adjustments, grand_total, notes, status)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
-    ''', (
-        inv_number,
-        invoice_for,
-        customer_name,
-        customer_address,
-        customer_ref or quote['quote_number'],
-        '',   # due_date — left for user to fill
-        round(subtotal, 2),
-        0,
-        round(subtotal, 2),
-        f"Converted from Quote {quote['quote_number']}",
-        'draft'
-    ))
-    inv_id = cur.lastrowid
-
-    # Copy line items — carry over all fields from the quote
-    for item in items:
-        conn.execute('''
-            INSERT INTO invoice_items
-              (invoice_id, part_number, description, serial_number, condition,
-               quantity, unit_price, total_price, notes)
-            VALUES (?,?,?,?,?,?,?,?,?)
-        ''', (
-            inv_id,
-            item['part_number']       or '',
-            item['description']       or '',
-            item['serial_number']     or '',
-            item['condition']         or '',
-            item['quantity_requested'] or 1,
-            item['unit_price']        or 0,
-            item['extended_price']    or 0,
-            item['notes']             or '',
-        ))
-
-    conn.commit()
-    conn.close()
-    flash(f'Invoice {inv_number} created from Quote {quote["quote_number"]}.', 'success')
-    return redirect(url_for('invoice_edit', inv_id=inv_id))
 
 
 @app.route('/quotes/<int:quote_id>/update-item', methods=['POST'])
@@ -2575,17 +1269,11 @@ def update_quote_item(quote_id):
     ext   = 0.0 if no_quote else round(price * qty, 2)
 
     conn = get_db()
-    pn   = (data.get('part_number') or '').strip().upper()
-    desc = (data.get('description') or '').strip()
-    sn = (data.get('serial_number') or '').strip().upper() or None
     conn.execute('''UPDATE quote_items SET
-        part_number=?, description=?,
         unit_price=?, quantity_requested=?, extended_price=?, notes=?,
-        lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?, condition=?, no_quote=?,
-        serial_number=?
+        lead_time=?, price_type=?, warranty=?, trace_to=?, tag_type=?, tagged_by=?, condition=?, no_quote=?
         WHERE id=? AND quote_id=?''',
-        (pn or None, desc or None,
-         price, qty, ext, notes,
+        (price, qty, ext, notes,
          data.get('lead_time', 'Stock'),
          data.get('price_type', 'Outright'),
          data.get('warranty', '3 Months'),
@@ -2594,7 +1282,6 @@ def update_quote_item(quote_id):
          data.get('tagged_by', ''),
          data.get('condition', 'SV'),
          no_quote,
-         sn,
          iid, quote_id))
     total = conn.execute('SELECT COALESCE(SUM(extended_price),0) FROM quote_items WHERE quote_id=?', (quote_id,)).fetchone()[0]
     conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (total, quote_id))
@@ -2699,6 +1386,7 @@ def _compress_file(filepath, ext, mime):
 @login_required
 def attach_file(quote_id):
     """Upload a file attachment for a quote, with compression + PN/SN tagging."""
+    import mimetypes
     f = request.files.get('file')
     if not f or not f.filename:
         return jsonify({'success': False, 'error': 'No file provided'})
@@ -2767,6 +1455,7 @@ def attach_file(quote_id):
 @login_required
 def view_attachment(quote_id, att_id):
     """Serve an attachment file for in-browser viewing."""
+    from flask import send_file
     conn = get_db()
     row  = conn.execute(
         'SELECT * FROM quote_attachments WHERE id=? AND quote_id=?', (att_id, quote_id)).fetchone()
@@ -2806,50 +1495,6 @@ def delete_attachment(quote_id, att_id):
     return jsonify({'success': True})
 
 
-@app.route('/quotes/<int:quote_id>/preview-email')
-@login_required
-def preview_quote_email(quote_id):
-    """Return the exact HTML email that would be sent — for in-app preview."""
-    conn        = get_db()
-    quote       = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
-    if not quote:
-        conn.close()
-        return '<p style="color:red;font-family:sans-serif;padding:20px">Quote not found.</p>', 404
-
-    rfq_row = None
-    if quote['rfq_id']:
-        rfq_row = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
-
-    rfq_d = dict(rfq_row) if rfq_row else {
-        'customer_name': '', 'customer_email': '', 'company': '',
-        'customer_phone': '', 'customer_address': '', 'rfq_number': '',
-        'source': 'manual', 'phone': '', 'website': '', 'address': '',
-    }
-
-    items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
-    attachments = conn.execute(
-        'SELECT * FROM quote_attachments WHERE quote_id=? AND verified=1', (quote_id,)).fetchall()
-    settings    = get_settings()
-    conn.close()
-
-    try:
-        html = build_quote_email(
-            dict(quote), rfq_d, [dict(i) for i in items],
-            dict(settings), [dict(a) for a in attachments]
-        )
-    except Exception as e:
-        err = traceback.format_exc()
-        print(f'[preview_quote_email] build_quote_email ERROR: {e}\n{err}')
-        html = (
-            '<html><body style="font-family:monospace;padding:24px">'
-            '<h3 style="color:#dc2626">Email Build Error</h3>'
-            f'<pre style="background:#fef2f2;padding:16px;border-radius:6px;font-size:12px;white-space:pre-wrap">{err}</pre>'
-            '</body></html>'
-        )
-
-    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
-
-
 @app.route('/quotes/<int:quote_id>/send', methods=['POST'])
 @login_required
 def send_quote(quote_id):
@@ -2862,10 +1507,9 @@ def send_quote(quote_id):
     settings    = get_settings()
     conn.close()
 
-    # Allow override email from the send modal (e.g. entered from the quote list)
-    to_email = request.form.get('override_email', '').strip() or rfq['customer_email']
+    to_email = rfq['customer_email']
     if not to_email:
-        flash('No customer email on file. Enter an email address to send.', 'error')
+        flash('No customer email on file.', 'error')
         return redirect(url_for('quote_view', quote_id=quote_id))
 
     smtp_host = settings.get('smtp_host', 'smtp.gmail.com').strip()
@@ -3204,116 +1848,72 @@ def _extract_customer_ref(subject, body=''):
     return ''
 
 
-def _parse_email_signature(body, sender_name='', sender_email=''):
+def _parse_email_signature(body, sender_name=''):
     """
     Find the email signature block (after Best Regards / Thanks etc.)
-    and extract name, company, phone, email, website, address from labelled lines.
-    Handles markdown bold (*text*), emoji-prefixed lines (📞 Phone:), and plain bare values.
+    and extract name, company, phone, email, website from labelled lines.
+    Handles markdown bold (*text*) formatting common in forwarded emails.
     """
     result = {}
 
-    def _strip_decorations(s):
-        """Strip markdown asterisks, emoji, and collapse whitespace."""
-        # Remove emoji (unicode ranges for common emoji blocks)
-        s = re.sub(r'[\U0001F300-\U0001FFFF\U00002600-\U000027BF\U0000FE00-\U0000FEFF]', '', s)
-        s = re.sub(r'\*+', '', s)          # remove markdown bold/italic
+    def _strip_md(s):
+        """Strip markdown bold/italic asterisks and clean whitespace."""
+        s = re.sub(r'\*+', '', s)          # remove all asterisks
         s = re.sub(r'\s{2,}', ' ', s)      # collapse multiple spaces
         return s.strip()
 
     # ── 1. Locate signature block ─────────────────────────────────────────────
-    # Sign-off words that typically precede the signature
+    # Allow optional surrounding asterisks e.g. *Best Regards,*
     SIGNOFF = re.compile(
         r'^\s*\*{0,2}\s*(?:best\s+regards?|kind\s+regards?|regards?|sincerely'
         r'|thanks?(?:\s+and\s+regards?)?|cheers|warm\s+regards?|thank\s+you'
-        r'|atenciosamente|cordialmente|abraços?'          # Portuguese sign-offs
         r'|yours\s+(?:truly|sincerely|faithfully))[,\.]?\s*\*{0,2}\s*$',
         re.I | re.MULTILINE
     )
-    # Also detect sig block by RFC 3676 "-- " delimiter or 3+ dashes alone
-    SIG_DELIM = re.compile(r'(?m)^(?:--\s*|-{3,}|_{3,})\s*$')
-    m_signoff = SIGNOFF.search(body)
-    m_delim   = SIG_DELIM.search(body)
-    if m_signoff and (not m_delim or m_signoff.start() <= m_delim.start()):
-        sig_block = body[m_signoff.end():]
-    elif m_delim:
-        sig_block = body[m_delim.end():]
-    else:
-        sig_block = body  # no signoff found — scan whole body
+    m = SIGNOFF.search(body)
+    sig_block = body[m.end():] if m else body
 
-    # Take first 40 non-empty lines, stripping decorations
-    raw_lines = [l.strip() for l in sig_block.splitlines() if l.strip()][:40]
-    lines = [_strip_decorations(l) for l in raw_lines]
+    # Take first 30 non-empty lines, stripping markdown
+    raw_lines = [l.strip() for l in sig_block.splitlines() if l.strip()][:30]
+    lines = [_strip_md(l) for l in raw_lines]
 
-    # ── 2. Patterns ───────────────────────────────────────────────────────────
-    # Labels that may be preceded by emoji (already stripped above)
+    # ── 2. Patterns for labelled fields ──────────────────────────────────────
+    # Single-letter labels (P:, M:, T:, E:, W:) and full-word labels
     PH_LABEL  = re.compile(
         r'^(?:p|m|ph|phone|tel|mobile|cell|direct|office|fax)[:\s\.]+(.+)$', re.I)
     EM_LABEL  = re.compile(
         r'^(?:e|e[\-]?mail|email)[:\s]+(.+)$', re.I)
     WEB_LABEL = re.compile(
         r'^(?:w|web(?:site)?|url|www)[:\s]+(.+)$', re.I)
-    ADDR_LABEL = re.compile(
-        r'^(?:addr(?:ess)?|endereço|location|loc)[:\s]+(.+)$', re.I)
-
-    PH_BARE  = re.compile(r'^(\+{0,2}[\d][\d\s\-\.\(\)\/]{5,25}\d)$')
-    WEB_BARE = re.compile(r'^((?:https?://|www\.)\S+)$', re.I)
-    EMAIL_BARE = re.compile(r'^([\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,})$')
-
+    PH_BARE   = re.compile(r'^(\+{1,2}?[\d][\d\s\-\.\(\)\/]{5,25}\d)$')
+    WEB_BARE  = re.compile(r'^((?:https?://|www\.)\S+)$', re.I)
     CO_SUFFIX = re.compile(
         r'\b(?:Pvt\.?\s*Ltd\.?|Pty\.?\s*Ltd\.?|Ltd\.?|LLC\.?|Inc\.?|Corp\.?'
         r'|GmbH|SAS|BV|PLC|Limited|Incorporated|Airlines?|Airways?|Aviation'
-        r'|Aerospace|Parts\s*(?:Inc\.?)?|Spares|Supply|Services?|Solutions?'
-        r'|International|Group|Holdings?)\b', re.I
+        r'|Aerospace|Parts\s+Inc|Spares)\b', re.I
     )
-    # Role/job title keywords — these lines are titles, not company names
+    # Role/title keywords — skip these lines for name/company detection
     ROLE_KW = re.compile(
         r'\b(?:manager|director|officer|executive|engineer|purchasing|procurement'
-        r'|sales|assistente|gerente|compras|supervisor|analyst|coordinator'
-        r'|specialist|representative|agent|buyer|vendas|comercial|técnico)\b', re.I
+        r'|sales|unit|dept|department|division|representative|coordinator)\b', re.I
     )
-    # Street address indicators
-    STREET_KW = re.compile(
-        r'\b(?:rua|av(?:enida)?|street|st\.|road|rd\.|blvd|boulevard|dr\.|drive'
-        r'|lane|ln\.|way|court|ct\.|place|pl\.|square|sq\.|suite|ste\.'
-        r'|andar|sala|lote|quadra|setor|jardim|jd\.?|bairro)\b', re.I
-    )
-    # Postal code patterns: US (12345 or 12345-6789), BR (12345-678), AU (1234), etc.
-    POSTCODE = re.compile(
-        r'\b(?:\d{5}(?:-\d{3,4})?|\d{4}(?:\s?[A-Z]{2})?|[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2})\b'
-    )
-
-    # Words that indicate a greeting/salutation (not a person's name)
-    GREETING_WORDS = {
-        'good', 'morning', 'afternoon', 'evening', 'hello', 'hi', 'hey',
-        'dear', 'greetings', 'salutations', 'sir', 'madam', 'team',
-        'all', 'everyone', 'there', 'folks', 'gentlemen',
-    }
-
-    addr_lines = []   # accumulate address lines
 
     for i, line in enumerate(lines):
         if not line:
             continue
 
-        # ── Name: first 1-2 lines that look like a person's full name
-        if 'sig_name' not in result and i <= 1:
-            if re.match(r'^[A-ZÀ-Ö][a-zà-ö]+(?:\s+(?:de|da|dos?|las?|van|von|el)?\s*[A-ZÀ-Öa-zà-ö][a-zà-ö]+){1,3}$', line):
-                words_lower = {w.lower() for w in line.split()}
-                if not (words_lower & GREETING_WORDS):
-                    result['sig_name'] = line
+        # ── Name: first line after signoff that looks like a person's name
+        if 'sig_name' not in result and i == 0:
+            # Person name: 2-4 words, each capitalised, no digits, no special chars
+            if re.match(r'^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}$', line):
+                result['sig_name'] = line
 
-        # ── Role/title (line 2-4, has role keywords, not already captured as name)
-        if 'role' not in result and 0 < i <= 3 and ROLE_KW.search(line):
-            if not CO_SUFFIX.search(line):   # avoid "Sales Inc" being a role
-                result['role'] = line
-
-        # ── Phone
+        # ── Phone (skip if line already matched as email/web)
         if 'phone' not in result:
             lm = PH_LABEL.match(line)
             if lm:
                 val = lm.group(1).strip()
-                # Strip mailto-style angle brackets and take first number
-                val = re.sub(r'<[^>]+>', '', val).strip()
+                # Take first phone number if multiple separated by 'or'
                 val = re.split(r'\s+or\s+', val, maxsplit=1)[0].strip()
                 result['phone'] = val
             elif PH_BARE.match(line):
@@ -3324,95 +1924,26 @@ def _parse_email_signature(body, sender_name='', sender_email=''):
             em = EM_LABEL.match(line)
             if em:
                 val = em.group(1).strip()
+                # Handle "address <address>" format
                 angle = re.search(r'<([\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,})>', val)
-                if angle:
-                    result['email'] = angle.group(1)
-                else:
-                    # Take first email-like token
-                    tok = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}', val)
-                    if tok:
-                        result['email'] = tok.group()
-            elif EMAIL_BARE.match(line):
+                result['email'] = angle.group(1) if angle else val.split()[0]
+            elif re.match(r'^[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}$', line):
                 result['email'] = line
-            else:
-                # Handle "address <mailto:address>" style lines
-                mailto = re.search(
-                    r'([\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,})'
-                    r'(?:<mailto:([\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,})>)?',
-                    line
-                )
-                if mailto and not any(lbl in line.lower()[:10]
-                                      for lbl in ('phone', 'tel', 'web', 'www', 'fax')):
-                    result['email'] = mailto.group(1)
 
         # ── Website
         if 'website' not in result:
             wm = WEB_LABEL.match(line)
             if wm:
-                val = wm.group(1).strip()
-                # Strip angle bracket URL duplicates like "www.x.com<https://www.x.com>"
-                val = re.sub(r'<https?://[^>]+>', '', val).strip()
-                result['website'] = val
+                result['website'] = wm.group(1).strip()
             elif WEB_BARE.match(line):
-                raw_url = line
-                clean_url = re.sub(r'<https?://[^>]+>', '', raw_url).strip()
                 skip = ['unsubscribe', 'track', 'click', 'pixel']
-                if not any(s in clean_url.lower() for s in skip):
-                    result['website'] = clean_url
+                if not any(s in line.lower() for s in skip):
+                    result['website'] = line
 
-        # ── Company: line with a business suffix
+        # ── Company: line with a business suffix, not a role/title line
         if 'company' not in result and CO_SUFFIX.search(line):
             if line.lower() != (sender_name or '').lower() and not ROLE_KW.search(line):
                 result['company'] = line
-
-        # ── Address accumulation: lines that look like street addresses or postcodes
-        if STREET_KW.search(line) or (POSTCODE.search(line) and len(line) <= 60):
-            # Don't re-add lines already captured as company/phone/email/website
-            if (line not in (result.get('company',''), result.get('phone',''),
-                             result.get('email',''), result.get('website',''))
-                    and 'phone' not in line.lower()[:6]):
-                addr_lines.append(line)
-
-    # ── Assemble address — deduplicate similar lines ──────────────────────────
-    def _addr_key(s):
-        """Normalise an address line for deduplication: lowercase, strip punctuation/spaces."""
-        return re.sub(r'[^a-z0-9]', '', s.lower())
-
-    seen_addr_keys = []
-    deduped_addr = []
-    for al in addr_lines:
-        key = _addr_key(al)
-        # Reject if this key is a substring of (or contains) an already-added key
-        is_dup = False
-        for sk in seen_addr_keys:
-            if key in sk or sk in key:
-                is_dup = True
-                # Keep the longer / more specific version
-                if len(key) > len(sk):
-                    idx = seen_addr_keys.index(sk)
-                    seen_addr_keys[idx] = key
-                    deduped_addr[idx] = al
-                break
-        if not is_dup:
-            seen_addr_keys.append(key)
-            deduped_addr.append(al)
-
-    if deduped_addr:
-        result['address'] = ', '.join(deduped_addr)
-
-    # ── Company fallback: derive from email domain ────────────────────────────
-    if 'company' not in result and sender_email and '@' in sender_email:
-        domain = sender_email.split('@')[1].lower()
-        # Strip TLD(s) and common generic domains
-        GENERIC_DOMAINS = {'gmail', 'yahoo', 'hotmail', 'outlook', 'icloud',
-                           'aol', 'protonmail', 'zoho', 'yandex'}
-        base = domain.split('.')[0]
-        if base not in GENERIC_DOMAINS:
-            # Convert "aviationpartsinc" → "Aviation Parts Inc"
-            # Split on common word boundaries (camelCase, numbers, separators)
-            parts = re.sub(r'([a-z])([A-Z])', r'\1 \2', base)
-            parts = re.sub(r'[\-_]', ' ', parts)
-            result['company'] = parts.title()
 
     return result
 
@@ -3479,8 +2010,6 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
         trace    = it['trace_to'] or it['description'] or '—'
         tag_type = it['tag_type'] or '—'
         tagged   = it['tagged_by'] or '—'
-        sn_val   = (it.get('serial_number') or '').strip()
-        notes_val= (it.get('notes') or '').strip()
 
         # Clean description
         desc_raw   = (it['description'] or '—')
@@ -3554,12 +2083,10 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
     <tr>
       <td colspan="6" style="padding:0 12px 14px">
         <table cellspacing="0" style="font-size:13px;color:#374151">
-          {f'<tr><td style="padding:2px 16px 2px 0;color:#6b7280">S/N:</td><td>{sn_val}</td></tr>' if sn_val else ''}
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Warranty:</td><td>{warranty}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Trace To:</td><td>{trace}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tag Type:</td><td>{tag_type}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tagged by:</td><td>{tagged}</td></tr>
-          {f'<tr><td style="padding:2px 16px 2px 0;color:#6b7280">Notes:</td><td style="font-style:italic">{notes_val}</td></tr>' if notes_val else ''}
         </table>
       </td>
     </tr>
@@ -3640,8 +2167,8 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
           <a href="tel:+17722032109" style="color:#1a3c6e;text-decoration:none">+1 772-203-2109</a>
         </p>
         <p style="margin:4px 0;font-size:12px;color:#555">Port St. Lucie, FL 34987</p>
-        <p style="margin:4px 0;font-size:12px;color:#555">Morayfield, QLD 4506, Australia</p>
-        <p style="margin:4px 0;font-size:12px;color:#555">Kathmandu, Nepal 44600</p>
+        <p style="margin:4px 0;font-size:12px;color:#555">Morayfield, QLD 4506</p>
+        <p style="margin:4px 0;font-size:12px;color:#555">Kathmandu, Nepal, 44600</p>
         <p style="margin:6px 0 0;font-size:13px">
           <a href="http://www.eastern-aero.com" style="color:#1a3c6e">www.eastern-aero.com</a>
         </p>
@@ -3654,9 +2181,9 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
   </tr>
 </table>
 
-<p style="margin-top:24px;color:#c0392b;font-size:11px;text-align:center;font-weight:600">
-  All prices in {currency}. Quote valid for {quote['valid_days']} days from date of issue.
-  All parts are certified unless otherwise stated. Terms: Prepay unless prior credit arrangement established.
+<p style="margin-top:24px;color:#9ca3af;font-size:11px;text-align:center">
+  All prices in {currency}. Quote valid for {quote['valid_days']} days from date of issue.<br>
+  All parts are certified unless otherwise stated. Terms: COD unless prior credit arrangement established.
 </p>
 
 <p style="margin-top:16px;padding-top:12px;border-top:1px solid #e5e7eb;color:#9ca3af;font-size:11px;text-align:center">
@@ -3684,26 +2211,6 @@ def rfq_delete(rfq_id):
     conn.close()
     flash('RFQ deleted. That email will not be imported again.', 'success')
     return redirect(url_for('rfq_list'))
-
-
-@app.route('/rfqs/bulk-delete', methods=['POST'])
-@login_required
-def rfq_bulk_delete():
-    ids = request.get_json(force=True).get('ids', [])
-    if not ids:
-        return jsonify({'ok': False, 'error': 'No IDs provided'})
-    conn = get_db()
-    for rfq_id in ids:
-        rfq = conn.execute('SELECT * FROM rfqs WHERE id=?', (rfq_id,)).fetchone()
-        if rfq:
-            msg_id = rfq['email_message_id']
-            if msg_id:
-                conn.execute('INSERT OR IGNORE INTO imported_emails (message_id) VALUES (?)', (msg_id,))
-            conn.execute('DELETE FROM rfq_items WHERE rfq_id=?', (rfq_id,))
-            conn.execute('DELETE FROM rfqs WHERE id=?', (rfq_id,))
-    conn.commit()
-    conn.close()
-    return jsonify({'ok': True, 'deleted': len(ids)})
 
 
 # ─── Routes: Email Fetch (IMAP) ──────────────────────────────────────────────
@@ -3956,32 +2463,16 @@ def _fetch_imap(settings):
                     parsed = pb['parts']
             else:
                 # ── Parse email signature block for contact info ──────────────
-                sig_info = _parse_email_signature(parse_body, cust_name, cust_email)
+                sig_info = _parse_email_signature(parse_body, cust_name)
                 cust_company = sig_info.get('company', '')
                 cust_phone   = sig_info.get('phone', '')
                 cust_website = sig_info.get('website', '')
-                cust_address = sig_info.get('address', '')
                 sig_name = sig_info.get('sig_name', '')
                 if sig_name and sig_name.lower() != cust_name.lower():
                     cust_name = sig_name
                 sig_email = sig_info.get('email', '')
                 if sig_email and not cust_email:
                     cust_email = sig_email
-                # ── Final fallback: derive name from email address ─────────────
-                # If cust_name is still empty or just looks like a greeting,
-                # use the part before @ in the email address
-                GREETING_WORDS_CHECK = {
-                    'good', 'morning', 'afternoon', 'evening', 'hello', 'hi',
-                    'dear', 'greetings', 'hey', 'sir', 'madam',
-                }
-                name_words = {w.lower() for w in cust_name.split()}
-                if not cust_name or (name_words & GREETING_WORDS_CHECK):
-                    if cust_email and '@' in cust_email:
-                        # Convert "john.smith" → "John Smith"
-                        prefix = cust_email.split('@')[0]
-                        cust_name = ' '.join(
-                            w.capitalize() for w in re.split(r'[._\-]', prefix)
-                        ) or cust_email
                 # ── Extract customer reference from subject/body ──────────────
                 customer_ref = _extract_customer_ref(subject, parse_body)
 
@@ -4004,26 +2495,9 @@ def _fetch_imap(settings):
             rfq_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
 
             for item in parsed:
-                pn   = item['part_number']
-                desc = item['description']
-                cond = item['condition']
-
-                # ── Cross-reference against inventory ─────────────────────────
-                # If the parsed PN matches something in stock, use the
-                # canonical PN from inventory (correct capitalisation, dashes etc.)
-                # and fill in description if the email didn't provide one.
-                inv_match = match_inventory(pn, conn)
-                if inv_match:
-                    inv_match = dict(inv_match)              # sqlite3.Row → dict
-                    pn   = inv_match['part_number']          # canonical PN
-                    desc = desc or inv_match.get('description') or desc
-                    # Use inventory condition only if email didn't supply one
-                    if cond in ('SV', '') and inv_match.get('condition'):
-                        cond = inv_match['condition']
-
                 conn.execute(
                     'INSERT INTO rfq_items (rfq_id,part_number,description,quantity,condition) VALUES (?,?,?,?,?)',
-                    (rfq_id, pn, desc, item['quantity'], cond))
+                    (rfq_id, item['part_number'], item['description'], item['quantity'], item['condition']))
             count += 1
 
         # Always mark this message as imported so we don't check it again
@@ -4057,20 +2531,16 @@ def api_last_quote_for_pn():
     exclude_qid = request.args.get('exclude_quote', 0, type=int)
     if not pn:
         return jsonify({'found': False})
-    npn = re.sub(r'[^A-Z0-9]', '', pn.upper())
     conn = get_db()
     row  = conn.execute('''
         SELECT qi.unit_price, qi.condition, qi.lead_time, qi.price_type,
-               qi.warranty, qi.trace_to, qi.tag_type, qi.tagged_by, qi.notes,
+               qi.warranty, qi.trace_to, qi.tag_type, qi.tagged_by,
                q.quote_number, q.created_at
         FROM quote_items qi
         JOIN quotes q ON qi.quote_id = q.id
-        WHERE (UPPER(qi.part_number)=UPPER(?)
-           OR UPPER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(
-              REPLACE(qi.part_number,'.',''),'-',''),'/',''),' ',''),'_',''),'(',''),')',''))=?)
-          AND q.id != ? AND q.status = 'sent'
+        WHERE qi.part_number = ? AND q.id != ? AND q.status = 'sent'
         ORDER BY q.created_at DESC LIMIT 1
-    ''', (pn, npn, exclude_qid)).fetchone()
+    ''', (pn, exclude_qid)).fetchone()
     conn.close()
     if not row:
         return jsonify({'found': False})
@@ -4086,7 +2556,6 @@ def api_last_quote_for_pn():
         'trace_to':     row['trace_to'] or '',
         'tag_type':     row['tag_type'] or '',
         'tagged_by':    row['tagged_by'] or '',
-        'notes':        row['notes'] or '',
     })
 
 
@@ -4188,1184 +2657,6 @@ def settings_page():
     return render_template('settings.html', s=get_settings())
 
 
-# ─── Customers ───────────────────────────────────────────────────────────────
-
-@app.route('/customers')
-@login_required
-def customer_list():
-    conn = get_db()
-    q    = request.args.get('q','').strip()
-    if q:
-        customers = conn.execute(
-            "SELECT * FROM customers WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? ORDER BY name",
-            (f'%{q}%', f'%{q}%', f'%{q}%')
-        ).fetchall()
-    else:
-        customers = conn.execute('SELECT * FROM customers ORDER BY name').fetchall()
-    conn.close()
-    return render_template('customer_list.html', customers=customers, q=q)
-
-
-@app.route('/customers/new', methods=['GET', 'POST'])
-@login_required
-def customer_new():
-    if request.method == 'POST':
-        conn = get_db()
-        cur = conn.execute('''
-            INSERT INTO customers
-              (name, phone, fax, email, payment_method, payment_terms, credit_limit,
-               hourly_rate, tax_id, tax_percent, vat_number, date_format,
-               sales_person, purchasing_person, customer_service_rep, shipping_service,
-               status, required_part_categories, currency, tags,
-               statement_notes, invoice_notes, notes, related_vendor_id,
-               billing_name, billing_address, billing_city, billing_state, billing_zip, billing_country,
-               shipping_name, shipping_address, shipping_city, shipping_state, shipping_zip, shipping_country)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ''', (
-            request.form.get('name',''),
-            request.form.get('phone',''),
-            request.form.get('fax',''),
-            request.form.get('email',''),
-            request.form.get('payment_method','Check'),
-            request.form.get('payment_terms','COD'),
-            float(request.form.get('credit_limit',0) or 0),
-            float(request.form.get('hourly_rate',100) or 100),
-            request.form.get('tax_id',''),
-            float(request.form.get('tax_percent',0) or 0),
-            request.form.get('vat_number',''),
-            request.form.get('date_format','mm-yyyy'),
-            request.form.get('sales_person',''),
-            request.form.get('purchasing_person',''),
-            request.form.get('customer_service_rep',''),
-            request.form.get('shipping_service',''),
-            request.form.get('status','Active'),
-            request.form.get('required_part_categories',''),
-            request.form.get('currency','USD'),
-            request.form.get('tags',''),
-            request.form.get('statement_notes',''),
-            request.form.get('invoice_notes',''),
-            request.form.get('notes',''),
-            request.form.get('related_vendor_id') or None,
-            request.form.get('billing_name',''),
-            request.form.get('billing_address',''),
-            request.form.get('billing_city',''),
-            request.form.get('billing_state',''),
-            request.form.get('billing_zip',''),
-            request.form.get('billing_country','USA'),
-            request.form.get('shipping_name',''),
-            request.form.get('shipping_address',''),
-            request.form.get('shipping_city',''),
-            request.form.get('shipping_state',''),
-            request.form.get('shipping_zip',''),
-            request.form.get('shipping_country','USA'),
-        ))
-        cid = cur.lastrowid
-        conn.commit()
-        conn.close()
-        flash(f'Customer created.', 'success')
-        return redirect(url_for('customer_view', cid=cid))
-    conn = get_db()
-    vendors = conn.execute('SELECT id, name FROM vendors ORDER BY name').fetchall()
-    conn.close()
-    return render_template('customer_form.html', c=None, vendors=vendors, contacts=[])
-
-
-@app.route('/customers/<int:cid>')
-@login_required
-def customer_view(cid):
-    conn     = get_db()
-    c        = conn.execute('SELECT * FROM customers WHERE id=?', (cid,)).fetchone()
-    contacts = conn.execute("SELECT * FROM contacts WHERE entity_type='customer' AND entity_id=? ORDER BY is_primary DESC", (cid,)).fetchall()
-    vendors  = conn.execute('SELECT id, name FROM vendors ORDER BY name').fetchall()
-    conn.close()
-    if not c:
-        flash('Customer not found.', 'error')
-        return redirect(url_for('customer_list'))
-    return render_template('customer_form.html', c=c, vendors=vendors, contacts=contacts)
-
-
-@app.route('/customers/<int:cid>/save', methods=['POST'])
-@login_required
-def customer_save(cid):
-    conn = get_db()
-    conn.execute('''
-        UPDATE customers SET
-          name=?, phone=?, fax=?, email=?, payment_method=?, payment_terms=?, credit_limit=?,
-          hourly_rate=?, tax_id=?, tax_percent=?, vat_number=?, date_format=?,
-          sales_person=?, purchasing_person=?, customer_service_rep=?, shipping_service=?,
-          status=?, required_part_categories=?, currency=?, tags=?,
-          statement_notes=?, invoice_notes=?, notes=?, related_vendor_id=?,
-          billing_name=?, billing_address=?, billing_city=?, billing_state=?, billing_zip=?, billing_country=?,
-          shipping_name=?, shipping_address=?, shipping_city=?, shipping_state=?, shipping_zip=?, shipping_country=?
-        WHERE id=?
-    ''', (
-        request.form.get('name',''),
-        request.form.get('phone',''),
-        request.form.get('fax',''),
-        request.form.get('email',''),
-        request.form.get('payment_method','Check'),
-        request.form.get('payment_terms','COD'),
-        float(request.form.get('credit_limit',0) or 0),
-        float(request.form.get('hourly_rate',100) or 100),
-        request.form.get('tax_id',''),
-        float(request.form.get('tax_percent',0) or 0),
-        request.form.get('vat_number',''),
-        request.form.get('date_format','mm-yyyy'),
-        request.form.get('sales_person',''),
-        request.form.get('purchasing_person',''),
-        request.form.get('customer_service_rep',''),
-        request.form.get('shipping_service',''),
-        request.form.get('status','Active'),
-        request.form.get('required_part_categories',''),
-        request.form.get('currency','USD'),
-        request.form.get('tags',''),
-        request.form.get('statement_notes',''),
-        request.form.get('invoice_notes',''),
-        request.form.get('notes',''),
-        request.form.get('related_vendor_id') or None,
-        request.form.get('billing_name',''),
-        request.form.get('billing_address',''),
-        request.form.get('billing_city',''),
-        request.form.get('billing_state',''),
-        request.form.get('billing_zip',''),
-        request.form.get('billing_country','USA'),
-        request.form.get('shipping_name',''),
-        request.form.get('shipping_address',''),
-        request.form.get('shipping_city',''),
-        request.form.get('shipping_state',''),
-        request.form.get('shipping_zip',''),
-        request.form.get('shipping_country','USA'),
-        cid
-    ))
-    conn.commit()
-    conn.close()
-    flash('Customer saved.', 'success')
-    return redirect(url_for('customer_view', cid=cid))
-
-
-@app.route('/customers/<int:cid>/delete', methods=['POST'])
-@login_required
-def customer_delete(cid):
-    conn = get_db()
-    conn.execute("DELETE FROM contacts WHERE entity_type='customer' AND entity_id=?", (cid,))
-    conn.execute('DELETE FROM customers WHERE id=?', (cid,))
-    conn.commit()
-    conn.close()
-    flash('Customer deleted.', 'success')
-    return redirect(url_for('customer_list'))
-
-
-# ─── Vendors ──────────────────────────────────────────────────────────────────
-
-@app.route('/vendors')
-@login_required
-def vendor_list():
-    conn = get_db()
-    q    = request.args.get('q','').strip()
-    if q:
-        vendors = conn.execute(
-            "SELECT * FROM vendors WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? ORDER BY name",
-            (f'%{q}%', f'%{q}%', f'%{q}%')
-        ).fetchall()
-    else:
-        vendors = conn.execute('SELECT * FROM vendors ORDER BY name').fetchall()
-    conn.close()
-    return render_template('vendor_list.html', vendors=vendors, q=q)
-
-
-@app.route('/vendors/new', methods=['GET', 'POST'])
-@login_required
-def vendor_new():
-    if request.method == 'POST':
-        conn = get_db()
-        cur = conn.execute('''
-            INSERT INTO vendors
-              (name, phone, fax, email, website, payment_method, terms, credit_limit,
-               account_number, min_po, tax_id, tax_percent, gl_account, status, currency, tags, notes,
-               billing_name, billing_address, billing_city, billing_state, billing_zip, billing_country,
-               shipping_name, shipping_address, shipping_city, shipping_state, shipping_zip, shipping_country)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ''', (
-            request.form.get('name',''),
-            request.form.get('phone',''),
-            request.form.get('fax',''),
-            request.form.get('email',''),
-            request.form.get('website',''),
-            request.form.get('payment_method','Check'),
-            request.form.get('terms','30 days'),
-            float(request.form.get('credit_limit',0) or 0),
-            request.form.get('account_number',''),
-            float(request.form.get('min_po',0) or 0),
-            request.form.get('tax_id',''),
-            float(request.form.get('tax_percent',0) or 0),
-            request.form.get('gl_account','1200 | Inventory - rotables'),
-            request.form.get('status','Active'),
-            request.form.get('currency','USD'),
-            request.form.get('tags',''),
-            request.form.get('notes',''),
-            request.form.get('billing_name',''),
-            request.form.get('billing_address',''),
-            request.form.get('billing_city',''),
-            request.form.get('billing_state',''),
-            request.form.get('billing_zip',''),
-            request.form.get('billing_country','USA'),
-            request.form.get('shipping_name',''),
-            request.form.get('shipping_address',''),
-            request.form.get('shipping_city',''),
-            request.form.get('shipping_state',''),
-            request.form.get('shipping_zip',''),
-            request.form.get('shipping_country','USA'),
-        ))
-        vid = cur.lastrowid
-        conn.commit()
-        conn.close()
-        flash('Vendor created.', 'success')
-        return redirect(url_for('vendor_view', vid=vid))
-    return render_template('vendor_form.html', v=None, contacts=[])
-
-
-@app.route('/vendors/<int:vid>')
-@login_required
-def vendor_view(vid):
-    conn     = get_db()
-    v        = conn.execute('SELECT * FROM vendors WHERE id=?', (vid,)).fetchone()
-    contacts = conn.execute("SELECT * FROM contacts WHERE entity_type='vendor' AND entity_id=? ORDER BY is_primary DESC", (vid,)).fetchall()
-    conn.close()
-    if not v:
-        flash('Vendor not found.', 'error')
-        return redirect(url_for('vendor_list'))
-    return render_template('vendor_form.html', v=v, contacts=contacts)
-
-
-@app.route('/vendors/<int:vid>/save', methods=['POST'])
-@login_required
-def vendor_save(vid):
-    conn = get_db()
-    conn.execute('''
-        UPDATE vendors SET
-          name=?, phone=?, fax=?, email=?, website=?, payment_method=?, terms=?, credit_limit=?,
-          account_number=?, min_po=?, tax_id=?, tax_percent=?, gl_account=?, status=?, currency=?, tags=?, notes=?,
-          billing_name=?, billing_address=?, billing_city=?, billing_state=?, billing_zip=?, billing_country=?,
-          shipping_name=?, shipping_address=?, shipping_city=?, shipping_state=?, shipping_zip=?, shipping_country=?
-        WHERE id=?
-    ''', (
-        request.form.get('name',''),
-        request.form.get('phone',''),
-        request.form.get('fax',''),
-        request.form.get('email',''),
-        request.form.get('website',''),
-        request.form.get('payment_method','Check'),
-        request.form.get('terms','30 days'),
-        float(request.form.get('credit_limit',0) or 0),
-        request.form.get('account_number',''),
-        float(request.form.get('min_po',0) or 0),
-        request.form.get('tax_id',''),
-        float(request.form.get('tax_percent',0) or 0),
-        request.form.get('gl_account','1200 | Inventory - rotables'),
-        request.form.get('status','Active'),
-        request.form.get('currency','USD'),
-        request.form.get('tags',''),
-        request.form.get('notes',''),
-        request.form.get('billing_name',''),
-        request.form.get('billing_address',''),
-        request.form.get('billing_city',''),
-        request.form.get('billing_state',''),
-        request.form.get('billing_zip',''),
-        request.form.get('billing_country','USA'),
-        request.form.get('shipping_name',''),
-        request.form.get('shipping_address',''),
-        request.form.get('shipping_city',''),
-        request.form.get('shipping_state',''),
-        request.form.get('shipping_zip',''),
-        request.form.get('shipping_country','USA'),
-        vid
-    ))
-    conn.commit()
-    conn.close()
-    flash('Vendor saved.', 'success')
-    return redirect(url_for('vendor_view', vid=vid))
-
-
-@app.route('/vendors/<int:vid>/delete', methods=['POST'])
-@login_required
-def vendor_delete(vid):
-    conn = get_db()
-    conn.execute("DELETE FROM contacts WHERE entity_type='vendor' AND entity_id=?", (vid,))
-    conn.execute('DELETE FROM vendors WHERE id=?', (vid,))
-    conn.commit()
-    conn.close()
-    flash('Vendor deleted.', 'success')
-    return redirect(url_for('vendor_list'))
-
-
-# ─── Contacts API (shared by customers and vendors) ───────────────────────────
-
-@app.route('/api/contacts/save', methods=['POST'])
-@login_required
-def api_contact_save():
-    data = request.get_json(force=True)
-    entity_type = data.get('entity_type')
-    entity_id   = data.get('entity_id')
-    contact_id  = data.get('id')
-    conn = get_db()
-    if contact_id:
-        conn.execute('''
-            UPDATE contacts SET first_name=?, last_name=?, title=?, email=?, phone=?, mobile=?, is_primary=?, notes=?
-            WHERE id=? AND entity_type=? AND entity_id=?
-        ''', (data.get('first_name',''), data.get('last_name',''), data.get('title',''),
-              data.get('email',''), data.get('phone',''), data.get('mobile',''),
-              1 if data.get('is_primary') else 0, data.get('notes',''),
-              contact_id, entity_type, entity_id))
-    else:
-        cur = conn.execute('''
-            INSERT INTO contacts (entity_type, entity_id, first_name, last_name, title, email, phone, mobile, is_primary, notes)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
-        ''', (entity_type, entity_id, data.get('first_name',''), data.get('last_name',''),
-              data.get('title',''), data.get('email',''), data.get('phone',''),
-              data.get('mobile',''), 1 if data.get('is_primary') else 0, data.get('notes','')))
-        contact_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-    return jsonify({'ok': True, 'id': contact_id})
-
-
-@app.route('/api/contacts/delete', methods=['POST'])
-@login_required
-def api_contact_delete():
-    data = request.get_json(force=True)
-    conn = get_db()
-    conn.execute('DELETE FROM contacts WHERE id=?', (data.get('id'),))
-    conn.commit()
-    conn.close()
-    return jsonify({'ok': True})
-
-
-@app.route('/api/vendors-json')
-@login_required
-def api_vendors_json():
-    conn = get_db()
-    rows = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip, billing_country FROM vendors WHERE status=\'Active\' ORDER BY name').fetchall()
-    conn.close()
-    def addr(r):
-        parts = []
-        if r['billing_name']:    parts.append(r['billing_name'])
-        if r['billing_address']: parts.append(r['billing_address'])
-        city_line = ', '.join(filter(None, [r['billing_city'], (r['billing_state'] or '') + ' ' + (r['billing_zip'] or '')]))
-        if city_line.strip(): parts.append(city_line.strip())
-        if r['billing_country'] and r['billing_country'] != 'USA': parts.append(r['billing_country'])
-        return '\n'.join(parts)
-    return jsonify([{'id': r['id'], 'name': r['name'], 'address': addr(r)} for r in rows])
-
-
-@app.route('/api/customers-json')
-@login_required
-def api_customers_json():
-    conn = get_db()
-    rows = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip, billing_country, email, phone FROM customers WHERE status=\'Active\' ORDER BY name').fetchall()
-    conn.close()
-    def addr(r):
-        parts = []
-        if r['billing_name']:    parts.append(r['billing_name'])
-        if r['billing_address']: parts.append(r['billing_address'])
-        city_line = ', '.join(filter(None, [r['billing_city'], (r['billing_state'] or '') + ' ' + (r['billing_zip'] or '')]))
-        if city_line.strip(): parts.append(city_line.strip())
-        if r['billing_country'] and r['billing_country'] != 'USA': parts.append(r['billing_country'])
-        return '\n'.join(parts)
-    return jsonify([{'id': r['id'], 'name': r['name'], 'address': addr(r), 'email': r['email'] or '', 'phone': r['phone'] or ''} for r in rows])
-
-
-@app.route('/api/invoice-items/<int:inv_id>')
-@login_required
-def api_invoice_items(inv_id):
-    conn  = get_db()
-    inv   = conn.execute('SELECT * FROM invoices WHERE id=?', (inv_id,)).fetchone()
-    items = conn.execute('SELECT * FROM invoice_items WHERE invoice_id=?', (inv_id,)).fetchall()
-    conn.close()
-    if not inv:
-        return jsonify({'ok': False}), 404
-    return jsonify({
-        'ok': True,
-        'invoice_number': inv['invoice_number'],
-        'customer_name': inv['customer_name'] or inv['invoice_for'] or '',
-        'customer_address': inv['customer_address'] or '',
-        'items': [{'part_number': i['part_number'], 'description': i['description'],
-                   'condition': i['condition'], 'quantity': i['quantity']} for i in items]
-    })
-
-
-# ─── ERP: Helpers ────────────────────────────────────────────────────────────
-
-def _next_erp_number(prefix, table, col):
-    """Generate next sequential document number like PO-2024-0001."""
-    year = datetime.now().year
-    conn = get_db()
-    pattern = f'{prefix}-{year}-%'
-    row = conn.execute(
-        f"SELECT {col} FROM {table} WHERE {col} LIKE ? ORDER BY {col} DESC LIMIT 1",
-        (pattern,)
-    ).fetchone()
-    conn.close()
-    if row and row[0]:
-        try:
-            seq = int(row[0].split('-')[-1]) + 1
-        except Exception:
-            seq = 1
-    else:
-        seq = 1
-    return f'{prefix}-{year}-{seq:04d}'
-
-
-# ─── ERP: Purchase Orders ─────────────────────────────────────────────────────
-
-@app.route('/purchase-orders')
-@login_required
-def po_list():
-    conn  = get_db()
-    pos   = conn.execute('SELECT * FROM purchase_orders ORDER BY created_at DESC').fetchall()
-    conn.close()
-    return render_template('po_list.html', pos=pos)
-
-
-@app.route('/purchase-orders/new', methods=['GET', 'POST'])
-@login_required
-def po_new():
-    if request.method == 'POST':
-        try:
-            po_number = _next_erp_number('PO', 'purchase_orders', 'po_number')
-            conn = get_db()
-            cur = conn.execute('''
-                INSERT INTO purchase_orders
-                  (po_number, vendor_name, vendor_address, ship_to_name, ship_to_address,
-                   date, ship_date, terms, ship_via, shipping_account,
-                   subtotal, shipping, tax_rate, sales_tax, grand_total, notes, status)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ''', (
-                po_number,
-                request.form.get('vendor_name',''),
-                request.form.get('vendor_address',''),
-                request.form.get('ship_to_name','Eastern Aero Pty Ltd'),
-                request.form.get('ship_to_address','10 Composure St\nMorayfield QLD 4506 Australia'),
-                request.form.get('date',''),
-                request.form.get('ship_date',''),
-                request.form.get('terms','Net 30'),
-                request.form.get('ship_via',''),
-                request.form.get('shipping_account',''),
-                float(request.form.get('subtotal') or 0),
-                float(request.form.get('shipping') or 0),
-                float(request.form.get('tax_rate') or 0),
-                float(request.form.get('sales_tax') or 0),
-                float(request.form.get('grand_total') or 0),
-                request.form.get('notes',''),
-                'draft'
-            ))
-            po_id = cur.lastrowid
-            pns   = request.form.getlist('pn[]')
-            descs = request.form.getlist('desc[]')
-            sns   = request.form.getlist('sn[]')
-            conds = request.form.getlist('cond[]')
-            qtys  = request.form.getlist('qty[]')
-            ups   = request.form.getlist('unit_price[]')
-            tots  = request.form.getlist('total_price[]')
-            for i, pn in enumerate(pns):
-                if not pn.strip():
-                    continue
-                conn.execute(
-                    'INSERT INTO po_items (po_id,part_number,description,serial_number,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?,?)',
-                    (po_id, pn.strip(),
-                     descs[i] if i < len(descs) else '',
-                     sns[i] if i < len(sns) else '',
-                     conds[i] if i < len(conds) else '',
-                     float(qtys[i] or 0) if i < len(qtys) else 1,
-                     float(ups[i] or 0) if i < len(ups) else 0,
-                     float(tots[i] or 0) if i < len(tots) else 0)
-                )
-            conn.commit()
-            conn.close()
-            flash(f'Purchase Order {po_number} created.', 'success')
-            return redirect(url_for('po_view', po_id=po_id))
-        except Exception as e:
-            app.logger.error('po_new error: %s\n%s', e, traceback.format_exc())
-            flash(f'Error creating Purchase Order: {e}', 'danger')
-    try:
-        conn = get_db()
-        vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
-        conn.close()
-    except Exception:
-        vendors = []
-    return render_template('po_form.html', po=None, items=[], vendors=vendors)
-
-
-@app.route('/purchase-orders/<int:po_id>')
-@login_required
-def po_view(po_id):
-    conn  = get_db()
-    po    = conn.execute('SELECT * FROM purchase_orders WHERE id=?', (po_id,)).fetchone()
-    items = conn.execute('SELECT * FROM po_items WHERE po_id=?', (po_id,)).fetchall()
-    conn.close()
-    if not po:
-        flash('Purchase Order not found.', 'error')
-        return redirect(url_for('po_list'))
-    s = get_settings()
-    return render_template('po_view.html', po=po, items=items, s=s)
-
-
-@app.route('/purchase-orders/<int:po_id>/edit', methods=['GET', 'POST'])
-@login_required
-def po_edit(po_id):
-    conn = get_db()
-    po   = conn.execute('SELECT * FROM purchase_orders WHERE id=?', (po_id,)).fetchone()
-    if not po:
-        conn.close()
-        flash('Purchase Order not found.', 'error')
-        return redirect(url_for('po_list'))
-    if request.method == 'POST':
-        conn.execute('''
-            UPDATE purchase_orders SET
-              vendor_name=?, vendor_address=?, ship_to_name=?, ship_to_address=?,
-              date=?, ship_date=?, terms=?, ship_via=?, shipping_account=?,
-              subtotal=?, shipping=?, tax_rate=?, sales_tax=?, grand_total=?, notes=?
-            WHERE id=?
-        ''', (
-            request.form.get('vendor_name',''),
-            request.form.get('vendor_address',''),
-            request.form.get('ship_to_name',''),
-            request.form.get('ship_to_address',''),
-            request.form.get('date',''),
-            request.form.get('ship_date',''),
-            request.form.get('terms','Net 30'),
-            request.form.get('ship_via',''),
-            request.form.get('shipping_account',''),
-            float(request.form.get('subtotal',0) or 0),
-            float(request.form.get('shipping',0) or 0),
-            float(request.form.get('tax_rate',0) or 0),
-            float(request.form.get('sales_tax',0) or 0),
-            float(request.form.get('grand_total',0) or 0),
-            request.form.get('notes',''),
-            po_id
-        ))
-        conn.execute('DELETE FROM po_items WHERE po_id=?', (po_id,))
-        pns   = request.form.getlist('pn[]')
-        descs = request.form.getlist('desc[]')
-        sns   = request.form.getlist('sn[]')
-        conds = request.form.getlist('cond[]')
-        qtys  = request.form.getlist('qty[]')
-        ups   = request.form.getlist('unit_price[]')
-        tots  = request.form.getlist('total_price[]')
-        for i, pn in enumerate(pns):
-            if not pn.strip():
-                continue
-            conn.execute(
-                'INSERT INTO po_items (po_id,part_number,description,serial_number,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?,?)',
-                (po_id, pn.strip(), descs[i] if i < len(descs) else '',
-                 sns[i] if i < len(sns) else '',
-                 conds[i] if i < len(conds) else '',
-                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
-                 float(ups[i]) if i < len(ups) and ups[i] else 0,
-                 float(tots[i]) if i < len(tots) and tots[i] else 0)
-            )
-        conn.commit()
-        conn.close()
-        flash('Purchase Order updated.', 'success')
-        return redirect(url_for('po_view', po_id=po_id))
-    items = conn.execute('SELECT * FROM po_items WHERE po_id=?', (po_id,)).fetchall()
-    vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
-    conn.close()
-    return render_template('po_form.html', po=po, items=items, vendors=vendors)
-
-
-@app.route('/purchase-orders/<int:po_id>/delete', methods=['POST'])
-@login_required
-def po_delete(po_id):
-    conn = get_db()
-    conn.execute('DELETE FROM po_items WHERE po_id=?', (po_id,))
-    conn.execute('DELETE FROM purchase_orders WHERE id=?', (po_id,))
-    conn.commit()
-    conn.close()
-    flash('Purchase Order deleted.', 'success')
-    return redirect(url_for('po_list'))
-
-
-# ─── ERP: Invoices ────────────────────────────────────────────────────────────
-
-@app.route('/invoices')
-@login_required
-def invoice_list():
-    conn     = get_db()
-    invoices = conn.execute('SELECT * FROM invoices ORDER BY created_at DESC').fetchall()
-    conn.close()
-    return render_template('invoice_list.html', invoices=invoices)
-
-
-@app.route('/invoices/new', methods=['GET', 'POST'])
-@login_required
-def invoice_new():
-    if request.method == 'POST':
-        try:
-            inv_number = _next_erp_number('INV', 'invoices', 'invoice_number')
-            conn = get_db()
-            cur = conn.execute('''
-                INSERT INTO invoices
-                  (invoice_number, invoice_for, customer_name, customer_address,
-                   reference, due_date, subtotal, adjustments, grand_total, notes, status)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)
-            ''', (
-                inv_number,
-                request.form.get('invoice_for',''),
-                request.form.get('customer_name',''),
-                request.form.get('customer_address',''),
-                request.form.get('reference',''),
-                request.form.get('due_date',''),
-                float(request.form.get('subtotal') or 0),
-                float(request.form.get('adjustments') or 0),
-                float(request.form.get('grand_total') or 0),
-                request.form.get('notes',''),
-                'draft'
-            ))
-            inv_id = cur.lastrowid
-            pns   = request.form.getlist('pn[]')
-            descs = request.form.getlist('desc[]')
-            sns   = request.form.getlist('sn[]')
-            conds = request.form.getlist('cond[]')
-            qtys  = request.form.getlist('qty[]')
-            ups   = request.form.getlist('unit_price[]')
-            tots  = request.form.getlist('total_price[]')
-            for i, pn in enumerate(pns):
-                if not pn.strip():
-                    continue
-                conn.execute(
-                    'INSERT INTO invoice_items (invoice_id,part_number,description,serial_number,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?,?)',
-                    (inv_id, pn.strip(),
-                     descs[i] if i < len(descs) else '',
-                     sns[i] if i < len(sns) else '',
-                     conds[i] if i < len(conds) else '',
-                     float(qtys[i] or 0) if i < len(qtys) else 1,
-                     float(ups[i] or 0) if i < len(ups) else 0,
-                     float(tots[i] or 0) if i < len(tots) else 0)
-                )
-            conn.commit()
-            conn.close()
-            flash(f'Invoice {inv_number} created.', 'success')
-            return redirect(url_for('invoice_view', inv_id=inv_id))
-        except Exception as e:
-            app.logger.error('invoice_new error: %s\n%s', e, traceback.format_exc())
-            flash(f'Error creating Invoice: {e}', 'danger')
-    try:
-        conn = get_db()
-        customers = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM customers ORDER BY name').fetchall()
-        conn.close()
-    except Exception:
-        customers = []
-    return render_template('invoice_form.html', inv=None, items=[], customers=customers)
-
-
-@app.route('/invoices/<int:inv_id>')
-@login_required
-def invoice_view(inv_id):
-    conn  = get_db()
-    inv   = conn.execute('SELECT * FROM invoices WHERE id=?', (inv_id,)).fetchone()
-    items = conn.execute('SELECT * FROM invoice_items WHERE invoice_id=?', (inv_id,)).fetchall()
-    attachments = conn.execute('SELECT * FROM invoice_attachments WHERE invoice_id=? ORDER BY uploaded_at', (inv_id,)).fetchall()
-    conn.close()
-    if not inv:
-        flash('Invoice not found.', 'error')
-        return redirect(url_for('invoice_list'))
-    s = get_settings()
-    return render_template('invoice_view.html', inv=inv, items=items, s=s, attachments=attachments)
-
-
-@app.route('/invoices/<int:inv_id>/edit', methods=['GET', 'POST'])
-@login_required
-def invoice_edit(inv_id):
-    conn = get_db()
-    inv  = conn.execute('SELECT * FROM invoices WHERE id=?', (inv_id,)).fetchone()
-    if not inv:
-        conn.close()
-        flash('Invoice not found.', 'error')
-        return redirect(url_for('invoice_list'))
-    if request.method == 'POST':
-        conn.execute('''
-            UPDATE invoices SET
-              invoice_for=?, customer_name=?, customer_address=?,
-              reference=?, due_date=?, subtotal=?, adjustments=?, grand_total=?, notes=?
-            WHERE id=?
-        ''', (
-            request.form.get('invoice_for',''),
-            request.form.get('customer_name',''),
-            request.form.get('customer_address',''),
-            request.form.get('reference',''),
-            request.form.get('due_date',''),
-            float(request.form.get('subtotal',0) or 0),
-            float(request.form.get('adjustments',0) or 0),
-            float(request.form.get('grand_total',0) or 0),
-            request.form.get('notes',''),
-            inv_id
-        ))
-        conn.execute('DELETE FROM invoice_items WHERE invoice_id=?', (inv_id,))
-        pns   = request.form.getlist('pn[]')
-        descs = request.form.getlist('desc[]')
-        sns   = request.form.getlist('sn[]')
-        conds = request.form.getlist('cond[]')
-        qtys  = request.form.getlist('qty[]')
-        ups   = request.form.getlist('unit_price[]')
-        tots  = request.form.getlist('total_price[]')
-        item_notes = request.form.getlist('item_notes[]')
-        for i, pn in enumerate(pns):
-            if not pn.strip():
-                continue
-            conn.execute(
-                'INSERT INTO invoice_items (invoice_id,part_number,description,serial_number,condition,quantity,unit_price,total_price,notes) VALUES (?,?,?,?,?,?,?,?,?)',
-                (inv_id, pn.strip(), descs[i] if i < len(descs) else '',
-                 sns[i] if i < len(sns) else '',
-                 conds[i] if i < len(conds) else '',
-                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
-                 float(ups[i]) if i < len(ups) and ups[i] else 0,
-                 float(tots[i]) if i < len(tots) and tots[i] else 0,
-                 item_notes[i] if i < len(item_notes) else '')
-            )
-        conn.commit()
-        conn.close()
-        flash('Invoice updated.', 'success')
-        return redirect(url_for('invoice_view', inv_id=inv_id))
-    items = conn.execute('SELECT * FROM invoice_items WHERE invoice_id=?', (inv_id,)).fetchall()
-    customers = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM customers ORDER BY name').fetchall()
-    conn.close()
-    return render_template('invoice_form.html', inv=inv, items=items, customers=customers)
-
-
-@app.route('/invoices/<int:inv_id>/delete', methods=['POST'])
-@login_required
-def invoice_delete(inv_id):
-    conn = get_db()
-    # Also remove attachments from disk
-    atts = conn.execute('SELECT filepath FROM invoice_attachments WHERE invoice_id=?', (inv_id,)).fetchall()
-    for a in atts:
-        try: os.remove(a['filepath'])
-        except Exception: pass
-    conn.execute('DELETE FROM invoice_attachments WHERE invoice_id=?', (inv_id,))
-    conn.execute('DELETE FROM invoice_items WHERE invoice_id=?', (inv_id,))
-    conn.execute('DELETE FROM invoices WHERE id=?', (inv_id,))
-    conn.commit()
-    conn.close()
-    flash('Invoice deleted.', 'success')
-    return redirect(url_for('invoice_list'))
-
-
-# ─── Invoice: Customer PO Attachments ────────────────────────────────────────
-
-_INV_ALLOWED = {'.pdf', '.jpg', '.jpeg', '.png', '.gif', '.tif', '.tiff', '.webp'}
-
-@app.route('/api/invoice-attachments/<int:inv_id>')
-@login_required
-def api_invoice_attachments(inv_id):
-    conn = get_db()
-    atts = conn.execute(
-        'SELECT id, label, filename, mimetype, uploaded_at FROM invoice_attachments WHERE invoice_id=? ORDER BY uploaded_at',
-        (inv_id,)
-    ).fetchall()
-    conn.close()
-    return jsonify({'attachments': [dict(a) for a in atts]})
-
-
-@app.route('/invoices/<int:inv_id>/upload-po', methods=['POST'])
-@login_required
-def invoice_upload_po(inv_id):
-    conn = get_db()
-    inv = conn.execute('SELECT id FROM invoices WHERE id=?', (inv_id,)).fetchone()
-    conn.close()
-    if not inv:
-        return jsonify({'success': False, 'error': 'Invoice not found'}), 404
-
-    f = request.files.get('file')
-    if not f or not f.filename:
-        return jsonify({'success': False, 'error': 'No file uploaded'})
-
-    ext = os.path.splitext(f.filename)[1].lower()
-    if ext not in _INV_ALLOWED:
-        return jsonify({'success': False, 'error': f'File type {ext} not allowed. Use PDF or image.'})
-
-    label    = (request.form.get('label') or 'Customer PO').strip()
-    safe_name = re.sub(r'[^\w\.\-]', '_', f.filename)
-    upload_dir = os.path.join(UPLOAD_FOLDER, 'invoices', str(inv_id))
-    os.makedirs(upload_dir, exist_ok=True)
-    filepath = os.path.join(upload_dir, safe_name)
-    f.save(filepath)
-
-    mime = mimetypes.guess_type(safe_name)[0] or 'application/octet-stream'
-    conn = get_db()
-    conn.execute(
-        'INSERT INTO invoice_attachments (invoice_id, label, filename, filepath, mimetype) VALUES (?,?,?,?,?)',
-        (inv_id, label, safe_name, filepath, mime))
-    conn.commit()
-    att_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
-    conn.close()
-
-    return jsonify({
-        'success': True, 'id': att_id,
-        'filename': safe_name, 'label': label, 'mime': mime,
-    })
-
-
-@app.route('/invoices/<int:inv_id>/po/<int:att_id>/view')
-@login_required
-def invoice_po_view(inv_id, att_id):
-    conn = get_db()
-    att = conn.execute(
-        'SELECT * FROM invoice_attachments WHERE id=? AND invoice_id=?',
-        (att_id, inv_id)).fetchone()
-    conn.close()
-    if not att or not os.path.exists(att['filepath']):
-        flash('File not found.', 'error')
-        return redirect(url_for('invoice_view', inv_id=inv_id))
-    return send_file(att['filepath'], mimetype=att['mimetype'],
-                     download_name=att['filename'], as_attachment=False)
-
-
-@app.route('/invoices/<int:inv_id>/po/<int:att_id>/delete', methods=['POST'])
-@login_required
-def invoice_po_delete(inv_id, att_id):
-    conn = get_db()
-    att = conn.execute(
-        'SELECT * FROM invoice_attachments WHERE id=? AND invoice_id=?',
-        (att_id, inv_id)).fetchone()
-    if att:
-        try: os.remove(att['filepath'])
-        except Exception: pass
-        conn.execute('DELETE FROM invoice_attachments WHERE id=?', (att_id,))
-        conn.commit()
-    conn.close()
-    return jsonify({'ok': True})
-
-
-# ─── ERP: Packing Slips ───────────────────────────────────────────────────────
-
-@app.route('/packing-slips')
-@login_required
-def ps_list():
-    conn = get_db()
-    slips = conn.execute('SELECT * FROM packing_slips ORDER BY created_at DESC').fetchall()
-    conn.close()
-    return render_template('ps_list.html', slips=slips)
-
-
-@app.route('/packing-slips/new', methods=['GET', 'POST'])
-@login_required
-def ps_new():
-    if request.method == 'POST':
-        ps_number = _next_erp_number('PS', 'packing_slips', 'ps_number')
-        conn = get_db()
-        cur = conn.execute('''
-            INSERT INTO packing_slips
-              (ps_number, date, terms, po_number, invoice_number, ship_date, ship_via,
-               shipping_account, vendor_name, vendor_address, ship_to_name, ship_to_address,
-               notes, pallet_dims, weight_lbs, status)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ''', (
-            ps_number,
-            request.form.get('date', datetime.now().strftime('%Y-%m-%d')),
-            request.form.get('terms',''),
-            request.form.get('po_number',''),
-            request.form.get('invoice_number',''),
-            request.form.get('ship_date',''),
-            request.form.get('ship_via',''),
-            request.form.get('shipping_account',''),
-            request.form.get('vendor_name',''),
-            request.form.get('vendor_address',''),
-            request.form.get('ship_to_name',''),
-            request.form.get('ship_to_address',''),
-            request.form.get('notes',''),
-            request.form.get('pallet_dims',''),
-            float(request.form.get('weight_lbs',0) or 0),
-            'draft'
-        ))
-        ps_id = cur.lastrowid
-        pns   = request.form.getlist('pn[]')
-        descs = request.form.getlist('desc[]')
-        sns   = request.form.getlist('sn[]')
-        qtys  = request.form.getlist('qty[]')
-        coos  = request.form.getlist('coo[]')
-        hss   = request.form.getlist('hs[]')
-        for i, pn in enumerate(pns):
-            if not pn.strip():
-                continue
-            conn.execute(
-                'INSERT INTO ps_items (ps_id,part_number,description,serial_number,quantity,country_of_origin,hs_code) VALUES (?,?,?,?,?,?,?)',
-                (ps_id, pn.strip(),
-                 descs[i] if i < len(descs) else '',
-                 sns[i] if i < len(sns) else '',
-                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
-                 coos[i] if i < len(coos) else 'USA',
-                 hss[i] if i < len(hss) else '')
-            )
-        conn.commit()
-        conn.close()
-        flash(f'Packing Slip {ps_number} created.', 'success')
-        return redirect(url_for('ps_view', ps_id=ps_id))
-    try:
-        conn = get_db()
-        vendors  = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
-        invoices = conn.execute("SELECT id, invoice_number, invoice_for, customer_name FROM invoices ORDER BY created_at DESC").fetchall()
-        conn.close()
-    except Exception:
-        vendors, invoices = [], []
-    return render_template('ps_form.html', ps=None, items=[], vendors=vendors, invoices=invoices)
-
-
-@app.route('/packing-slips/<int:ps_id>')
-@login_required
-def ps_view(ps_id):
-    conn  = get_db()
-    ps    = conn.execute('SELECT * FROM packing_slips WHERE id=?', (ps_id,)).fetchone()
-    items = conn.execute('SELECT * FROM ps_items WHERE ps_id=?', (ps_id,)).fetchall()
-    conn.close()
-    if not ps:
-        flash('Packing Slip not found.', 'error')
-        return redirect(url_for('ps_list'))
-    s = get_settings()
-    return render_template('ps_view.html', ps=ps, items=items, s=s)
-
-
-@app.route('/packing-slips/<int:ps_id>/edit', methods=['GET', 'POST'])
-@login_required
-def ps_edit(ps_id):
-    conn = get_db()
-    ps   = conn.execute('SELECT * FROM packing_slips WHERE id=?', (ps_id,)).fetchone()
-    if not ps:
-        conn.close()
-        flash('Packing Slip not found.', 'error')
-        return redirect(url_for('ps_list'))
-    if request.method == 'POST':
-        conn.execute('''
-            UPDATE packing_slips SET
-              date=?, terms=?, po_number=?, invoice_number=?, ship_date=?, ship_via=?,
-              shipping_account=?, vendor_name=?, vendor_address=?, ship_to_name=?,
-              ship_to_address=?, notes=?, pallet_dims=?, weight_lbs=?
-            WHERE id=?
-        ''', (
-            request.form.get('date',''),
-            request.form.get('terms',''),
-            request.form.get('po_number',''),
-            request.form.get('invoice_number',''),
-            request.form.get('ship_date',''),
-            request.form.get('ship_via',''),
-            request.form.get('shipping_account',''),
-            request.form.get('vendor_name',''),
-            request.form.get('vendor_address',''),
-            request.form.get('ship_to_name',''),
-            request.form.get('ship_to_address',''),
-            request.form.get('notes',''),
-            request.form.get('pallet_dims',''),
-            float(request.form.get('weight_lbs',0) or 0),
-            ps_id
-        ))
-        conn.execute('DELETE FROM ps_items WHERE ps_id=?', (ps_id,))
-        pns   = request.form.getlist('pn[]')
-        descs = request.form.getlist('desc[]')
-        sns   = request.form.getlist('sn[]')
-        qtys  = request.form.getlist('qty[]')
-        coos  = request.form.getlist('coo[]')
-        hss   = request.form.getlist('hs[]')
-        for i, pn in enumerate(pns):
-            if not pn.strip():
-                continue
-            conn.execute(
-                'INSERT INTO ps_items (ps_id,part_number,description,serial_number,quantity,country_of_origin,hs_code) VALUES (?,?,?,?,?,?,?)',
-                (ps_id, pn.strip(),
-                 descs[i] if i < len(descs) else '',
-                 sns[i] if i < len(sns) else '',
-                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
-                 coos[i] if i < len(coos) else 'USA',
-                 hss[i] if i < len(hss) else '')
-            )
-        conn.commit()
-        conn.close()
-        flash('Packing Slip updated.', 'success')
-        return redirect(url_for('ps_view', ps_id=ps_id))
-    items    = conn.execute('SELECT * FROM ps_items WHERE ps_id=?', (ps_id,)).fetchall()
-    vendors  = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
-    invoices = conn.execute("SELECT id, invoice_number, invoice_for, customer_name FROM invoices ORDER BY created_at DESC").fetchall()
-    conn.close()
-    return render_template('ps_form.html', ps=ps, items=items, vendors=vendors, invoices=invoices)
-
-
-@app.route('/packing-slips/<int:ps_id>/delete', methods=['POST'])
-@login_required
-def ps_delete(ps_id):
-    conn = get_db()
-    conn.execute('DELETE FROM ps_items WHERE ps_id=?', (ps_id,))
-    conn.execute('DELETE FROM packing_slips WHERE id=?', (ps_id,))
-    conn.commit()
-    conn.close()
-    flash('Packing Slip deleted.', 'success')
-    return redirect(url_for('ps_list'))
-
-
-# ─── ERP: Repair Orders ───────────────────────────────────────────────────────
-
-@app.route('/repair-orders')
-@login_required
-def ro_list():
-    conn = get_db()
-    ros  = conn.execute('SELECT * FROM repair_orders ORDER BY created_at DESC').fetchall()
-    conn.close()
-    return render_template('ro_list.html', ros=ros)
-
-
-@app.route('/repair-orders/new', methods=['GET', 'POST'])
-@login_required
-def ro_new():
-    if request.method == 'POST':
-        ro_number = _next_erp_number('RO', 'repair_orders', 'ro_number')
-        conn = get_db()
-        cur = conn.execute('''
-            INSERT INTO repair_orders
-              (ro_number, vendor_name, vendor_address, ship_to_name, ship_to_address,
-               date, ship_date, terms, ship_via, shipping_account,
-               subtotal, shipping, tax_rate, sales_tax, grand_total, notes, status)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        ''', (
-            ro_number,
-            request.form.get('vendor_name',''),
-            request.form.get('vendor_address',''),
-            request.form.get('ship_to_name','Eastern Aero Pty Ltd'),
-            request.form.get('ship_to_address','10 Composure St\nMorayfield QLD 4506 Australia'),
-            request.form.get('date', datetime.now().strftime('%Y-%m-%d')),
-            request.form.get('ship_date',''),
-            request.form.get('terms','Net 30'),
-            request.form.get('ship_via',''),
-            request.form.get('shipping_account',''),
-            float(request.form.get('subtotal',0) or 0),
-            float(request.form.get('shipping',0) or 0),
-            float(request.form.get('tax_rate',0) or 0),
-            float(request.form.get('sales_tax',0) or 0),
-            float(request.form.get('grand_total',0) or 0),
-            request.form.get('notes',''),
-            'draft'
-        ))
-        ro_id = cur.lastrowid
-        pns   = request.form.getlist('pn[]')
-        descs = request.form.getlist('desc[]')
-        sns   = request.form.getlist('sn[]')
-        qtys  = request.form.getlist('qty[]')
-        works = request.form.getlist('work[]')
-        costs = request.form.getlist('cost[]')
-        tots  = request.form.getlist('total_price[]')
-        for i, pn in enumerate(pns):
-            if not pn.strip():
-                continue
-            conn.execute(
-                'INSERT INTO ro_items (ro_id,part_number,description,serial_number,quantity,work_requested,avg_cost,total_price) VALUES (?,?,?,?,?,?,?,?)',
-                (ro_id, pn.strip(),
-                 descs[i] if i < len(descs) else '',
-                 sns[i] if i < len(sns) else '',
-                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
-                 works[i] if i < len(works) else '',
-                 float(costs[i]) if i < len(costs) and costs[i] else 0,
-                 float(tots[i]) if i < len(tots) and tots[i] else 0)
-            )
-        conn.commit()
-        conn.close()
-        flash(f'Repair Order {ro_number} created.', 'success')
-        return redirect(url_for('ro_view', ro_id=ro_id))
-    try:
-        conn = get_db()
-        vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
-        conn.close()
-    except Exception:
-        vendors = []
-    return render_template('ro_form.html', ro=None, items=[], vendors=vendors)
-
-
-@app.route('/repair-orders/<int:ro_id>')
-@login_required
-def ro_view(ro_id):
-    conn  = get_db()
-    ro    = conn.execute('SELECT * FROM repair_orders WHERE id=?', (ro_id,)).fetchone()
-    items = conn.execute('SELECT * FROM ro_items WHERE ro_id=?', (ro_id,)).fetchall()
-    conn.close()
-    if not ro:
-        flash('Repair Order not found.', 'error')
-        return redirect(url_for('ro_list'))
-    s = get_settings()
-    return render_template('ro_view.html', ro=ro, items=items, s=s)
-
-
-@app.route('/repair-orders/<int:ro_id>/edit', methods=['GET', 'POST'])
-@login_required
-def ro_edit(ro_id):
-    conn = get_db()
-    ro   = conn.execute('SELECT * FROM repair_orders WHERE id=?', (ro_id,)).fetchone()
-    if not ro:
-        conn.close()
-        flash('Repair Order not found.', 'error')
-        return redirect(url_for('ro_list'))
-    if request.method == 'POST':
-        conn.execute('''
-            UPDATE repair_orders SET
-              vendor_name=?, vendor_address=?, ship_to_name=?, ship_to_address=?,
-              date=?, ship_date=?, terms=?, ship_via=?, shipping_account=?,
-              subtotal=?, shipping=?, tax_rate=?, sales_tax=?, grand_total=?, notes=?
-            WHERE id=?
-        ''', (
-            request.form.get('vendor_name',''),
-            request.form.get('vendor_address',''),
-            request.form.get('ship_to_name',''),
-            request.form.get('ship_to_address',''),
-            request.form.get('date',''),
-            request.form.get('ship_date',''),
-            request.form.get('terms','Net 30'),
-            request.form.get('ship_via',''),
-            request.form.get('shipping_account',''),
-            float(request.form.get('subtotal',0) or 0),
-            float(request.form.get('shipping',0) or 0),
-            float(request.form.get('tax_rate',0) or 0),
-            float(request.form.get('sales_tax',0) or 0),
-            float(request.form.get('grand_total',0) or 0),
-            request.form.get('notes',''),
-            ro_id
-        ))
-        conn.execute('DELETE FROM ro_items WHERE ro_id=?', (ro_id,))
-        pns   = request.form.getlist('pn[]')
-        descs = request.form.getlist('desc[]')
-        sns   = request.form.getlist('sn[]')
-        qtys  = request.form.getlist('qty[]')
-        works = request.form.getlist('work[]')
-        costs = request.form.getlist('cost[]')
-        tots  = request.form.getlist('total_price[]')
-        for i, pn in enumerate(pns):
-            if not pn.strip():
-                continue
-            conn.execute(
-                'INSERT INTO ro_items (ro_id,part_number,description,serial_number,quantity,work_requested,avg_cost,total_price) VALUES (?,?,?,?,?,?,?,?)',
-                (ro_id, pn.strip(),
-                 descs[i] if i < len(descs) else '',
-                 sns[i] if i < len(sns) else '',
-                 float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
-                 works[i] if i < len(works) else '',
-                 float(costs[i]) if i < len(costs) and costs[i] else 0,
-                 float(tots[i]) if i < len(tots) and tots[i] else 0)
-            )
-        conn.commit()
-        conn.close()
-        flash('Repair Order updated.', 'success')
-        return redirect(url_for('ro_view', ro_id=ro_id))
-    items   = conn.execute('SELECT * FROM ro_items WHERE ro_id=?', (ro_id,)).fetchall()
-    vendors = conn.execute('SELECT id, name, billing_name, billing_address, billing_city, billing_state, billing_zip FROM vendors ORDER BY name').fetchall()
-    conn.close()
-    return render_template('ro_form.html', ro=ro, items=items, vendors=vendors)
-
-
-@app.route('/repair-orders/<int:ro_id>/delete', methods=['POST'])
-@login_required
-def ro_delete(ro_id):
-    conn = get_db()
-    conn.execute('DELETE FROM ro_items WHERE ro_id=?', (ro_id,))
-    conn.execute('DELETE FROM repair_orders WHERE id=?', (ro_id,))
-    conn.commit()
-    conn.close()
-    flash('Repair Order deleted.', 'success')
-    return redirect(url_for('ro_list'))
-
-
 # ─── Main ────────────────────────────────────────────────────────────────────
 
 # Initialize DB on startup (works with both direct run and gunicorn)
@@ -5385,85 +2676,18 @@ def scheduled_fetch():
         except Exception as e:
             print(f'[Scheduler] Fetch error: {e}')
 
-
-# ─── Auto Quote Cleanup (30-day retention) ───────────────────────────────────
-def cleanup_old_quotes():
-    """
-    Delete quotes older than 30 days EXCEPT:
-      - The most recent quote for each customer email (last reference)
-      - Quotes with no customer email (keep as manual reference)
-    Also cascades to quote_items and quote_attachments.
-    """
-    with app.app_context():
-        try:
-            conn = get_db()
-
-            # Find IDs to delete: older than 30 days AND not the newest per customer
-            # Subquery keeps the MAX(id) per customer_email as the "last reference"
-            to_delete = conn.execute("""
-                SELECT id FROM quotes
-                WHERE created_at < datetime('now', '-30 days')
-                AND (customer_email IS NULL OR customer_email = ''
-                     OR id NOT IN (
-                         SELECT MAX(id) FROM quotes
-                         WHERE customer_email IS NOT NULL AND customer_email != ''
-                         GROUP BY customer_email
-                     ))
-            """).fetchall()
-
-            if not to_delete:
-                conn.close()
-                return
-
-            ids = [row[0] for row in to_delete]
-            placeholders = ','.join('?' * len(ids))
-
-            # Delete attachments from disk
-            att_rows = conn.execute(
-                f'SELECT filepath FROM quote_attachments WHERE quote_id IN ({placeholders})', ids
-            ).fetchall()
-            for att in att_rows:
-                try:
-                    if att['filepath'] and os.path.exists(att['filepath']):
-                        os.remove(att['filepath'])
-                except Exception:
-                    pass
-
-            # Cascade delete
-            conn.execute(f'DELETE FROM quote_attachments WHERE quote_id IN ({placeholders})', ids)
-            conn.execute(f'DELETE FROM quote_items WHERE quote_id IN ({placeholders})', ids)
-            conn.execute(f'DELETE FROM quotes WHERE id IN ({placeholders})', ids)
-            conn.commit()
-            conn.close()
-            print(f'[Cleanup] Deleted {len(ids)} quotes older than 30 days.')
-        except Exception as e:
-            print(f'[Cleanup] Error during quote cleanup: {e}')
-
-
-@app.route('/admin/cleanup-quotes', methods=['POST'])
-@login_required
-def manual_cleanup_quotes():
-    """Manual trigger for quote cleanup — available from Settings."""
-    cleanup_old_quotes()
-    flash('Quote cleanup complete. Quotes older than 30 days have been removed, keeping the last reference per customer.', 'success')
-    return redirect(url_for('settings'))
-
-
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     scheduler = BackgroundScheduler(daemon=True)
     scheduler.add_job(scheduled_fetch, 'interval', minutes=5, id='auto_fetch')
-    # Run quote cleanup once per day at 02:00
-    scheduler.add_job(cleanup_old_quotes, 'cron', hour=2, minute=0, id='quote_cleanup')
     scheduler.start()
     print('[Scheduler] Auto email fetch started — runs every 5 minutes.')
-    print('[Scheduler] Quote cleanup scheduled — runs daily at 02:00.')
 except Exception as e:
     print(f'[Scheduler] Could not start scheduler: {e}')
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
-    print('\n  ✈  Eastern Aero Pty Ltd — Auto Quote System')
+    print('\n  ✈  Eastern Aero Parts — Auto Quote System')
     print(f'     Open  http://localhost:{port}  in your browser\n')
     app.run(host='0.0.0.0', debug=debug, port=port)

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{% block title %}Auto Quote{% endblock %} — Eastern Aero Pty Ltd</title>
+  <title>{% block title %}Auto Quote{% endblock %} — Eastern Aero Parts</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
   <style>
@@ -36,9 +36,6 @@
     .btn-navy:hover{background:#14305a;color:#fff;}
     .btn-gold{background:var(--gold);color:#1a1a1a;border:none;}
     .btn-gold:hover{background:#d99f1f;color:#1a1a1a;}
-    .btn-outline-purple{color:#7c3aed;border:1px solid #7c3aed;background:transparent;}
-    .btn-outline-purple:hover{background:#7c3aed;color:#fff;}
-    .text-purple{color:#7c3aed!important;}
     .alert{border-radius:8px;}
     .flash-wrap{position:fixed;top:16px;right:16px;z-index:9999;min-width:300px;}
 
@@ -66,38 +63,13 @@
     <a href="{{ url_for('rfq_new') }}" class="nav-link">
       <i class="bi bi-plus-circle"></i> New RFQ
     </a>
-    <a href="{{ url_for('quote_list') }}" class="nav-link {% if request.endpoint in ['quote_list','quote_view'] %}active{% endif %}">
+    <a href="{{ url_for('quote_list') }}" class="nav-link {% if request.endpoint=='quote_list' %}active{% endif %}">
       <i class="bi bi-file-earmark-text"></i> Quotes
-    </a>
-    <a href="{{ url_for('quote_new') }}" class="nav-link {% if request.endpoint=='quote_new' %}active{% endif %}">
-      <i class="bi bi-file-earmark-plus"></i> New Quote
     </a>
 
     <div class="sidebar-section">Inventory</div>
     <a href="{{ url_for('inventory') }}" class="nav-link {% if request.endpoint=='inventory' %}active{% endif %}">
       <i class="bi bi-box-seam"></i> Parts
-    </a>
-
-    <div class="sidebar-section">Contacts</div>
-    <a href="{{ url_for('customer_list') }}" class="nav-link {% if 'customer' in request.endpoint %}active{% endif %}">
-      <i class="bi bi-people"></i> Customers
-    </a>
-    <a href="{{ url_for('vendor_list') }}" class="nav-link {% if 'vendor' in request.endpoint %}active{% endif %}">
-      <i class="bi bi-building"></i> Vendors
-    </a>
-
-    <div class="sidebar-section">Documents</div>
-    <a href="{{ url_for('po_list') }}" class="nav-link {% if 'po_' in request.endpoint %}active{% endif %}">
-      <i class="bi bi-cart3"></i> Purchase Orders
-    </a>
-    <a href="{{ url_for('invoice_list') }}" class="nav-link {% if 'invoice_' in request.endpoint %}active{% endif %}">
-      <i class="bi bi-receipt"></i> Invoices
-    </a>
-    <a href="{{ url_for('ps_list') }}" class="nav-link {% if 'ps_' in request.endpoint %}active{% endif %}">
-      <i class="bi bi-box2"></i> Packing Slips
-    </a>
-    <a href="{{ url_for('ro_list') }}" class="nav-link {% if 'ro_' in request.endpoint %}active{% endif %}">
-      <i class="bi bi-tools"></i> Repair Orders
     </a>
 
     <div class="sidebar-section">Config</div>
@@ -114,6 +86,12 @@
     </a>
   </div>
   <div class="mt-auto p-3" style="border-top:1px solid rgba(255,255,255,.1)">
+    <!-- Email fetch button -->
+    <form action="{{ url_for('fetch_email_rfqs') }}" method="post" class="mb-2">
+      <button type="submit" class="btn btn-sm w-100" style="background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.2)">
+        <i class="bi bi-envelope-arrow-down"></i> Fetch RFQ Emails
+      </button>
+    </form>
     {% if current_user.is_authenticated %}
     <a href="{{ url_for('logout') }}" class="btn btn-sm w-100" style="background:rgba(220,53,69,.3);color:#ffb3ba;border:1px solid rgba(220,53,69,.4)">
       <i class="bi bi-box-arrow-right"></i> Log Out
@@ -148,7 +126,7 @@
   </div>
 
   <footer class="text-center text-muted py-3" style="font-size:.75rem;border-top:1px solid #e3e8ef;">
-    Eastern Aero Pty Ltd Auto Quote System &mdash; {{ now.strftime('%Y') if now else '2024' }}
+    Eastern Aero Parts Auto Quote System &mdash; {{ now.strftime('%Y') if now else '2024' }}
   </footer>
 </div>
 

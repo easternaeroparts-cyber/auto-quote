@@ -27,83 +27,50 @@
   {% endfor %}
 </ul>
 
-<!-- Bulk action bar — shown only when items are selected -->
-<div id="bulkBar" class="d-none mb-2 px-3 py-2 rounded d-flex align-items-center gap-3"
-     style="background:#fff3cd;border:1px solid #ffc107;">
-  <span id="bulkCount" class="fw-semibold text-dark"></span>
-  <button class="btn btn-sm btn-danger" onclick="bulkDelete()">
-    <i class="bi bi-trash me-1"></i> Delete Selected
-  </button>
-  <button class="btn btn-sm btn-outline-secondary" onclick="clearSelection()">Cancel</button>
-</div>
-
 <div class="card">
   <div class="card-body p-0">
-    <table class="table table-hover mb-0" style="table-layout:fixed;width:100%;">
-      <colgroup>
-        <col style="width:36px">      <!-- Checkbox -->
-        <col style="width:175px">     <!-- RFQ # -->
-        <col style="width:110px">     <!-- Customer -->
-        <col>                          <!-- Company (flexible) -->
-        <col style="width:105px">     <!-- Source -->
-        <col style="width:68px">      <!-- Parts -->
-        <col style="width:80px">      <!-- Status -->
-        <col style="width:135px">     <!-- Date -->
-        <col style="width:108px">     <!-- Actions -->
-      </colgroup>
+    <table class="table table-hover mb-0">
       <thead class="table-light">
         <tr>
-          <th class="ps-3" style="white-space:nowrap">
-            <input type="checkbox" id="selectAll" class="form-check-input" title="Select all" onchange="toggleAll(this.checked)">
-          </th>
-          <th style="white-space:nowrap">RFQ #</th>
-          <th style="white-space:nowrap">Customer</th>
-          <th style="white-space:nowrap">Company</th>
-          <th style="white-space:nowrap">Source</th>
-          <th style="white-space:nowrap">Parts</th>
-          <th style="white-space:nowrap">Status</th>
-          <th style="white-space:nowrap">Date</th>
+          <th class="ps-3">RFQ #</th>
+          <th>Customer</th>
+          <th>Company</th>
+          <th>Source</th>
+          <th>Parts</th>
+          <th>Status</th>
+          <th>Date</th>
           <th></th>
         </tr>
       </thead>
       <tbody>
       {% for r in rfqs %}
-      <tr id="rfq-row-{{ r.id }}">
-        <td class="ps-3">
-          <input type="checkbox" class="form-check-input rfq-chk" value="{{ r.id }}" onchange="onCheckChange()">
-        </td>
-        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-          <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="text-danger fw-semibold text-decoration-none" style="font-family:monospace;font-size:.85rem">
-            {{ r.rfq_number }}
-          </a>
-        </td>
-        <td class="fw-semibold" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.customer_name or '(Unknown)' }}</td>
-        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><small class="text-muted">{{ r.company or '—' }}</small></td>
-        <td style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-          <span class="badge text-bg-light" style="white-space:nowrap">
+      <tr>
+        <td class="ps-3"><code>{{ r.rfq_number }}</code></td>
+        <td class="fw-semibold">{{ r.customer_name or '(Unknown)' }}</td>
+        <td><small class="text-muted">{{ r.company or '—' }}</small></td>
+        <td>
+          <span class="badge text-bg-light">
             {% if r.source == 'email' %}<i class="bi bi-envelope"></i>{% elif r.source == 'ils' %}<i class="bi bi-globe"></i>{% endif %}
             {{ r.source }}
           </span>
         </td>
-        <td style="white-space:nowrap">{{ r.item_count }} part{{ 's' if r.item_count != 1 }}</td>
+        <td>{{ r.item_count }} part{{ 's' if r.item_count != 1 }}</td>
         <td><span class="badge badge-{{ r.status }}">{{ r.status }}</span></td>
-        <td style="white-space:nowrap"><small class="text-muted">{{ r.created_at[:16] }}</small></td>
-        <td class="pe-2" style="white-space:nowrap">
-          <div class="d-flex gap-1 justify-content-end flex-nowrap">
-            <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-primary py-0" style="white-space:nowrap">
-              <i class="bi bi-eye"></i> View
-            </a>
-            <form action="{{ url_for('rfq_delete', rfq_id=r.id) }}" method="post"
-                  onsubmit="return confirm('Delete this RFQ?')">
-              <button class="btn btn-sm btn-outline-danger py-0">
-                <i class="bi bi-trash"></i>
-              </button>
-            </form>
-          </div>
+        <td><small class="text-muted">{{ r.created_at[:16] }}</small></td>
+        <td class="text-end pe-3 d-flex gap-1 justify-content-end">
+          <a href="{{ url_for('rfq_detail', rfq_id=r.id) }}" class="btn btn-sm btn-outline-primary py-0">
+            <i class="bi bi-eye"></i> View
+          </a>
+          <form action="{{ url_for('rfq_delete', rfq_id=r.id) }}" method="post"
+                onsubmit="return confirm('Delete this RFQ?')">
+            <button class="btn btn-sm btn-outline-danger py-0">
+              <i class="bi bi-trash"></i>
+            </button>
+          </form>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="9" class="text-center py-5 text-muted">
+      <tr><td colspan="8" class="text-center py-5 text-muted">
         No RFQs yet. <a href="{{ url_for('rfq_new') }}">Create one</a> or
         <form action="{{ url_for('fetch_email_rfqs') }}" method="post" class="d-inline">
           <button class="btn btn-sm btn-outline-secondary">fetch from email</button>.
@@ -114,61 +81,4 @@
     </table>
   </div>
 </div>
-
-<script>
-function getChecked() {
-  return [...document.querySelectorAll('.rfq-chk:checked')].map(c => parseInt(c.value));
-}
-
-function onCheckChange() {
-  const checked = getChecked();
-  const total   = document.querySelectorAll('.rfq-chk').length;
-  const bar     = document.getElementById('bulkBar');
-  const countEl = document.getElementById('bulkCount');
-  const selAll  = document.getElementById('selectAll');
-
-  if (checked.length > 0) {
-    bar.classList.remove('d-none');
-    bar.classList.add('d-flex');
-    countEl.textContent = `${checked.length} RFQ${checked.length > 1 ? 's' : ''} selected`;
-  } else {
-    bar.classList.add('d-none');
-    bar.classList.remove('d-flex');
-  }
-  selAll.indeterminate = checked.length > 0 && checked.length < total;
-  selAll.checked = checked.length === total && total > 0;
-}
-
-function toggleAll(checked) {
-  document.querySelectorAll('.rfq-chk').forEach(c => c.checked = checked);
-  onCheckChange();
-}
-
-function clearSelection() {
-  document.querySelectorAll('.rfq-chk').forEach(c => c.checked = false);
-  document.getElementById('selectAll').checked = false;
-  document.getElementById('selectAll').indeterminate = false;
-  onCheckChange();
-}
-
-async function bulkDelete() {
-  const ids = getChecked();
-  if (!ids.length) return;
-  if (!confirm(`Delete ${ids.length} RFQ${ids.length > 1 ? 's' : ''}? This cannot be undone.`)) return;
-
-  const res  = await fetch('/rfqs/bulk-delete', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ids})
-  });
-  const data = await res.json();
-  if (data.ok) {
-    ids.forEach(id => {
-      const row = document.getElementById(`rfq-row-${id}`);
-      if (row) row.remove();
-    });
-    clearSelection();
-  }
-}
-</script>
 {% endblock %}

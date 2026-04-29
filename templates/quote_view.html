@@ -3,28 +3,12 @@
 {% block page_title %}{{ quote.quote_number }}{% endblock %}
 
 {% block topbar_actions %}
-{% if rfq and rfq.id %}
 <a href="{{ url_for('rfq_detail', rfq_id=rfq.id) }}" class="btn btn-sm btn-outline-secondary">
   <i class="bi bi-arrow-left"></i> Back to RFQ
 </a>
-{% else %}
-<a href="{{ url_for('quote_list') }}" class="btn btn-sm btn-outline-secondary">
-  <i class="bi bi-arrow-left"></i> Back to Quotes
-</a>
-{% endif %}
 <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
   <i class="bi bi-printer"></i> Print / PDF
 </button>
-<a href="{{ url_for('preview_quote_email', quote_id=quote.id) }}" target="_blank"
-   class="btn btn-sm btn-outline-info no-print">
-  <i class="bi bi-eye"></i> Preview Email
-</a>
-<form method="post" action="{{ url_for('quote_convert_to_invoice', quote_id=quote.id) }}" class="d-inline no-print"
-      onsubmit="return confirm('Create an invoice from this quote?')">
-  <button type="submit" class="btn btn-sm btn-outline-success fw-semibold">
-    <i class="bi bi-receipt"></i> Convert to Invoice
-  </button>
-</form>
 <button class="btn btn-sm {% if quote.status == 'sent' %}btn-outline-secondary{% else %}btn-gold fw-semibold{% endif %} no-print" data-bs-toggle="modal" data-bs-target="#sendModal">
   <i class="bi bi-send"></i> {% if quote.status == 'sent' %}Resend{% else %}Send to Customer{% endif %}
 </button>
@@ -195,36 +179,22 @@
   {% for it in items %}
   <div class="border rounded mb-3 overflow-hidden" id="item-block-{{ it.id }}">
     <!-- Main row -->
-    <table class="table table-sm mb-0" style="table-layout:fixed;width:100%">
-      <colgroup>
-        <col style="width:130px">  <!-- Part -->
-        <col>                       <!-- Description (flexible) -->
-        <col style="width:55px">   <!-- Qty -->
-        <col style="width:50px">   <!-- CC -->
-        <col style="width:80px">   <!-- Lead Time -->
-        <col style="width:120px">  <!-- Unit Price -->
-        <col style="width:110px">  <!-- Line Total -->
-        <col style="width:44px" class="no-print">  <!-- Edit -->
-      </colgroup>
+    <table class="table table-sm mb-0">
       <thead class="table-light">
         <tr>
-          <th style="white-space:nowrap">Part</th>
-          <th>Description</th>
-          <th style="white-space:nowrap">Qty</th>
-          <th style="white-space:nowrap">CC</th>
-          <th style="white-space:nowrap">Lead Time</th>
-          <th class="text-end" style="white-space:nowrap">Unit Price ({{ quote.currency or 'USD' }})</th>
-          <th class="text-end" style="white-space:nowrap">Line Total ({{ quote.currency or 'USD' }})</th>
+          <th>Part</th><th>Description</th><th>Qty</th><th>CC</th><th>Lead Time</th>
+          <th class="text-end">Unit Price ({{ quote.currency or 'USD' }})</th>
+          <th class="text-end">Line Total ({{ quote.currency or 'USD' }})</th>
           <th class="no-print"></th>
         </tr>
       </thead>
       <tbody>
         <tr {% if it.no_quote %}style="opacity:.45"{% endif %} id="item-row-{{ it.id }}">
-          <td class="fw-bold" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><code>{{ it.part_number }}</code></td>
-          <td class="text-muted small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ (it.description or '—') | clean_desc }}</td>
-          <td id="qty-{{ it.id }}" style="white-space:nowrap">{{ it.quantity_requested }} EA</td>
+          <td class="fw-bold"><code>{{ it.part_number }}</code></td>
+          <td class="text-muted small">{{ (it.description or '—') | clean_desc }}</td>
+          <td id="qty-{{ it.id }}">{{ it.quantity_requested }} EA</td>
           <td><span id="cond-{{ it.id }}" class="badge text-bg-secondary">{{ it.condition or 'SV' }}</span></td>
-          <td id="lead-{{ it.id }}" style="white-space:nowrap">{{ it.lead_time or 'Stock' }}</td>
+          <td id="lead-{{ it.id }}">{{ it.lead_time or 'Stock' }}</td>
           <td class="text-end" id="price-{{ it.id }}">{% if it.no_quote %}<span class="badge" style="background:#6c757d;color:#fff;font-size:.8rem">N/Q</span>{% else %}${{ '%.2f'|format(it.unit_price) }}{% endif %}</td>
           <td class="text-end fw-bold" id="ext-{{ it.id }}">{% if it.no_quote %}—{% else %}${{ '%.2f'|format(it.extended_price) }}{% endif %}</td>
           <td class="text-end no-print">
@@ -239,9 +209,7 @@
                 '{{ (it.tagged_by or '')|replace("'","\\'") }}',
                 '{{ (it.condition or 'SV')|replace("'","\\'") }}',
                 '{{ it.part_number|replace("'","\\'") }}',
-                {{ 1 if it.no_quote else 0 }},
-                '{{ (it.description or '')|replace("'","\\'") }}',
-                '{{ (it.serial_number or '')|replace("'","\\'") }}'
+                {{ 1 if it.no_quote else 0 }}
               )">
               <i class="bi bi-pencil"></i>
             </button>
@@ -257,7 +225,6 @@
       <div class="row">
         <div class="col-md-6">
           <span class="text-muted">Condition:</span> {{ it.condition or 'SV' }}<br>
-          {% if it.serial_number %}<span class="text-muted">S/N:</span> <span id="sn-{{ it.id }}">{{ it.serial_number }}</span><br>{% else %}<span id="sn-{{ it.id }}" style="display:none"></span>{% endif %}
           <span class="text-muted">Warranty:</span> <span id="warranty-{{ it.id }}">{{ it.warranty or '—' }}</span><br>
           <span class="text-muted">Trace To:</span> <span id="trace-{{ it.id }}">{{ it.trace_to or it.description or '—' }}</span>
         </div>
@@ -267,15 +234,6 @@
           {% if not it.matched %}<span class="badge text-bg-danger">Not in Inventory</span>{% else %}<span class="badge text-bg-success">In Stock ({{ it.quantity_available }} avail)</span>{% endif %}
         </div>
       </div>
-      {% if it.notes %}
-      <div class="mt-1 pt-1" style="border-top:1px solid #e9ecef">
-        <span class="text-muted">Notes:</span> <span id="notes-{{ it.id }}" class="fst-italic">{{ it.notes }}</span>
-      </div>
-      {% else %}
-      <div id="notes-{{ it.id }}-wrap" style="display:none" class="mt-1 pt-1" style="border-top:1px solid #e9ecef">
-        <span class="text-muted">Notes:</span> <span id="notes-{{ it.id }}" class="fst-italic"></span>
-      </div>
-      {% endif %}
     </div>
   </div>
   {% endfor %}
@@ -400,52 +358,8 @@
 </div>
 {% endif %}
 
-<p class="small fw-semibold" style="color:#c0392b;">All prices in {{ quote.currency or 'USD' }}. Quote valid for {{ quote.valid_days }} days from date of issue. All parts are certified unless otherwise stated. Terms: Prepay unless prior credit arrangement established.</p>
-
-<!-- Email Preview Modal -->
-<div class="modal fade" id="emailPreviewModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width:900px">
-    <div class="modal-content">
-      <div class="modal-header py-2">
-        <div class="d-flex align-items-center gap-2">
-          <i class="bi bi-envelope-open text-info"></i>
-          <strong>Email Preview</strong>
-          <span class="badge bg-secondary fw-normal" id="previewToAddr" style="font-size:.75rem"></span>
-        </div>
-        <div class="ms-auto d-flex gap-2">
-          <button class="btn btn-sm btn-outline-secondary" onclick="loadEmailPreview()">
-            <i class="bi bi-arrow-clockwise"></i> Refresh
-          </button>
-          <button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">
-            <i class="bi bi-x-lg"></i> Close
-          </button>
-        </div>
-      </div>
-      <div class="modal-body p-0 position-relative" style="min-height:600px">
-        <!-- Loading spinner -->
-        <div id="previewSpinner" class="position-absolute w-100 h-100 d-flex align-items-center justify-content-center" style="background:#f8f9fa;z-index:10">
-          <div class="text-center text-muted">
-            <div class="spinner-border spinner-border-sm mb-2" role="status"></div>
-            <div class="small">Building email preview…</div>
-          </div>
-        </div>
-        <iframe id="previewFrame"
-                style="width:100%;height:700px;border:none;display:block">
-        </iframe>
-      </div>
-      <div class="modal-footer py-2 justify-content-between">
-        <small class="text-muted"><i class="bi bi-info-circle"></i> This is an exact preview of the email your customer will receive.</small>
-        <div class="d-flex gap-2">
-          <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-          <button class="btn btn-gold btn-sm fw-semibold" data-bs-dismiss="modal"
-                  onclick="setTimeout(() => document.querySelector('[data-bs-target=\'#sendModal\']').click(), 200)">
-            <i class="bi bi-send"></i> Looks Good — Send
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+<p class="text-muted small">All prices in {{ quote.currency or 'USD' }}. Quote valid {{ quote.valid_days }} days from {{ quote.created_at[:10] }}.
+All parts certified unless otherwise stated. Terms: COD unless prior credit arrangement established.</p>
 
 <!-- Send Modal -->
 <div class="modal fade" id="sendModal" tabindex="-1">
@@ -457,27 +371,20 @@
       </div>
       <form method="post" action="{{ url_for('send_quote', quote_id=quote.id) }}">
         <div class="modal-body">
-          <p class="mb-2">Send <strong>{{ quote.quote_number }}</strong> to:</p>
+          <p>Send <strong>{{ quote.quote_number }}</strong> to:</p>
           <div class="bg-light p-3 rounded mb-3">
-            <div class="fw-semibold mb-1">{{ rfq.customer_name or '(Unknown)' }}</div>
-            {% if rfq.customer_email %}
-            <div class="mb-2"><a href="mailto:{{ rfq.customer_email }}">{{ rfq.customer_email }}</a></div>
-            {% else %}
-            <div class="text-muted small mb-2">(no email on file)</div>
-            {% endif %}
-            <label class="form-label mb-1" style="font-size:.8rem;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:#666;">Override recipient email (optional)</label>
-            <input type="email" name="override_email" class="form-control form-control-sm"
-              placeholder="Leave blank to use email above{% if not rfq.customer_email %} — required{% endif %}">
+            <strong>{{ rfq.customer_name or '(Unknown)' }}</strong><br>
+            <a href="mailto:{{ rfq.customer_email }}">{{ rfq.customer_email or '(no email on file)' }}</a>
           </div>
           {% if not rfq.customer_email %}
-          <div class="alert alert-warning py-2 small"><i class="bi bi-exclamation-triangle me-1"></i>No email on file — enter an address above.</div>
+          <div class="alert alert-warning">No email address on file for this customer.</div>
           {% endif %}
-          <p class="text-muted small mb-0">A professional HTML quote email will be sent. Only verified attachments are included.</p>
+          <p class="text-muted small">A professional HTML quote email will be sent from <strong>{{ settings.smtp_user }}</strong>.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-gold fw-semibold">
-            <i class="bi bi-send-fill"></i> {% if quote.status == 'sent' %}Resend{% else %}Send Now{% endif %}
+          <button type="submit" class="btn btn-gold fw-semibold" {% if not rfq.customer_email %}disabled{% endif %}>
+            <i class="bi bi-send-fill"></i> Send Now
           </button>
         </div>
       </form>
@@ -486,8 +393,7 @@
 </div>
 
 <!-- Add Part Modal -->
-<div class="modal fade" id="addItemModal" tabindex="-1"
-     data-bs-backdrop="static" data-bs-keyboard="false">
+<div class="modal fade" id="addItemModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header">
@@ -571,8 +477,7 @@
 </div>
 
 <!-- Edit Item Modal -->
-<div class="modal fade" id="editItemModal" tabindex="-1"
-     data-bs-backdrop="static" data-bs-keyboard="false">
+<div class="modal fade" id="editItemModal" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
       <div class="modal-header"><h6 class="modal-title">Edit Line Item</h6><button class="btn-close" onclick="_closeModal()"></button></div>
@@ -604,7 +509,6 @@
               <span class="text-muted">Type:</span> <span id="pnSugType"></span>
               &nbsp;|&nbsp;
               <span class="text-muted">Warranty:</span> <span id="pnSugWarranty"></span>
-              <span id="pnSugNotesWrap">&nbsp;|&nbsp;<span class="text-muted">Notes:</span> <span id="pnSugNotes" class="fst-italic"></span></span>
             </div>
             <button class="btn btn-sm btn-warning fw-semibold ms-3 flex-shrink-0" onclick="applySuggestion()">
               <i class="bi bi-lightning-fill"></i> Use This
@@ -613,37 +517,6 @@
         </div>
 
         <div class="row g-3">
-          <!-- Part Number + Description always visible at top -->
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Part Number</label>
-            <div class="position-relative">
-              <input type="text" id="editPartNumber" class="form-control fw-bold"
-                     style="font-family:monospace;text-transform:uppercase;"
-                     placeholder="Type to search inventory…"
-                     autocomplete="off">
-              <!-- Autocomplete dropdown -->
-              <div id="pnDropdown"
-                   style="display:none;position:absolute;z-index:9999;left:0;right:0;top:100%;
-                          background:#fff;border:1px solid #ced4da;border-radius:0 0 6px 6px;
-                          box-shadow:0 4px 12px rgba(0,0,0,.15);max-height:280px;overflow-y:auto;">
-              </div>
-            </div>
-            <div id="pnInventoryHint" class="mt-1" style="font-size:.74rem;display:none;">
-              <span class="text-success fw-semibold"><i class="bi bi-check-circle-fill"></i>
-                Matched: <span id="pnHintMfr"></span></span>
-              &nbsp;·&nbsp; Avail: <strong id="pnHintQty"></strong>
-              &nbsp;·&nbsp; Loc: <strong id="pnHintLoc"></strong>
-            </div>
-          </div>
-          <div class="col-md-8">
-            <label class="form-label fw-semibold">Description</label>
-            <input type="text" id="editDescription" class="form-control"
-                   placeholder="Auto-filled from inventory or type manually">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label">Serial Number (SN)</label>
-            <input type="text" id="editSN" class="form-control text-uppercase" placeholder="e.g. 12345ABC">
-          </div>
           <div class="col-md-4">
             <label class="form-label">Unit Price ({{ quote.currency or 'USD' }})</label>
             <input type="number" id="editPrice" step="0.01" class="form-control">
@@ -707,7 +580,6 @@
     </div>
   </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
@@ -1040,36 +912,22 @@ async function saveAddItem() {
   block.className = 'border rounded mb-3 overflow-hidden';
   block.id = `item-block-${data.item_id}`;
   block.innerHTML = `
-    <table class="table table-sm mb-0" style="table-layout:fixed;width:100%">
-      <colgroup>
-        <col style="width:130px">
-        <col>
-        <col style="width:55px">
-        <col style="width:50px">
-        <col style="width:80px">
-        <col style="width:120px">
-        <col style="width:110px">
-        <col style="width:44px">
-      </colgroup>
+    <table class="table table-sm mb-0">
       <thead class="table-light">
         <tr>
-          <th style="white-space:nowrap">Part</th>
-          <th>Description</th>
-          <th style="white-space:nowrap">Qty</th>
-          <th style="white-space:nowrap">CC</th>
-          <th style="white-space:nowrap">Lead Time</th>
-          <th class="text-end" style="white-space:nowrap">Unit Price (${cur})</th>
-          <th class="text-end" style="white-space:nowrap">Line Total (${cur})</th>
+          <th>Part</th><th>Description</th><th>Qty</th><th>CC</th><th>Lead Time</th>
+          <th class="text-end">Unit Price (${cur})</th>
+          <th class="text-end">Line Total (${cur})</th>
           <th class="no-print"></th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td class="fw-bold" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><code>${payload.part_number}</code></td>
-          <td class="text-muted small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${payload.description || '—'}</td>
-          <td id="qty-${data.item_id}" style="white-space:nowrap">${payload.quantity} EA</td>
+          <td class="fw-bold"><code>${payload.part_number}</code></td>
+          <td class="text-muted small">${payload.description || '—'}</td>
+          <td id="qty-${data.item_id}">${payload.quantity} EA</td>
           <td><span id="cond-${data.item_id}" class="badge text-bg-secondary">${payload.condition}</span></td>
-          <td id="lead-${data.item_id}" style="white-space:nowrap">${payload.lead_time}</td>
+          <td id="lead-${data.item_id}">${payload.lead_time}</td>
           <td class="text-end" id="price-${data.item_id}">$${payload.unit_price.toFixed(2)}</td>
           <td class="text-end fw-bold" id="ext-${data.item_id}">$${data.extended.toFixed(2)}</td>
           <td class="text-end no-print">
@@ -1125,7 +983,7 @@ function toggleAddNoQuote(checked) {
 
 function toggleNoQuote(checked) {
   const fields = ['editPrice','editQty','editLeadTime','editPriceType','editCondition',
-                  'editWarranty','editTraceTo','editTagType','editTaggedBy','editNotes','editSN'];
+                  'editWarranty','editTraceTo','editTagType','editTaggedBy','editNotes'];
   fields.forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.disabled = checked; el.style.opacity = checked ? '0.35' : '1'; }
@@ -1140,19 +998,16 @@ function toggleNoQuote(checked) {
   if (checked) document.getElementById('pnSuggestion').classList.add('d-none');
 }
 
-function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo, tagType, taggedBy, condition, partNumber, noQuote, description, sn) {
-  document.getElementById('editItemId').value      = id;
-  document.getElementById('editPartNumber').value  = partNumber || '';
-  document.getElementById('editDescription').value = description || '';
-  document.getElementById('editSN').value          = sn || '';
-  document.getElementById('editPrice').value       = price;
-  document.getElementById('editQty').value         = qty;
-  document.getElementById('editNotes').value       = notes;
-  document.getElementById('editLeadTime').value    = leadTime;
-  document.getElementById('editWarranty').value    = warranty;
-  document.getElementById('editTraceTo').value     = traceTo;
-  document.getElementById('editTagType').value     = tagType;
-  document.getElementById('editTaggedBy').value    = taggedBy;
+function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo, tagType, taggedBy, condition, partNumber, noQuote) {
+  document.getElementById('editItemId').value    = id;
+  document.getElementById('editPrice').value     = price;
+  document.getElementById('editQty').value       = qty;
+  document.getElementById('editNotes').value     = notes;
+  document.getElementById('editLeadTime').value  = leadTime;
+  document.getElementById('editWarranty').value  = warranty;
+  document.getElementById('editTraceTo').value   = traceTo;
+  document.getElementById('editTagType').value   = tagType;
+  document.getElementById('editTaggedBy').value  = taggedBy;
   const sel = document.getElementById('editPriceType');
   for (let o of sel.options) o.selected = (o.value === priceType);
   const csel = document.getElementById('editCondition');
@@ -1183,10 +1038,6 @@ function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo,
         document.getElementById('pnSugLead').textContent     = d.lead_time || 'Stock';
         document.getElementById('pnSugType').textContent     = d.price_type || 'Outright';
         document.getElementById('pnSugWarranty').textContent = d.warranty || '—';
-        const notesWrap = document.getElementById('pnSugNotesWrap');
-        const notesEl   = document.getElementById('pnSugNotes');
-        if (d.notes) { notesEl.textContent = d.notes; notesWrap.style.display = ''; }
-        else { notesWrap.style.display = 'none'; }
         document.getElementById('pnSuggestion').classList.remove('d-none');
       }).catch(() => {});
   }
@@ -1200,7 +1051,6 @@ function applySuggestion() {
   document.getElementById('editTraceTo').value  = _pnSugData.trace_to || '';
   document.getElementById('editTagType').value  = _pnSugData.tag_type || '';
   document.getElementById('editTaggedBy').value = _pnSugData.tagged_by || '';
-  if (_pnSugData.notes) document.getElementById('editNotes').value = _pnSugData.notes;
   const sel = document.getElementById('editPriceType');
   for (let o of sel.options) o.selected = (o.value === (_pnSugData.price_type || 'Outright'));
   const csel = document.getElementById('editCondition');
@@ -1243,42 +1093,29 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('editPrice').addEventListener('input', function() {
     if (_pnSugData) _dismissSuggestion();
   });
-  // Close on backdrop click ONLY when both mousedown AND mouseup started on the backdrop
-  // (prevents drag-to-select inside inputs from closing the modal)
-  const editModalEl = document.getElementById('editItemModal');
-  let _backdropMousedownTarget = null;
-  editModalEl.addEventListener('mousedown', function(e) {
-    _backdropMousedownTarget = e.target;
-  });
-  editModalEl.addEventListener('mouseup', function(e) {
-    if (e.target === editModalEl && _backdropMousedownTarget === editModalEl) {
-      _closeModal();
-    }
-    _backdropMousedownTarget = null;
+  // Close on backdrop click or Cancel button
+  document.getElementById('editItemModal').addEventListener('click', function(e) {
+    if (e.target === this) _closeModal();
   });
 });
 
 async function saveItem() {
-  const id          = document.getElementById('editItemId').value;
-  const noQuote     = document.getElementById('editNoQuote').checked;
-  const partNumber  = document.getElementById('editPartNumber').value.trim().toUpperCase();
-  const description = document.getElementById('editDescription').value.trim();
-  const sn          = document.getElementById('editSN').value.trim().toUpperCase();
-  const price       = noQuote ? 0 : parseFloat(document.getElementById('editPrice').value);
-  const qty         = parseInt(document.getElementById('editQty').value);
-  const notes       = document.getElementById('editNotes').value;
-  const leadTime    = document.getElementById('editLeadTime').value;
-  const ptype       = document.getElementById('editPriceType').value;
-  const warranty    = document.getElementById('editWarranty').value;
-  const traceTo     = document.getElementById('editTraceTo').value;
-  const tagType     = document.getElementById('editTagType').value;
-  const taggedBy    = document.getElementById('editTaggedBy').value;
-  const condition   = document.getElementById('editCondition').value;
+  const id       = document.getElementById('editItemId').value;
+  const noQuote  = document.getElementById('editNoQuote').checked;
+  const price    = noQuote ? 0 : parseFloat(document.getElementById('editPrice').value);
+  const qty      = parseInt(document.getElementById('editQty').value);
+  const notes    = document.getElementById('editNotes').value;
+  const leadTime = document.getElementById('editLeadTime').value;
+  const ptype    = document.getElementById('editPriceType').value;
+  const warranty = document.getElementById('editWarranty').value;
+  const traceTo  = document.getElementById('editTraceTo').value;
+  const tagType  = document.getElementById('editTagType').value;
+  const taggedBy  = document.getElementById('editTaggedBy').value;
+  const condition = document.getElementById('editCondition').value;
 
   const res  = await fetch(`/quotes/{{ quote.id }}/update-item`, {
     method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({item_id:id, part_number:partNumber, description,
-      serial_number:sn, unit_price:price, quantity_requested:qty, notes,
+    body: JSON.stringify({item_id:id, unit_price:price, quantity_requested:qty, notes,
       lead_time:leadTime, price_type:ptype, warranty, trace_to:traceTo, tag_type:tagType,
       tagged_by:taggedBy, condition, no_quote: noQuote})
   });
@@ -1303,17 +1140,6 @@ async function saveItem() {
     document.getElementById(`tagtype-${id}`).textContent  = tagType;
     document.getElementById(`taggedby-${id}`).textContent = taggedBy;
     document.getElementById(`cond-${id}`).textContent     = condition;
-    // Update SN display
-    const snEl = document.getElementById(`sn-${id}`);
-    if (snEl) { snEl.textContent = sn; snEl.style.display = sn ? '' : 'none';
-      const snRow = snEl.previousSibling; }
-    // Update Notes display
-    const notesEl = document.getElementById(`notes-${id}`);
-    if (notesEl) {
-      notesEl.textContent = notes;
-      const wrap = document.getElementById(`notes-${id}-wrap`);
-      if (wrap) wrap.style.display = notes ? '' : 'none';
-    }
     const fmtTotal = data.total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     document.getElementById('grandTotal').textContent  = fmtTotal;
     document.getElementById('headerTotal').textContent = fmtTotal;
@@ -1321,138 +1147,8 @@ async function saveItem() {
       document.getElementById('quoteNumber').textContent = data.quote_number;
       document.title = data.quote_number;
     }
-
-    // Rebuild the edit button's onclick so re-opening the modal shows fresh saved values
-    const editBtn = document.querySelector(`#item-row-${id} button[onclick*="editItem(${id},"]`);
-    if (editBtn) {
-      const esc = s => (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      editBtn.setAttribute('onclick',
-        `editItem(${id}, ${noQuote ? 0 : price}, ${qty},` +
-        `'${esc(notes)}','${esc(leadTime)}','${esc(ptype)}','${esc(warranty)}',` +
-        `'${esc(traceTo)}','${esc(tagType)}','${esc(taggedBy)}','${esc(condition)}',` +
-        `'${esc(partNumber)}',${noQuote ? 1 : 0},'${esc(description)}','${esc(sn)}')`
-      );
-    }
-
     _closeModal();
   }
 }
-
-// ── Inventory PN Autocomplete ─────────────────────────────────────────────────
-(function () {
-  const inp      = document.getElementById('editPartNumber');
-  const dropdown = document.getElementById('pnDropdown');
-  const hint     = document.getElementById('pnInventoryHint');
-  let   debounce = null;
-  let   results  = [];
-
-  function fillFromInventory(item) {
-    // Part number + description
-    inp.value = item.part_number;
-    const descEl = document.getElementById('editDescription');
-    if (item.description) descEl.value = item.description;
-
-    // Condition
-    const csel = document.getElementById('editCondition');
-    if (item.condition) {
-      for (let o of csel.options) o.selected = (o.value === item.condition);
-    }
-
-    // Price — prefer unit_price, fall back to unit_cost
-    const priceEl = document.getElementById('editPrice');
-    const suggestedPrice = item.unit_price > 0 ? item.unit_price : item.unit_cost;
-    if (suggestedPrice > 0 && (!priceEl.value || parseFloat(priceEl.value) === 0)) {
-      priceEl.value = suggestedPrice.toFixed(2);
-    }
-
-    // Lead time — set to "Stock" if qty available
-    const leadEl = document.getElementById('editLeadTime');
-    if (!leadEl.value || leadEl.value === 'Stock') {
-      leadEl.value = item.qty_avail > 0 ? 'Stock' : 'TBD';
-    }
-
-    // Hint bar
-    document.getElementById('pnHintMfr').textContent = item.manufacturer || item.part_number;
-    document.getElementById('pnHintQty').textContent = item.qty_avail + ' ' + (item.uom || 'EA');
-    document.getElementById('pnHintLoc').textContent = item.location || '—';
-    hint.style.display = 'block';
-
-    closeDropdown();
-  }
-
-  function buildDropdown(items) {
-    if (!items.length) { closeDropdown(); return; }
-    results = items;
-    dropdown.innerHTML = items.map((it, idx) => `
-      <div class="pn-opt" data-idx="${idx}"
-           style="padding:8px 12px;cursor:pointer;border-bottom:1px solid #f0f0f0;font-size:.84rem;">
-        <div class="d-flex justify-content-between align-items-center">
-          <span style="font-family:monospace;font-weight:700;color:#1a3c6e;">${it.part_number}</span>
-          <span class="badge text-bg-secondary ms-2">${it.condition}</span>
-          <span class="ms-auto text-muted small">Avail: <strong>${it.qty_avail}</strong></span>
-        </div>
-        <div style="color:#555;font-size:.78rem;margin-top:1px;">
-          ${it.description || '<em class="text-muted">No description</em>'}
-          ${it.manufacturer ? '<span class="text-muted ms-2">· ' + it.manufacturer + '</span>' : ''}
-        </div>
-      </div>
-    `).join('');
-
-    dropdown.querySelectorAll('.pn-opt').forEach(el => {
-      el.addEventListener('mouseenter', () => el.style.background = '#f0f4ff');
-      el.addEventListener('mouseleave', () => el.style.background = '');
-      el.addEventListener('mousedown',  e => {
-        e.preventDefault();   // prevent blur firing before click
-        fillFromInventory(results[parseInt(el.dataset.idx)]);
-      });
-    });
-    dropdown.style.display = 'block';
-  }
-
-  function closeDropdown() { dropdown.style.display = 'none'; }
-
-  inp.addEventListener('input', () => {
-    const q = inp.value.trim();
-    hint.style.display = 'none';
-    if (q.length < 1) { closeDropdown(); return; }
-    clearTimeout(debounce);
-    debounce = setTimeout(() => {
-      fetch(`/api/inventory-search?q=${encodeURIComponent(q)}`)
-        .then(r => r.json())
-        .then(buildDropdown)
-        .catch(() => closeDropdown());
-    }, 200);
-  });
-
-  inp.addEventListener('keydown', e => {
-    const opts = dropdown.querySelectorAll('.pn-opt');
-    const cur  = dropdown.querySelector('.pn-opt.active');
-    let   idx  = cur ? parseInt(cur.dataset.idx) : -1;
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      idx = Math.min(idx + 1, opts.length - 1);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      idx = Math.max(idx - 1, 0);
-    } else if (e.key === 'Enter' && cur) {
-      e.preventDefault();
-      fillFromInventory(results[parseInt(cur.dataset.idx)]);
-      return;
-    } else if (e.key === 'Escape') {
-      closeDropdown(); return;
-    } else { return; }
-    opts.forEach(o => { o.classList.remove('active'); o.style.background = ''; });
-    if (opts[idx]) { opts[idx].classList.add('active'); opts[idx].style.background = '#f0f4ff'; }
-  });
-
-  // Close when focus leaves the field/dropdown
-  inp.addEventListener('blur', () => setTimeout(closeDropdown, 150));
-})();
-
-// ── Email Preview ─────────────────────────────────────────────────────────────
-function openEmailPreview() {
-  window.open('{{ url_for("preview_quote_email", quote_id=quote.id) }}', '_blank');
-}
-
 </script>
 {% endblock %}

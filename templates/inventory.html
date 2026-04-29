@@ -3,10 +3,7 @@
 {% block page_title %}Parts Inventory{% endblock %}
 
 {% block topbar_actions %}
-<button class="btn btn-sm btn-navy" data-bs-toggle="modal" data-bs-target="#addPartModal">
-  <i class="bi bi-plus-circle"></i> Add Part
-</button>
-<button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+<button class="btn btn-sm btn-navy" data-bs-toggle="modal" data-bs-target="#uploadModal">
   <i class="bi bi-upload"></i> Upload CSV / Excel
 </button>
 {% endblock %}
@@ -15,115 +12,58 @@
 <!-- Search bar -->
 <div class="card mb-3">
   <div class="card-body py-2">
-    <form class="d-flex gap-2" method="get" id="invSearchForm" onsubmit="return false">
-      <div class="position-relative flex-grow-1">
-        <i class="bi bi-search position-absolute text-muted"
-           style="left:10px;top:50%;transform:translateY(-50%);font-size:.85rem;pointer-events:none"></i>
-        <input type="search" name="q" id="invSearch" class="form-control form-control-sm ps-4"
-               placeholder="Search part number, description, S/N, condition, location…"
-               value="{{ q }}" autocomplete="off">
-      </div>
-      <span id="invMatchCount" class="text-muted small align-self-center text-nowrap" style="min-width:80px"></span>
-      <button type="button" id="invClearBtn" class="btn btn-sm btn-outline-secondary d-none"
-              onclick="clearInvSearch()">
-        <i class="bi bi-x-lg"></i> Clear
-      </button>
+    <form class="d-flex gap-2" method="get">
+      <input type="search" name="q" class="form-control form-control-sm" placeholder="Search part number or description…" value="{{ q }}">
+      <button class="btn btn-sm btn-navy">Search</button>
+      {% if q %}<a href="{{ url_for('inventory') }}" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
     </form>
   </div>
 </div>
 
 <div class="card">
   <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-    <strong id="invTotalLabel">{{ total }} Part{{ 's' if total != 1 }} in Database</strong>
-    <span id="invFilterLabel" class="text-muted small d-none"></span>
+    <strong>{{ total }} Part{{ 's' if total != 1 }} in Database</strong>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0" id="invTable">
         <thead class="table-light">
           <tr>
-            <th class="ps-3 sortable" data-col="0" data-type="text">
-              Part Number <span class="sort-icon">↕</span>
-            </th>
-            <th class="sortable" data-col="1" data-type="text">
-              Description <span class="sort-icon">↕</span>
-            </th>
-            <th class="sortable" data-col="2" data-type="text">
-              S/N <span class="sort-icon">↕</span>
-            </th>
-            <th class="sortable" data-col="3" data-type="text">
-              Cond <span class="sort-icon">↕</span>
-            </th>
-            <th class="sortable" data-col="4" data-type="num">
-              Qty <span class="sort-icon">↕</span>
-            </th>
-            <th class="sortable" data-col="5" data-type="num">
-              Unit Cost <span class="sort-icon">↕</span>
-            </th>
-            <th class="sortable" data-col="6" data-type="num">
-              Unit Price <span class="sort-icon">↕</span>
-            </th>
-            <th class="sortable" data-col="7" data-type="text">
-              Location <span class="sort-icon">↕</span>
-            </th>
-            <th class="sortable" data-col="8" data-type="text">
-              UOM <span class="sort-icon">↕</span>
-            </th>
-            <th style="width:44px" title="Documents"></th>
+            <th class="ps-3">Part Number</th>
+            <th>Description</th>
+            <th>Cond</th>
+            <th>Qty</th>
+            <th>Unit Cost</th>
+            <th>Unit Price</th>
+            <th>Location</th>
+            <th>UOM</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
         {% for p in parts %}
         <tr id="row-{{ p.id }}">
-          <td class="ps-3" style="position:relative">
-            <code class="text-navy fw-bold pn-trigger" data-pid="{{ p.id }}"
-                  style="cursor:pointer;border-bottom:1px dashed #1a3c6e">
-              {{ p.part_number }}
-            </code>
-            <!-- History dropdown -->
-            <div id="hist-{{ p.id }}"
-                 style="display:none;position:absolute;top:100%;left:0;z-index:1050;
-                        width:560px;background:#fff;border:1px solid #dee2e6;
-                        border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);padding:0">
-            </div>
-          </td>
+          <td class="ps-3"><code class="text-navy fw-bold">{{ p.part_number }}</code></td>
           <td>{{ p.description or '—' }}</td>
-          <td><small class="text-muted font-monospace">{{ p.serial_number or '—' }}</small></td>
           <td><span class="badge text-bg-secondary">{{ p.condition }}</span></td>
           <td class="fw-semibold {% if p.quantity == 0 %}text-danger{% endif %}">{{ p.quantity }}</td>
-          <td>${{ '%.2f'|format(p.unit_cost or 0) }}</td>
-          <td class="fw-semibold">${{ '%.2f'|format(p.unit_price or 0) }}</td>
+          <td>${{ '%.2f'|format(p.unit_cost) }}</td>
+          <td class="fw-semibold">${{ '%.2f'|format(p.unit_price) }}</td>
           <td><small class="text-muted">{{ p.location or '—' }}</small></td>
           <td>{{ p.uom }}</td>
-          <td class="text-center px-0">
-            <button class="btn btn-sm py-0 border-0 doc-indicator"
-                    onclick="openDocViewer({{ p.id }}, '{{ p.part_number }}')"
-                    title="{% if p.doc_count %}{{ p.doc_count }} document{{ 's' if p.doc_count != 1 }}{% else %}No documents{% endif %}"
-                    style="background:none;font-size:1.1rem;{% if not p.doc_count %}opacity:.25;{% endif %}">
-              <i class="bi bi-file-earmark-pdf{% if p.doc_count %}-fill{% endif %}"
-                 style="color:{% if p.doc_count %}#16a34a{% else %}#6c757d{% endif %}"></i>
-            </button>
-          </td>
           <td class="text-end pe-3">
-            <button class="btn btn-sm btn-outline-secondary py-0 me-1"
-                    onclick="editRow({{ p.id }})" title="Edit">
+            <button class="btn btn-sm btn-outline-secondary py-0 me-1" onclick="editRow({{ p.id }}, this)" title="Edit">
               <i class="bi bi-pencil"></i>
             </button>
             <form method="post" action="{{ url_for('delete_part', pid=p.id) }}" style="display:inline"
                   onsubmit="return confirm('Delete {{ p.part_number }}?')">
-              <button class="btn btn-sm btn-outline-danger py-0" title="Delete">
-                <i class="bi bi-trash"></i>
-              </button>
+              <button class="btn btn-sm btn-outline-danger py-0" title="Delete"><i class="bi bi-trash"></i></button>
             </form>
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="11" class="text-center py-5 text-muted">
-          No parts yet.
-          <button class="btn btn-sm btn-navy ms-2" data-bs-toggle="modal" data-bs-target="#uploadModal">
-            Upload your inventory
-          </button>
+        <tr><td colspan="9" class="text-center py-5 text-muted">
+          No parts yet. <button class="btn btn-sm btn-navy ms-2" data-bs-toggle="modal" data-bs-target="#uploadModal">Upload your inventory</button>
         </td></tr>
         {% endfor %}
         </tbody>
@@ -132,267 +72,36 @@
   </div>
 </div>
 
-<!-- Add Part Modal -->
-<div class="modal fade" id="addPartModal" tabindex="-1">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header py-2 border-bottom">
-        <h5 class="modal-title"><i class="bi bi-plus-circle text-navy me-2"></i>Add Part</h5>
-        <button class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <!-- Part Number bar -->
-        <div class="row g-2 mb-3 pb-3 border-bottom">
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Part Number <span class="text-danger">*</span></label>
-            <input id="ap_part_number" name="part_number" class="form-control font-monospace text-uppercase"
-                   placeholder="e.g. 011-00883-20" required>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-semibold">Condition</label>
-            <select id="ap_condition" name="condition" class="form-select">
-              <option value="SV">SV — Serviceable</option>
-              <option value="OH">OH — Overhauled</option>
-              <option value="AR">AR — As Removed</option>
-              <option value="NE">NE — New</option>
-              <option value="RP">RP — Repaired</option>
-              <option value="NS">NS — New Surplus</option>
-              <option value="FN">FN — Factory New</option>
-            </select>
-          </div>
-          <div class="col-md-2">
-            <label class="form-label fw-semibold">Qty On Hand</label>
-            <input id="ap_quantity" name="quantity" type="number" min="0" class="form-control" value="0">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-semibold">Qty Available</label>
-            <input id="ap_qty_avail" name="qty_avail" type="number" min="0" class="form-control" value="0">
-          </div>
-        </div>
-
-        <div class="row g-3">
-          <!-- LEFT COLUMN -->
-          <div class="col-md-6">
-            <div class="mb-3">
-              <label class="form-label">Description <span class="text-danger">*</span></label>
-              <input id="ap_description" name="description" class="form-control" placeholder="Part description" required>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">NSN</label>
-              <input id="ap_nsn" name="nsn" class="form-control font-monospace" placeholder="National Stock Number">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Manufacturer</label>
-              <input id="ap_manufacturer" name="manufacturer" class="form-control" placeholder="e.g. Honeywell">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Alternate Part #</label>
-              <input id="ap_alt_part_number" name="alt_part_number" class="form-control font-monospace text-uppercase"
-                     placeholder="Alternate / interchangeable PN">
-            </div>
-            <div class="row g-2 mb-3">
-              <div class="col-6">
-                <label class="form-label">Master Cost</label>
-                <div class="input-group input-group-sm">
-                  <span class="input-group-text">$</span>
-                  <input id="ap_unit_cost" name="unit_cost" type="number" step="0.01" min="0"
-                         class="form-control" placeholder="0.00">
-                </div>
-              </div>
-              <div class="col-6">
-                <label class="form-label">Master Sell</label>
-                <div class="input-group input-group-sm">
-                  <span class="input-group-text">$</span>
-                  <input id="ap_unit_price" name="unit_price" type="number" step="0.01" min="0"
-                         class="form-control" placeholder="0.00">
-                </div>
-              </div>
-            </div>
-            <div class="row g-2 mb-3">
-              <div class="col-6">
-                <label class="form-label">List Price</label>
-                <div class="input-group input-group-sm">
-                  <span class="input-group-text">$</span>
-                  <input id="ap_list_price" name="list_price" type="number" step="0.01" min="0"
-                         class="form-control" placeholder="0.00">
-                </div>
-              </div>
-              <div class="col-6">
-                <label class="form-label">Core Charges</label>
-                <div class="input-group input-group-sm">
-                  <span class="input-group-text">$</span>
-                  <input id="ap_core_charges" name="core_charges" type="number" step="0.01" min="0"
-                         class="form-control" placeholder="0.00">
-                </div>
-              </div>
-            </div>
-            <div class="row g-2 mb-3">
-              <div class="col-6">
-                <label class="form-label">Cycle Date</label>
-                <input id="ap_cycle_date" name="cycle_date" type="date" class="form-control">
-              </div>
-              <div class="col-6">
-                <label class="form-label">Labor Time</label>
-                <input id="ap_labor_time" name="labor_time" class="form-control" placeholder="e.g. 2.5 hrs">
-              </div>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Minimum Stock Required</label>
-              <input id="ap_min_stock" name="min_stock" type="number" min="0" class="form-control" value="0">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">FAA AD's</label>
-              <input id="ap_faa_ads" name="faa_ads" class="form-control" placeholder="Applicable FAA Airworthiness Directives">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">EASA AD's</label>
-              <input id="ap_easa_ads" name="easa_ads" class="form-control" placeholder="Applicable EASA Airworthiness Directives">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Alert Note</label>
-              <textarea id="ap_alert_note" name="alert_note" class="form-control" rows="2"
-                        placeholder="Internal alert or warning for this part"></textarea>
-            </div>
-          </div>
-
-          <!-- RIGHT COLUMN -->
-          <div class="col-md-6">
-            <div class="mb-3">
-              <label class="form-label">Aircraft</label>
-              <input id="ap_aircraft" name="aircraft" class="form-control" placeholder="e.g. B737, A320, C172">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Unit of Measure</label>
-              <select id="ap_uom" name="uom" class="form-select">
-                <option value="EA" selected>EA — Each</option>
-                <option value="FT">FT — Feet</option>
-                <option value="IN">IN — Inches</option>
-                <option value="M">M — Meters</option>
-                <option value="LB">LB — Pounds</option>
-                <option value="KG">KG — Kilograms</option>
-                <option value="L">L — Litres</option>
-                <option value="GAL">GAL — Gallons</option>
-                <option value="PR">PR — Pair</option>
-                <option value="SET">SET — Set</option>
-                <option value="KIT">KIT — Kit</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">GL Category <span class="text-danger">*</span></label>
-              <input id="ap_gl_category" name="gl_category" class="form-control"
-                     value="1200 | Inventory - rotables">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Location</label>
-              <input id="ap_location" name="location" class="form-control" placeholder="Shelf / bin location">
-            </div>
-            <div class="mb-3 pb-3 border-bottom">
-              <div class="d-flex gap-4">
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="ap_hazmat" name="is_hazmat">
-                  <label class="form-check-label" for="ap_hazmat">Hazmat</label>
-                </div>
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="ap_serialized" name="is_serialized">
-                  <label class="form-check-label" for="ap_serialized">It's Serialized?</label>
-                </div>
-                <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="ap_shelf_life" name="has_shelf_life">
-                  <label class="form-check-label" for="ap_shelf_life">Has Shelf Life?</label>
-                </div>
-              </div>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Part Category <span class="text-danger">*</span></label>
-              <select id="ap_part_category" name="part_category" class="form-select">
-                <option value="OEM" selected>OEM</option>
-                <option value="PMA">PMA</option>
-                <option value="DER">DER</option>
-                <option value="Standard">Standard</option>
-                <option value="Consumable">Consumable</option>
-                <option value="Expendable">Expendable</option>
-                <option value="Rotable">Rotable</option>
-                <option value="Repairable">Repairable</option>
-                <option value="Tool">Tool</option>
-                <option value="GSE">GSE</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Model #</label>
-              <input id="ap_model_number" name="model_number" class="form-control" placeholder="Model number">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Serial Number</label>
-              <input id="ap_serial_number" name="serial_number" class="form-control font-monospace"
-                     placeholder="Serial number (if serialized)">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Marketplaces</label>
-              <input id="ap_marketplaces" name="marketplaces" class="form-control"
-                     placeholder="Export to Marketplaces (ILS, Locatory…)">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Notes</label>
-              <textarea id="ap_notes" name="notes" class="form-control" rows="3"
-                        placeholder="Internal notes"></textarea>
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Service Bulletin</label>
-              <textarea id="ap_service_bulletin" name="service_bulletin" class="form-control" rows="3"
-                        placeholder="Applicable service bulletins"></textarea>
-            </div>
-          </div>
-        </div>
-
-        <div id="addPartError" class="alert alert-danger py-2 small d-none mt-2"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" class="btn btn-navy px-4" onclick="submitAddPart()">
-          <i class="bi bi-check-lg me-1"></i> Save
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Upload Modal -->
 <div class="modal fade" id="uploadModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-upload"></i> Upload Inventory File</h5>
+        <h5 class="modal-title">Upload Inventory File</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <form method="post" action="{{ url_for('upload_inventory') }}" enctype="multipart/form-data">
         <div class="modal-body">
           <div class="mb-3">
-            <label class="form-label fw-semibold">CSV or Excel File (Stockline format supported)</label>
+            <label class="form-label fw-semibold">CSV or Excel File</label>
             <input type="file" name="file" class="form-control" accept=".csv,.xlsx,.xls" required>
-            <div class="form-text mt-1">
-              Columns auto-detected from your stockline export:
-              <code>PN, PN Description, Manufacturer, Cond, Location, Qty OH, Qty Avail, Unit Cost, UOM, Ser Num, Alt PN</code> and more.
-            </div>
+            <div class="form-text">Column names recognised: <code>Part Number / P/N / PN</code>, Description, Condition, Qty / Quantity, Unit Cost, Unit Price / Sell Price, Location, UOM</div>
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Import Mode</label>
             <div class="form-check">
               <input class="form-check-input" type="radio" name="mode" value="merge" id="mMerge" checked>
-              <label class="form-check-label" for="mMerge">
-                <strong>Merge</strong> — add new parts, update existing records
-              </label>
+              <label class="form-check-label" for="mMerge">Merge — add new parts, update existing</label>
             </div>
             <div class="form-check">
               <input class="form-check-input" type="radio" name="mode" value="replace" id="mReplace">
-              <label class="form-check-label" for="mReplace">
-                <strong>Replace</strong> — clear all parts first, then import fresh
-              </label>
+              <label class="form-check-label" for="mReplace">Replace — clear all parts first</label>
             </div>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-navy"><i class="bi bi-cloud-upload"></i> Upload & Import</button>
+          <button type="submit" class="btn btn-navy">Upload & Import</button>
         </div>
       </form>
     </div>
@@ -401,64 +110,13 @@
 
 <!-- Inline Edit Modal -->
 <div class="modal fade" id="editModal" tabindex="-1">
-  <div class="modal-dialog modal-lg">
+  <div class="modal-dialog">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="editModalTitle">Edit Part</h5>
-        <button class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-0" id="editBody"></div>
+      <div class="modal-header"><h5 class="modal-title">Edit Part</h5><button class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body" id="editBody"></div>
     </div>
   </div>
 </div>
-
-<!-- Document Viewer Modal -->
-<div class="modal fade" id="docViewerModal" tabindex="-1">
-  <div class="modal-dialog modal-xl modal-dialog-centered" style="max-width:960px">
-    <div class="modal-content">
-      <div class="modal-header py-2 border-bottom">
-        <div class="d-flex align-items-center gap-3 flex-grow-1 overflow-hidden">
-          <i class="bi bi-file-earmark-pdf-fill text-danger fs-5 flex-shrink-0"></i>
-          <div class="overflow-hidden">
-            <div class="fw-semibold text-truncate" id="dvFilename" style="max-width:540px"></div>
-            <div class="text-muted small" id="dvLabel"></div>
-          </div>
-        </div>
-        <div class="d-flex align-items-center gap-2 ms-3 flex-shrink-0">
-          <span class="text-muted small" id="dvCounter"></span>
-          <button class="btn btn-sm btn-outline-secondary py-0 px-2" id="dvPrev" onclick="dvNav(-1)" title="Previous">
-            <i class="bi bi-chevron-left"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-secondary py-0 px-2" id="dvNext" onclick="dvNav(1)" title="Next">
-            <i class="bi bi-chevron-right"></i>
-          </button>
-          <a id="dvDownload" href="#" target="_blank" class="btn btn-sm btn-outline-primary py-0 px-2" title="Open in new tab">
-            <i class="bi bi-box-arrow-up-right"></i>
-          </a>
-          <button class="btn-close ms-1" data-bs-dismiss="modal"></button>
-        </div>
-      </div>
-      <div class="modal-body p-0" id="dvBody" style="position:relative;overflow:hidden;background:#525659">
-        <div id="dvLoading" style="display:flex;align-items:center;justify-content:center;background:#f8f9fa;width:100%">
-          <div class="text-center text-muted py-5">
-            <div class="spinner-border spinner-border-sm mb-2"></div>
-            <div class="small">Loading document…</div>
-          </div>
-        </div>
-        <div id="dvEmpty" style="display:none;align-items:center;justify-content:center;background:#f8f9fa;width:100%">
-          <div class="text-center text-muted py-5">
-            <i class="bi bi-file-earmark-x fs-1 d-block mb-2 text-secondary"></i>
-            No documents for this part.
-          </div>
-        </div>
-        <!-- embed renders PDF scaled-to-fit in all browsers including Safari -->
-        <embed id="dvFrame" src="" type="application/pdf"
-               style="width:100%;border:none;display:none;vertical-align:top">
-      </div>
-    </div>
-  </div>
-</div>
-
 {% endblock %}
 
 {% block scripts %}
@@ -466,378 +124,41 @@
 const rows = {};
 {% for p in parts %}
 rows[{{ p.id }}] = {
-  part_number:     '{{ p.part_number }}',
-  alt_part_number: '{{ (p.alt_part_number or '')|replace("'","\\'")|replace('"','\\"') }}',
-  description:     '{{ (p.description or '')|replace("'","\\'")|replace('"','\\"') }}',
-  serial_number:   '{{ (p.serial_number or '')|replace("'","\\'")|replace('"','\\"') }}',
-  manufacturer:    '{{ (p.manufacturer or '')|replace("'","\\'")|replace('"','\\"') }}',
-  condition:       '{{ p.condition or "SV" }}',
-  quantity:        {{ p.quantity or 0 }},
-  qty_avail:       {{ p.qty_avail or 0 }},
-  unit_cost:       {{ p.unit_cost or 0 }},
-  unit_price:      {{ p.unit_price or 0 }},
-  list_price:      {{ p.list_price or 0 }},
-  core_charges:    {{ p.core_charges or 0 }},
-  location:        '{{ (p.location or '')|replace("'","\\'")|replace('"','\\"') }}',
-  uom:             '{{ p.uom or "EA" }}',
-  nsn:             '{{ (p.nsn or '')|replace("'","\\'")|replace('"','\\"') }}',
-  cycle_date:      '{{ p.cycle_date or "" }}',
-  labor_time:      '{{ (p.labor_time or '')|replace("'","\\'")|replace('"','\\"') }}',
-  min_stock:       {{ p.min_stock or 0 }},
-  faa_ads:         '{{ (p.faa_ads or '')|replace("'","\\'")|replace('"','\\"') }}',
-  easa_ads:        '{{ (p.easa_ads or '')|replace("'","\\'")|replace('"','\\"') }}',
-  alert_note:      '{{ (p.alert_note or '')|replace("'","\\'")|replace('"','\\"') }}',
-  aircraft:        '{{ (p.aircraft or '')|replace("'","\\'")|replace('"','\\"') }}',
-  gl_category:     '{{ (p.gl_category or "1200 | Inventory - rotables")|replace("'","\\'")|replace('"','\\"') }}',
-  is_hazmat:       {{ 1 if p.is_hazmat else 0 }},
-  is_serialized:   {{ 1 if p.is_serialized else 0 }},
-  has_shelf_life:  {{ 1 if p.has_shelf_life else 0 }},
-  part_category:   '{{ p.part_category or "OEM" }}',
-  model_number:    '{{ (p.model_number or '')|replace("'","\\'")|replace('"','\\"') }}',
-  marketplaces:    '{{ (p.marketplaces or '')|replace("'","\\'")|replace('"','\\"') }}',
-  notes:           '{{ (p.notes or '')|replace("'","\\'")|replace('"','\\"') }}',
-  service_bulletin:'{{ (p.service_bulletin or '')|replace("'","\\'")|replace('"','\\"') }}'
+  part_number:'{{ p.part_number }}', description:'{{ (p.description or '')|replace("'","\\'")|replace('"','\\"') }}',
+  condition:'{{ p.condition }}', quantity:{{ p.quantity }},
+  unit_cost:{{ p.unit_cost }}, unit_price:{{ p.unit_price }},
+  location:'{{ (p.location or '')|replace("'","\\'")|replace('"','\\"') }}', uom:'{{ p.uom }}'
 };
 {% endfor %}
 
 function editRow(id) {
   const p = rows[id];
-  const conds = ['OH','AR','SV','NE','RP','NS','FN'];
-  const uoms  = ['EA','FT','IN','M','LB','KG','L','GAL','PR','SET','KIT'];
-  const cats  = ['OEM','PMA','DER','Standard','Consumable','Expendable','Rotable','Repairable','Tool','GSE'];
-
-  document.getElementById('editModalTitle').textContent = 'Edit Part — ' + p.part_number;
   document.getElementById('editBody').innerHTML = `
-    <ul class="nav nav-tabs px-3 pt-2 flex-shrink-0" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-details-${id}" type="button" role="tab">
-          <i class="bi bi-pencil"></i> Details
-        </button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-docs-${id}" type="button" role="tab"
-          onclick="loadPartDocs(${id})">
-          <i class="bi bi-file-earmark-pdf text-danger"></i> Documents
-        </button>
-      </li>
-    </ul>
-    <div class="tab-content" style="overflow-y:auto;max-height:calc(85vh - 130px)">
-
-      <!-- ── Details tab ── -->
-      <div class="tab-pane fade show active p-3" id="tab-details-${id}" role="tabpanel">
-        <form onsubmit="saveRow(event,${id})">
-
-          <!-- Top bar: PN / Condition / Qty / Qty Avail -->
-          <div class="row g-2 mb-3 pb-3 border-bottom">
-            <div class="col-md-4">
-              <label class="form-label form-label-sm fw-semibold">Part Number <span class="text-danger">*</span></label>
-              <input name="part_number" class="form-control form-control-sm font-monospace text-uppercase"
-                     value="${p.part_number}" required>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label form-label-sm fw-semibold">Condition</label>
-              <select name="condition" class="form-select form-select-sm">
-                ${conds.map(c=>`<option value="${c}"${p.condition===c?' selected':''}>${c}</option>`).join('')}
-              </select>
-            </div>
-            <div class="col-md-2">
-              <label class="form-label form-label-sm fw-semibold">Qty On Hand</label>
-              <input name="quantity" type="number" min="0" class="form-control form-control-sm" value="${p.quantity}">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label form-label-sm fw-semibold">Qty Available</label>
-              <input name="qty_avail" type="number" min="0" class="form-control form-control-sm" value="${p.qty_avail}">
-            </div>
-          </div>
-
-          <div class="row g-3">
-            <!-- LEFT -->
-            <div class="col-md-6">
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Description <span class="text-danger">*</span></label>
-                <input name="description" class="form-control form-control-sm" value="${p.description}" required>
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">NSN</label>
-                <input name="nsn" class="form-control form-control-sm font-monospace" value="${p.nsn}" placeholder="National Stock Number">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Manufacturer</label>
-                <input name="manufacturer" class="form-control form-control-sm" value="${p.manufacturer}">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Alternate Part #</label>
-                <input name="alt_part_number" class="form-control form-control-sm font-monospace text-uppercase"
-                       value="${p.alt_part_number}">
-              </div>
-              <div class="row g-2 mb-2">
-                <div class="col-6">
-                  <label class="form-label form-label-sm">Master Cost</label>
-                  <div class="input-group input-group-sm">
-                    <span class="input-group-text">$</span>
-                    <input name="unit_cost" type="number" step="0.01" min="0" class="form-control form-control-sm" value="${p.unit_cost}">
-                  </div>
-                </div>
-                <div class="col-6">
-                  <label class="form-label form-label-sm">Master Sell</label>
-                  <div class="input-group input-group-sm">
-                    <span class="input-group-text">$</span>
-                    <input name="unit_price" type="number" step="0.01" min="0" class="form-control form-control-sm" value="${p.unit_price}">
-                  </div>
-                </div>
-              </div>
-              <div class="row g-2 mb-2">
-                <div class="col-6">
-                  <label class="form-label form-label-sm">List Price</label>
-                  <div class="input-group input-group-sm">
-                    <span class="input-group-text">$</span>
-                    <input name="list_price" type="number" step="0.01" min="0" class="form-control form-control-sm" value="${p.list_price}">
-                  </div>
-                </div>
-                <div class="col-6">
-                  <label class="form-label form-label-sm">Core Charges</label>
-                  <div class="input-group input-group-sm">
-                    <span class="input-group-text">$</span>
-                    <input name="core_charges" type="number" step="0.01" min="0" class="form-control form-control-sm" value="${p.core_charges}">
-                  </div>
-                </div>
-              </div>
-              <div class="row g-2 mb-2">
-                <div class="col-6">
-                  <label class="form-label form-label-sm">Cycle Date</label>
-                  <input name="cycle_date" type="date" class="form-control form-control-sm" value="${p.cycle_date}">
-                </div>
-                <div class="col-6">
-                  <label class="form-label form-label-sm">Labor Time</label>
-                  <input name="labor_time" class="form-control form-control-sm" value="${p.labor_time}" placeholder="e.g. 2.5 hrs">
-                </div>
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Minimum Stock Required</label>
-                <input name="min_stock" type="number" min="0" class="form-control form-control-sm" value="${p.min_stock}">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">FAA AD's</label>
-                <input name="faa_ads" class="form-control form-control-sm" value="${p.faa_ads}">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">EASA AD's</label>
-                <input name="easa_ads" class="form-control form-control-sm" value="${p.easa_ads}">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Alert Note</label>
-                <textarea name="alert_note" class="form-control form-control-sm" rows="2">${p.alert_note}</textarea>
-              </div>
-            </div>
-
-            <!-- RIGHT -->
-            <div class="col-md-6">
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Aircraft</label>
-                <input name="aircraft" class="form-control form-control-sm" value="${p.aircraft}" placeholder="e.g. B737, A320">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Unit of Measure</label>
-                <select name="uom" class="form-select form-select-sm">
-                  ${uoms.map(u=>`<option value="${u}"${p.uom===u?' selected':''}>${u}</option>`).join('')}
-                </select>
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">GL Category</label>
-                <input name="gl_category" class="form-control form-control-sm" value="${p.gl_category}">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Location</label>
-                <input name="location" class="form-control form-control-sm" value="${p.location}">
-              </div>
-              <div class="mb-3 pb-2 border-bottom">
-                <div class="d-flex gap-4 pt-1">
-                  <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="is_hazmat" id="eh_hazmat_${id}"
-                           ${p.is_hazmat?'checked':''}>
-                    <label class="form-check-label form-label-sm" for="eh_hazmat_${id}">Hazmat</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="is_serialized" id="eh_ser_${id}"
-                           ${p.is_serialized?'checked':''}>
-                    <label class="form-check-label form-label-sm" for="eh_ser_${id}">It's Serialized?</label>
-                  </div>
-                  <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="has_shelf_life" id="eh_shelf_${id}"
-                           ${p.has_shelf_life?'checked':''}>
-                    <label class="form-check-label form-label-sm" for="eh_shelf_${id}">Has Shelf Life?</label>
-                  </div>
-                </div>
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Part Category</label>
-                <select name="part_category" class="form-select form-select-sm">
-                  ${cats.map(c=>`<option value="${c}"${p.part_category===c?' selected':''}>${c}</option>`).join('')}
-                </select>
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Model #</label>
-                <input name="model_number" class="form-control form-control-sm" value="${p.model_number}">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Serial Number</label>
-                <input name="serial_number" class="form-control form-control-sm font-monospace"
-                       value="${p.serial_number}" placeholder="—">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Marketplaces</label>
-                <input name="marketplaces" class="form-control form-control-sm" value="${p.marketplaces}"
-                       placeholder="ILS, Locatory…">
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Notes</label>
-                <textarea name="notes" class="form-control form-control-sm" rows="2">${p.notes}</textarea>
-              </div>
-              <div class="mb-2">
-                <label class="form-label form-label-sm">Service Bulletin</label>
-                <textarea name="service_bulletin" class="form-control form-control-sm" rows="2">${p.service_bulletin}</textarea>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-3 pt-2 border-top text-end">
-            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-            <button type="submit" class="btn btn-navy btn-sm ms-2"><i class="bi bi-save"></i> Save</button>
-          </div>
-        </form>
+    <form onsubmit="saveRow(event,${id})">
+      <div class="row g-2">
+        <div class="col-6"><label class="form-label">Part Number</label>
+          <input name="part_number" class="form-control" value="${p.part_number}" required></div>
+        <div class="col-6"><label class="form-label">Condition</label>
+          <input name="condition" class="form-control" value="${p.condition}"></div>
+        <div class="col-12"><label class="form-label">Description</label>
+          <input name="description" class="form-control" value="${p.description}"></div>
+        <div class="col-4"><label class="form-label">Qty</label>
+          <input name="quantity" type="number" class="form-control" value="${p.quantity}"></div>
+        <div class="col-4"><label class="form-label">Unit Cost</label>
+          <input name="unit_cost" type="number" step="0.01" class="form-control" value="${p.unit_cost}"></div>
+        <div class="col-4"><label class="form-label">Unit Price</label>
+          <input name="unit_price" type="number" step="0.01" class="form-control" value="${p.unit_price}"></div>
+        <div class="col-6"><label class="form-label">Location</label>
+          <input name="location" class="form-control" value="${p.location}"></div>
+        <div class="col-6"><label class="form-label">UOM</label>
+          <input name="uom" class="form-control" value="${p.uom}"></div>
       </div>
-
-      <!-- ── Documents tab ── -->
-      <div class="tab-pane fade p-3" id="tab-docs-${id}" role="tabpanel">
-        <div id="docs-list-${id}" class="mb-3">
-          <div class="text-muted small py-2">Click the Documents tab to load files.</div>
-        </div>
-        <hr class="my-2">
-        <div class="bg-light rounded p-3">
-          <div class="fw-semibold small mb-2"><i class="bi bi-upload"></i> Upload PDF Document</div>
-          <div class="row g-2 align-items-end">
-            <div class="col-5">
-              <label class="form-label small mb-1">Label <span class="text-muted fw-normal">(optional)</span></label>
-              <input id="doc-label-${id}" class="form-control form-control-sm" placeholder="e.g. 8130, CoC, Test Report">
-            </div>
-            <div class="col-5">
-              <label class="form-label small mb-1">PDF File</label>
-              <input type="file" id="doc-file-${id}" accept=".pdf" class="form-control form-control-sm">
-            </div>
-            <div class="col-2">
-              <button class="btn btn-navy btn-sm w-100" onclick="uploadPartDoc(${id})">
-                <i class="bi bi-upload"></i>
-              </button>
-            </div>
-          </div>
-          <div id="doc-upload-status-${id}" class="mt-2 small"></div>
-        </div>
+      <div class="mt-3 text-end">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-navy ms-2">Save Changes</button>
       </div>
-    </div>`;
-  // Make modal wider for all these fields
-  const dlg = document.querySelector('#editModal .modal-dialog');
-  if (dlg) dlg.style.maxWidth = '860px';
+    </form>`;
   new bootstrap.Modal(document.getElementById('editModal')).show();
-}
-
-function updateDocIcon(pid, hasDoc) {
-  const row = document.getElementById('row-' + pid);
-  if (!row) return;
-  const btn = row.querySelector('.doc-indicator');
-  if (!btn) return;
-  const icon = btn.querySelector('i');
-  if (hasDoc) {
-    btn.style.opacity = '1';
-    btn.title = 'View documents';
-    icon.className = 'bi bi-file-earmark-pdf-fill';
-    icon.style.color = '#16a34a';
-  } else {
-    btn.style.opacity = '.25';
-    btn.title = 'No documents';
-    icon.className = 'bi bi-file-earmark-pdf';
-    icon.style.color = '#6c757d';
-  }
-}
-
-async function loadPartDocs(pid) {
-  const el = document.getElementById('docs-list-'+pid);
-  if (!el) return;
-  el.innerHTML = '<div class="text-muted small py-2">Loading…</div>';
-  try {
-    const res  = await fetch('/api/part-docs/'+pid, {credentials:'same-origin'});
-    const docs = await res.json();
-    if (!docs.length) {
-      el.innerHTML = '<div class="text-muted small py-2">No documents uploaded yet.</div>';
-      return;
-    }
-    el.innerHTML = docs.map(d => `
-      <div class="d-flex align-items-center gap-2 mb-2 p-2 border rounded bg-white">
-        <i class="bi bi-file-earmark-pdf text-danger fs-5 flex-shrink-0"></i>
-        <div class="flex-grow-1 overflow-hidden">
-          <div class="fw-semibold small text-truncate">${d.filename}</div>
-          ${d.label ? `<div class="text-muted" style="font-size:.75rem">${d.label}</div>` : ''}
-          <div class="text-muted" style="font-size:.7rem">${(d.uploaded_at||'').slice(0,16)}</div>
-        </div>
-        <a href="/inventory/part/${pid}/doc/${d.id}/view" target="_blank"
-           class="btn btn-sm btn-outline-primary py-0 px-2 flex-shrink-0" style="font-size:.75rem">
-          <i class="bi bi-eye"></i> View
-        </a>
-        <button onclick="deletePartDoc(${pid},${d.id},this)"
-                class="btn btn-sm btn-outline-danger py-0 px-2 flex-shrink-0" style="font-size:.75rem">
-          <i class="bi bi-trash"></i>
-        </button>
-      </div>`).join('');
-  } catch(e) {
-    el.innerHTML = '<div class="text-danger small py-2">Error loading documents.</div>';
-  }
-}
-
-async function uploadPartDoc(pid) {
-  const fileInput = document.getElementById('doc-file-'+pid);
-  const label     = (document.getElementById('doc-label-'+pid).value||'').trim();
-  const status    = document.getElementById('doc-upload-status-'+pid);
-  if (!fileInput || !fileInput.files[0]) {
-    status.innerHTML = '<span class="text-warning">Please select a PDF file first.</span>';
-    return;
-  }
-  status.innerHTML = '<span class="text-muted"><i class="bi bi-hourglass-split"></i> Uploading…</span>';
-  const fd = new FormData();
-  fd.append('file', fileInput.files[0]);
-  fd.append('label', label);
-  try {
-    const res  = await fetch('/inventory/part/'+pid+'/attach', {method:'POST', body:fd, credentials:'same-origin'});
-    const data = await res.json();
-    if (data.success) {
-      status.innerHTML = '<span class="text-success"><i class="bi bi-check-circle"></i> Uploaded successfully</span>';
-      fileInput.value = '';
-      document.getElementById('doc-label-'+pid).value = '';
-      loadPartDocs(pid);
-      updateDocIcon(pid, true);
-    } else {
-      status.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle"></i> ${data.error||'Upload failed'}</span>`;
-    }
-  } catch(e) {
-    status.innerHTML = '<span class="text-danger">Upload error — please try again.</span>';
-  }
-}
-
-async function deletePartDoc(pid, docId, btn) {
-  if (!confirm('Delete this document? This cannot be undone.')) return;
-  btn.disabled = true;
-  try {
-    const res  = await fetch('/inventory/part/'+pid+'/doc/'+docId+'/delete', {method:'POST', credentials:'same-origin'});
-    const data = await res.json();
-    if (data.success) {
-      await loadPartDocs(pid);
-      // Check remaining doc count from the refreshed list
-      const listEl = document.getElementById('docs-list-'+pid);
-      const remaining = listEl ? listEl.querySelectorAll('.border').length : 0;
-      updateDocIcon(pid, remaining > 0);
-    }
-  } catch(e) {
-    btn.disabled = false;
-    alert('Delete failed — please try again.');
-  }
 }
 
 async function saveRow(e, id) {
@@ -846,469 +167,6 @@ async function saveRow(e, id) {
   const res = await fetch(`/inventory/edit/${id}`, {method:'POST', body:fd});
   const data = await res.json();
   if (data.success) location.reload();
-  else alert('Save failed: ' + (data.error || 'unknown error'));
 }
-
-// ── Column Sorting ────────────────────────────────────────────────────────────
-(function () {
-  const table  = document.getElementById('invTable');
-  const tbody  = table.querySelector('tbody');
-  let lastCol  = null;
-  let lastDir  = 'asc';
-
-  // Natural sort: handles mixed alphanumeric like "011-00883-20" vs "2524440-6"
-  function naturalVal(str) {
-    // Split into numeric and non-numeric chunks for correct ordering
-    return str.replace(/(\d+)/g, m => m.padStart(20, '0')).toLowerCase();
-  }
-
-  table.querySelectorAll('th.sortable').forEach(th => {
-    th.addEventListener('click', () => {
-      const col     = parseInt(th.dataset.col);
-      const type    = th.dataset.type;          // 'text' or 'num'
-      const dir     = (lastCol === col && lastDir === 'asc') ? 'desc' : 'asc';
-
-      // Update header indicators and icons
-      table.querySelectorAll('th.sortable').forEach(h => {
-        h.classList.remove('asc','desc');
-        h.querySelector('.sort-icon').textContent = '↕';
-      });
-      th.classList.add(dir);
-      th.querySelector('.sort-icon').textContent = dir === 'asc' ? '↑' : '↓';
-
-      const rows = Array.from(tbody.querySelectorAll('tr'));
-      rows.sort((a, b) => {
-        const aCell = a.cells[col];
-        const bCell = b.cells[col];
-        if (!aCell || !bCell) return 0;
-
-        const aRaw = (aCell.innerText || aCell.textContent).trim();
-        const bRaw = (bCell.innerText || bCell.textContent).trim();
-
-        let cmp;
-        if (type === 'num') {
-          const aNum = parseFloat(aRaw.replace(/[^0-9.\-]/g, '')) || 0;
-          const bNum = parseFloat(bRaw.replace(/[^0-9.\-]/g, '')) || 0;
-          cmp = aNum - bNum;
-        } else {
-          // Natural alpha-numeric sort (1 < 2 < 10 < A < B)
-          cmp = naturalVal(aRaw).localeCompare(naturalVal(bRaw));
-        }
-        return dir === 'asc' ? cmp : -cmp;
-      });
-
-      rows.forEach(r => tbody.appendChild(r));   // re-append in sorted order
-      lastCol = col;
-      lastDir = dir;
-    });
-  });
-})();
-
-// ── Part History Dropdown ─────────────────────────────────────────────────────
-(function() {
-  let openId = null;
-
-  function badge(status) {
-    const map = {sent:'success',draft:'secondary',open:'secondary',received:'success',
-                 complete:'success',quoted:'success',pending:'warning'};
-    const cls = map[status] || 'secondary';
-    return `<span class="badge text-bg-${cls}" style="font-size:.65rem">${status||'—'}</span>`;
-  }
-  function money(v) { return v != null ? '$'+parseFloat(v).toFixed(2) : '—'; }
-  function date(s)  { return s ? s.slice(0,10) : '—'; }
-
-  function section(title, icon, color, rows, linkFn) {
-    if (!rows.length) return `
-      <div style="padding:10px 14px 4px">
-        <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:${color}">${icon} ${title}</div>
-        <div style="font-size:.78rem;color:#aaa;padding:4px 0 8px">No records</div>
-      </div>`;
-    const items = rows.map(r => `
-      <a href="${linkFn(r)}" style="display:flex;justify-content:space-between;align-items:center;
-         padding:5px 14px;text-decoration:none;color:#111;font-size:.8rem;border-radius:4px"
-         class="hist-row">
-        <span style="font-weight:600;font-family:monospace;color:#1a3c6e;white-space:nowrap">${r.quote_number||r.po_number||r.invoice_number||r.ro_number}</span>
-        <span style="color:#555;flex:1;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.customer_name||r.vendor_name||r.invoice_for||'—'}</span>
-        <span style="white-space:nowrap;display:flex;gap:5px;align-items:center">
-          ${money(r.unit_price)} ${badge(r.status)} <span style="color:#aaa;font-size:.7rem">${date(r.created_at)}</span>
-        </span>
-      </a>`).join('');
-    return `
-      <div style="padding:10px 14px 2px">
-        <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:${color}">${icon} ${title}</div>
-      </div>
-      ${items}`;
-  }
-
-  function render(pid, data) {
-    const el = document.getElementById('hist-'+pid);
-    const pn = data.pn || '';
-    const html = `
-      <div style="padding:10px 14px 8px;background:#f8f9fa;border-radius:8px 8px 0 0;
-                  display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e7eb">
-        <span style="font-weight:700;font-family:monospace;font-size:.9rem;color:#1a3c6e">${pn}</span>
-        <a href="/inventory/part/${pid}" style="font-size:.75rem;color:#1a3c6e">Full History →</a>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr">
-        <div style="border-right:1px solid #f0f0f0;padding-bottom:8px">
-          ${section('Quotes','📋','#1a3c6e', data.quotes, r=>'/quotes/'+r.id)}
-          ${section('Invoices','🧾','#16a34a', data.invoices, r=>'/invoices/'+r.id)}
-        </div>
-        <div style="padding-bottom:8px">
-          ${section('Purchase Orders','🛒','#7c3aed', data.pos, r=>'/purchase-orders/'+r.id)}
-          ${section('Repair Orders','🔧','#dc2626', data.ros, r=>'/repair-orders/'+r.id)}
-        </div>
-      </div>`;
-    el.innerHTML = html;
-    el.style.display = 'block';
-    el.querySelectorAll('.hist-row').forEach(a => {
-      a.addEventListener('mouseenter', () => a.style.background='#f0f4ff');
-      a.addEventListener('mouseleave', () => a.style.background='');
-    });
-  }
-
-  async function toggle(pid) {
-    const el = document.getElementById('hist-'+pid);
-    if (openId && openId !== pid) {
-      const prev = document.getElementById('hist-'+openId);
-      if (prev) prev.style.display = 'none';
-    }
-    if (openId === pid) {
-      el.style.display = 'none';
-      openId = null;
-      return;
-    }
-    openId = pid;
-    el.innerHTML = '<div style="padding:18px;text-align:center;color:#aaa;font-size:.8rem">Loading…</div>';
-    el.style.display = 'block';
-    try {
-      const res  = await fetch('/api/part-history/'+pid, {credentials:'same-origin'});
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      if (data.error && !data.pn) throw new Error(data.error);
-      render(pid, data);
-    } catch(e) {
-      el.innerHTML = `<div style="padding:14px;color:#dc2626;font-size:.8rem">
-        <i class="bi bi-exclamation-circle me-1"></i>Could not load history: ${e.message}
-      </div>`;
-    }
-  }
-
-  document.addEventListener('click', function(e) {
-    const trigger = e.target.closest('.pn-trigger');
-    if (trigger) { e.stopPropagation(); toggle(trigger.dataset.pid); return; }
-    if (openId) {
-      const drop = document.getElementById('hist-'+openId);
-      if (drop && !drop.contains(e.target)) {
-        drop.style.display = 'none';
-        openId = null;
-      }
-    }
-  });
-})();
-
-// ── Add Part ─────────────────────────────────────────────────────────────────
-async function submitAddPart() {
-  const errEl = document.getElementById('addPartError');
-  errEl.classList.add('d-none');
-
-  const pn = document.getElementById('ap_part_number').value.trim();
-  const desc = document.getElementById('ap_description').value.trim();
-  if (!pn)   { errEl.textContent = 'Part number is required.'; errEl.classList.remove('d-none'); return; }
-  if (!desc) { errEl.textContent = 'Description is required.'; errEl.classList.remove('d-none'); return; }
-
-  const fields = ['part_number','description','nsn','manufacturer','alt_part_number',
-    'serial_number','condition','quantity','qty_avail','unit_cost','unit_price',
-    'list_price','core_charges','location','uom','cycle_date','labor_time',
-    'min_stock','faa_ads','easa_ads','alert_note','aircraft','gl_category',
-    'part_category','model_number','marketplaces','notes','service_bulletin'];
-
-  const fd = new FormData();
-  fields.forEach(f => {
-    const el = document.getElementById('ap_' + f);
-    if (el) fd.append(f, el.value);
-  });
-  // Checkboxes
-  ['is_hazmat','is_serialized','has_shelf_life'].forEach(k => {
-    const el = document.getElementById('ap_' + k.replace('is_','').replace('has_',''));
-    // map ids: is_hazmat→ap_hazmat, is_serialized→ap_serialized, has_shelf_life→ap_shelf_life
-  });
-  fd.append('is_hazmat',     document.getElementById('ap_hazmat').checked    ? '1' : '');
-  fd.append('is_serialized', document.getElementById('ap_serialized').checked ? '1' : '');
-  fd.append('has_shelf_life',document.getElementById('ap_shelf_life').checked ? '1' : '');
-
-  const btn = document.querySelector('#addPartModal .btn-navy');
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
-
-  try {
-    const res  = await fetch('/inventory/add', {method:'POST', body:fd, credentials:'same-origin'});
-    const data = await res.json();
-    if (data.success) {
-      bootstrap.Modal.getInstance(document.getElementById('addPartModal')).hide();
-      location.reload();
-    } else {
-      errEl.textContent = data.error || 'Save failed.';
-      errEl.classList.remove('d-none');
-    }
-  } catch(e) {
-    errEl.textContent = 'Network error — please try again.';
-    errEl.classList.remove('d-none');
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Save';
-  }
-}
-
-// Reset Add Part form when modal closes
-document.getElementById('addPartModal').addEventListener('hidden.bs.modal', function() {
-  this.querySelectorAll('input, textarea, select').forEach(el => {
-    if (el.type === 'checkbox') el.checked = false;
-    else if (el.tagName === 'SELECT') el.selectedIndex = 0;
-    else if (el.id === 'ap_gl_category') el.value = '1200 | Inventory - rotables';
-    else if (el.id === 'ap_uom') el.value = 'EA';
-    else el.value = el.type === 'number' ? '0' : '';
-  });
-  document.getElementById('addPartError').classList.add('d-none');
-});
-
-// ── Dynamic Search ────────────────────────────────────────────────────────────
-(function() {
-  const input      = document.getElementById('invSearch');
-  const clearBtn   = document.getElementById('invClearBtn');
-  const matchCount = document.getElementById('invMatchCount');
-  const filterLabel= document.getElementById('invFilterLabel');
-  const totalLabel = document.getElementById('invTotalLabel');
-  const tbody      = document.querySelector('#invTable tbody');
-  const totalParts = {{ total }};
-
-  // Columns to search: 0=PN, 1=Desc, 2=S/N, 3=Cond, 7=Location, 8=UOM
-  const SEARCH_COLS = [0, 1, 2, 3, 7, 8];
-
-  function getRowText(tr) {
-    return SEARCH_COLS.map(ci => {
-      const cell = tr.cells[ci];
-      return cell ? (cell.innerText || cell.textContent).trim().toUpperCase() : '';
-    }).join(' ');
-  }
-
-  function applyFilter() {
-    const raw    = input.value.trim();
-    const tokens = raw.toUpperCase().split(/\s+/).filter(Boolean);
-    const rows   = Array.from(tbody.querySelectorAll('tr'));
-
-    clearBtn.classList.toggle('d-none', !raw);
-
-    if (!tokens.length) {
-      // Show all
-      rows.forEach(r => r.style.display = '');
-      matchCount.textContent = '';
-      filterLabel.classList.add('d-none');
-      totalLabel.textContent = totalParts + ' Part' + (totalParts !== 1 ? 's' : '') + ' in Database';
-      return;
-    }
-
-    let shown = 0;
-    rows.forEach(tr => {
-      if (tr.cells.length <= 1) { tr.style.display = ''; return; } // empty-state row
-      const text = getRowText(tr);
-      const match = tokens.every(t => text.includes(t));
-      tr.style.display = match ? '' : 'none';
-      if (match) shown++;
-    });
-
-    matchCount.textContent = shown + ' match' + (shown !== 1 ? 'es' : '');
-    filterLabel.textContent = 'Showing ' + shown + ' of ' + totalParts;
-    filterLabel.classList.remove('d-none');
-    totalLabel.textContent = totalParts + ' Part' + (totalParts !== 1 ? 's' : '') + ' in Database';
-  }
-
-  window.clearInvSearch = function() {
-    input.value = '';
-    applyFilter();
-    input.focus();
-  };
-
-  // Safe highlight: walks only text nodes so HTML attributes are never touched
-  function highlightTextNodes(root, tokens) {
-    // Remove any existing marks first
-    root.querySelectorAll('mark.inv-hl').forEach(m => {
-      m.replaceWith(document.createTextNode(m.textContent));
-    });
-    // Normalize merged adjacent text nodes
-    root.normalize();
-    if (!tokens.length) return;
-
-    const esc = tokens.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-    const re  = new RegExp(`(${esc})`, 'gi');
-
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        // Skip text inside script/style/mark tags
-        const p = node.parentElement;
-        if (!p) return NodeFilter.FILTER_REJECT;
-        const tag = p.tagName;
-        if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'MARK') return NodeFilter.FILTER_REJECT;
-        // Only highlight if text has a match
-        return re.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
-      }
-    });
-
-    const hits = [];
-    let node;
-    re.lastIndex = 0;
-    while ((node = walker.nextNode())) hits.push(node);
-
-    hits.forEach(textNode => {
-      const frag = document.createDocumentFragment();
-      let last = 0;
-      re.lastIndex = 0;
-      let m;
-      while ((m = re.exec(textNode.nodeValue)) !== null) {
-        if (m.index > last) frag.appendChild(document.createTextNode(textNode.nodeValue.slice(last, m.index)));
-        const mark = document.createElement('mark');
-        mark.className = 'inv-hl';
-        mark.textContent = m[0];
-        frag.appendChild(mark);
-        last = m.index + m[0].length;
-      }
-      if (last < textNode.nodeValue.length) frag.appendChild(document.createTextNode(textNode.nodeValue.slice(last)));
-      textNode.parentNode.replaceChild(frag, textNode);
-    });
-  }
-
-  function applyHighlight() {
-    const tokens = input.value.trim().toUpperCase().split(/\s+/).filter(Boolean);
-    Array.from(tbody.querySelectorAll('tr')).forEach(tr => {
-      if (tr.cells.length <= 1) return;
-      // Cols 0 (PN), 1 (Desc), 2 (S/N) only
-      [0, 1, 2].forEach(ci => {
-        if (tr.cells[ci]) highlightTextNodes(tr.cells[ci], tokens);
-      });
-    });
-  }
-
-  let _debounce;
-  input.addEventListener('input', () => {
-    clearTimeout(_debounce);
-    _debounce = setTimeout(() => {
-      applyFilter();
-      applyHighlight();
-    }, 120);
-  });
-
-  // If page loaded with a server-side q param, sync clear button
-  if (input.value.trim()) {
-    clearBtn.classList.remove('d-none');
-    applyFilter();
-    applyHighlight();
-  }
-})();
-
-// ── Document Viewer ────────────────────────────────────────────────────────────
-(function() {
-  let _dvDocs   = [];
-  let _dvIdx    = 0;
-  let _dvPartId = null;
-  let _dvModal  = null;
-
-  const modalEl  = document.getElementById('docViewerModal');
-  const bodyEl   = document.getElementById('dvBody');
-  const frameEl  = document.getElementById('dvFrame');
-  const loadEl   = document.getElementById('dvLoading');
-  const emptyEl  = document.getElementById('dvEmpty');
-
-  // Calculate and apply a concrete pixel height to the body + frame
-  function sizeViewer() {
-    const headerH = modalEl.querySelector('.modal-header').offsetHeight;
-    const vh      = window.innerHeight;
-    const bodyH   = Math.round(vh * 0.88) - headerH;
-    bodyEl.style.height  = bodyH + 'px';
-    frameEl.style.height = bodyH + 'px';
-    loadEl.style.height  = bodyH + 'px';
-    emptyEl.style.height = bodyH + 'px';
-  }
-
-  // Re-size whenever modal finishes opening or window resizes
-  modalEl.addEventListener('shown.bs.modal', sizeViewer);
-  window.addEventListener('resize', function() {
-    if (modalEl.classList.contains('show')) sizeViewer();
-  });
-
-  window.openDocViewer = async function(pid, pn) {
-    _dvPartId = pid;
-    _dvIdx    = 0;
-    _dvDocs   = [];
-
-    if (!_dvModal) _dvModal = new bootstrap.Modal(modalEl);
-
-    dvState('loading');
-    _dvModal.show();
-
-    document.getElementById('dvFilename').textContent = pn + ' — loading…';
-    document.getElementById('dvLabel').textContent    = '';
-    document.getElementById('dvCounter').textContent  = '';
-
-    try {
-      const res = await fetch('/api/part-docs/'+pid, {credentials:'same-origin'});
-      _dvDocs = await res.json();
-    } catch(e) { _dvDocs = []; }
-
-    if (!_dvDocs.length) {
-      dvState('empty');
-      document.getElementById('dvFilename').textContent = pn;
-      return;
-    }
-    dvShow(0);
-  };
-
-  window.dvNav = function(delta) {
-    const next = _dvIdx + delta;
-    if (next < 0 || next >= _dvDocs.length) return;
-    dvShow(next);
-  };
-
-  function dvShow(idx) {
-    _dvIdx = idx;
-    const doc = _dvDocs[idx];
-    const url = '/inventory/part/'+_dvPartId+'/doc/'+doc.id+'/view';
-
-    document.getElementById('dvFilename').textContent = doc.filename;
-    document.getElementById('dvLabel').textContent    = doc.label || '';
-    document.getElementById('dvCounter').textContent  =
-      _dvDocs.length > 1 ? (idx+1) + ' / ' + _dvDocs.length : '';
-    document.getElementById('dvDownload').href = url;
-
-    document.getElementById('dvPrev').disabled = (idx === 0);
-    document.getElementById('dvNext').disabled = (idx === _dvDocs.length - 1);
-
-    dvState('loading');
-    frameEl.src = url;
-    // embed doesn't fire onload reliably — show after short delay
-    setTimeout(() => dvState('frame'), 800);
-  }
-
-  function dvState(state) {
-    loadEl.style.display  = state === 'loading' ? 'flex'  : 'none';
-    emptyEl.style.display = state === 'empty'   ? 'flex'  : 'none';
-    frameEl.style.display = state === 'frame'   ? 'block' : 'none';
-  }
-
-  modalEl.addEventListener('keydown', function(e) {
-    if (e.key === 'ArrowLeft')  dvNav(-1);
-    if (e.key === 'ArrowRight') dvNav(1);
-    if (e.key === 'Escape') _dvModal && _dvModal.hide();
-  });
-})();
 </script>
-
-<style>
-  th.sortable { cursor:pointer; user-select:none; white-space:nowrap; }
-  th.sortable:hover { background:#e9ecef; }
-  .sort-icon { color:#ccc; font-size:.7rem; margin-left:3px; }
-  th.sortable.asc  .sort-icon,
-  th.sortable.desc .sort-icon { color:#1a3c6e; font-weight:900; }
-  .doc-indicator:hover { opacity:1 !important; transform:scale(1.15); transition:transform .1s; }
-  mark.inv-hl { background:#fff3cd; padding:0; border-radius:2px; color:inherit; }
-</style>
 {% endblock %}
