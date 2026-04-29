@@ -2631,6 +2631,28 @@ def api_update_customer():
     return jsonify({'ok': True})
 
 
+@app.route('/api/update-validity', methods=['POST'])
+@login_required
+def api_update_validity():
+    """Update valid_days on an existing quote."""
+    data      = request.get_json(force=True)
+    quote_id  = data.get('quote_id')
+    valid_days = data.get('valid_days')
+    try:
+        valid_days = int(valid_days)
+        if valid_days < 1:
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'error': 'valid_days must be a positive integer'}), 400
+    if not quote_id:
+        return jsonify({'ok': False, 'error': 'Missing quote_id'}), 400
+    conn = get_db()
+    conn.execute('UPDATE quotes SET valid_days=? WHERE id=?', (valid_days, quote_id))
+    conn.commit()
+    conn.close()
+    return jsonify({'ok': True, 'valid_days': valid_days})
+
+
 @app.route('/api/test-imap', methods=['POST'])
 @login_required
 def api_test_imap():

@@ -85,7 +85,17 @@
       <div class="col-md-6 text-md-end mt-3 mt-md-0">
         <h5 class="fw-bold mb-1">QUOTATION</h5>
         <code class="fs-6" id="quoteNumber">{{ quote.quote_number }}</code>
-        <div class="text-muted small">Date: {{ quote.created_at[:10] }} &nbsp;|&nbsp; Valid: {{ quote.valid_days }} days &nbsp;|&nbsp; Currency: {{ quote.currency or 'USD' }}</div>
+        <div class="text-muted small">Date: {{ quote.created_at[:10] }} &nbsp;|&nbsp;
+          Valid:
+          <span id="validDaysDisplay" class="no-print" style="cursor:pointer;border-bottom:1px dashed #aaa" title="Click to edit" onclick="openValidityEdit()">{{ quote.valid_days }}</span>
+          <span class="print-only d-none">{{ quote.valid_days }}</span>
+          <span id="validDaysEditWrap" class="d-none no-print">
+            <input type="number" id="validDaysInput" min="1" max="365" style="width:60px;display:inline-block;padding:0 4px;font-size:.85rem" class="form-control form-control-sm d-inline-block">
+            <button class="btn btn-sm btn-gold py-0 px-2 ms-1" style="font-size:.8rem" onclick="saveValidity()">Save</button>
+            <button class="btn btn-sm btn-outline-secondary py-0 px-2 ms-1" style="font-size:.8rem" onclick="cancelValidityEdit()">✕</button>
+          </span>
+          <span id="validDaysSavedBadge" class="badge text-bg-success d-none ms-1" style="font-size:.7rem">Saved</span>
+          days &nbsp;|&nbsp; Currency: {{ quote.currency or 'USD' }}</div>
         <span class="badge badge-{{ quote.status }} mt-1">{{ quote.status.upper() }}</span>
       </div>
     </div>
@@ -1173,5 +1183,43 @@ async function saveItem() {
     _closeModal();
   }
 }
+
+// ── Validity inline edit ──────────────────────────────────────────────────────
+function openValidityEdit() {
+  const current = document.getElementById('validDaysDisplay').textContent.trim();
+  document.getElementById('validDaysInput').value = current;
+  document.getElementById('validDaysDisplay').classList.add('d-none');
+  document.getElementById('validDaysEditWrap').classList.remove('d-none');
+  document.getElementById('validDaysInput').focus();
+  document.getElementById('validDaysInput').select();
+}
+function cancelValidityEdit() {
+  document.getElementById('validDaysEditWrap').classList.add('d-none');
+  document.getElementById('validDaysDisplay').classList.remove('d-none');
+}
+async function saveValidity() {
+  const val = parseInt(document.getElementById('validDaysInput').value, 10);
+  if (!val || val < 1) return;
+  const r = await fetch('/api/update-validity', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({quote_id: {{ quote.id }}, valid_days: val})
+  });
+  const data = await r.json();
+  if (data.ok) {
+    document.getElementById('validDaysDisplay').textContent = data.valid_days;
+    cancelValidityEdit();
+    const badge = document.getElementById('validDaysSavedBadge');
+    badge.classList.remove('d-none');
+    setTimeout(() => badge.classList.add('d-none'), 2000);
+  }
+}
+// Allow pressing Enter to save
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('validDaysInput').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') saveValidity();
+    if (e.key === 'Escape') cancelValidityEdit();
+  });
+});
 </script>
 {% endblock %}
