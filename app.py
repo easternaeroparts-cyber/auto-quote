@@ -26,6 +26,22 @@ import traceback
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'aero-quote-secret-change-in-production')
 
+# ─── AI Agents Blueprint ──────────────────────────────────────────────────────
+try:
+    from agents_routes import agents_bp
+    app.register_blueprint(agents_bp)
+except Exception as _ai_err:
+    print(f'[ai_agents] Blueprint not loaded: {_ai_err}')
+
+# ─── AI spam classifier (optional — degrades gracefully if anthropic not installed) ──
+try:
+    from ai_agents import classify_rfq_spam as _ai_classify_spam
+    _SPAM_FILTER_ENABLED = True
+except Exception:
+    _SPAM_FILTER_ENABLED = False
+    def _ai_classify_spam(*a, **kw):
+        return {"is_spam": False, "confidence": 0.0, "reason": "spam filter disabled"}
+
 # ─── Flask-Login ─────────────────────────────────────────────────────────────
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
@@ -665,6 +681,7 @@ def init_db():
         "ALTER TABLE invoice_items ADD COLUMN quantity REAL DEFAULT 1",
         "ALTER TABLE invoice_items ADD COLUMN unit_price REAL DEFAULT 0",
         "ALTER TABLE invoice_items ADD COLUMN total_price REAL DEFAULT 0",
+        "ALTER TABLE invoice_items ADD COLUMN notes TEXT",
         "ALTER TABLE packing_slips ADD COLUMN ps_number TEXT",
         "ALTER TABLE packing_slips ADD COLUMN date TEXT",
         "ALTER TABLE packing_slips ADD COLUMN terms TEXT",
@@ -2348,6 +2365,69 @@ def create_quote(rfq_id):
     return redirect(url_for('quote_view', quote_id=quote_id))
 
 
+@app.route('/rfqs/<int:rfq_id>/ai-quote', methods=['POST'])
+@login_required
+def create_quote_from_ai(rfq_id):
+    """Create a quote pre-filled with AI-generated line items (from auto_quote_rfq)."""
+    data = request.get_json(force=True)
+    ai_items = data.get('items', [])
+
+    conn = get_db()
+    settings = get_settings()
+    rfq = conn.execute('SELECT * FROM rfqs WHERE id=?', (rfq_id,)).fetchone()
+    if not rfq:
+        conn.close()
+        return jsonify({'error': 'RFQ not found'}), 404
+
+    existing = conn.execute(
+        'SELECT id FROM quotes WHERE rfq_id=? ORDER BY created_at DESC LIMIT 1',
+        (rfq_id,)).fetchone()
+    if existing:
+        conn.close()
+        return jsonify({'redirect': url_for('quote_view', quote_id=existing['id'])})
+
+    markup     = float(settings.get('default_markup', 30))
+    valid_days = int(settings.get('quote_valid_days', 30))
+    today      = datetime.now().strftime('%Y-%m-%d')
+    quote_no   = gen_quote_number()
+
+    conn.execute('''INSERT INTO quotes
+        (quote_number, rfq_id, status, markup_percent, valid_days, currency, entry_date)
+        VALUES (?,?,?,?,?,?,?)''',
+        (quote_no, rfq_id, 'draft', markup, valid_days, 'USD', today))
+    quote_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+
+    total = 0
+    for item in ai_items:
+        if item.get('no_quote'):
+            conn.execute(
+                'INSERT INTO quote_items (quote_id,part_number,description,condition,quantity_requested,unit_price,extended_price,lead_time,price_type,warranty,notes,no_quote,matched) VALUES (?,?,?,?,?,0,0,?,?,?,?,1,0)',
+                (quote_id, item.get('part_number',''), item.get('description',''),
+                 item.get('condition','SV'), item.get('quantity_requested',1),
+                 item.get('lead_time','TBD'), item.get('price_type','Outright'),
+                 item.get('warranty','3 Months'), item.get('notes','')))
+        else:
+            price = float(item.get('unit_price') or 0)
+            qty   = int(item.get('quantity_requested') or 1)
+            ext   = round(price * qty, 2)
+            total += ext
+            matched = 1 if int(item.get('quantity_available') or 0) > 0 else 0
+            conn.execute(
+                'INSERT INTO quote_items (quote_id,part_number,description,condition,quantity_requested,quantity_available,unit_price,extended_price,lead_time,price_type,warranty,notes,no_quote,matched) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,0,?)',
+                (quote_id, item.get('part_number',''), item.get('description',''),
+                 item.get('condition','SV'), qty,
+                 int(item.get('quantity_available') or 0),
+                 price, ext,
+                 item.get('lead_time','Stock'), item.get('price_type','Outright'),
+                 item.get('warranty','3 Months'), item.get('notes',''), matched))
+
+    conn.execute('UPDATE quotes SET total_amount=? WHERE id=?', (round(total, 2), quote_id))
+    conn.execute("UPDATE rfqs SET status='quoted' WHERE id=?", (rfq_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({'redirect': url_for('quote_view', quote_id=quote_id), 'quote_number': quote_no})
+
+
 # ─── Routes: Quotes ──────────────────────────────────────────────────────────
 
 @app.route('/quotes/new', methods=['GET', 'POST'])
@@ -2536,20 +2616,23 @@ def quote_convert_to_invoice(quote_id):
     ))
     inv_id = cur.lastrowid
 
-    # Copy line items
+    # Copy line items — carry over all fields from the quote
     for item in items:
         conn.execute('''
             INSERT INTO invoice_items
-              (invoice_id, part_number, description, condition, quantity, unit_price, total_price)
-            VALUES (?,?,?,?,?,?,?)
+              (invoice_id, part_number, description, serial_number, condition,
+               quantity, unit_price, total_price, notes)
+            VALUES (?,?,?,?,?,?,?,?,?)
         ''', (
             inv_id,
-            item['part_number'] or '',
-            item['description'] or '',
-            item['condition']   or '',
+            item['part_number']       or '',
+            item['description']       or '',
+            item['serial_number']     or '',
+            item['condition']         or '',
             item['quantity_requested'] or 1,
-            item['unit_price']  or 0,
-            item['extended_price'] or 0,
+            item['unit_price']        or 0,
+            item['extended_price']    or 0,
+            item['notes']             or '',
         ))
 
     conn.commit()
@@ -3994,6 +4077,27 @@ def _fetch_imap(settings):
                     cust_website = profile['website'] or cust_website
                     cust_address = profile['address'] or cust_address
 
+            # ── AI Spam / Junk filter ─────────────────────────────────────────
+            # Run classifier only when the filter is enabled and we have content.
+            # A high-confidence spam verdict silently skips the RFQ insert but
+            # still marks the email as imported so we never see it again.
+            if _SPAM_FILTER_ENABLED:
+                try:
+                    spam_verdict = _ai_classify_spam(
+                        email_body=parse_body,
+                        sender_email=cust_email or '',
+                        sender_name=cust_name or '',
+                        subject=subject or '',
+                    )
+                    if spam_verdict.get('is_spam') and spam_verdict.get('confidence', 0) >= 0.85:
+                        print(f'[spam_filter] Skipped "{subject}" — '
+                              f'{spam_verdict.get("confidence",0)*100:.0f}% confidence: '
+                              f'{spam_verdict.get("reason","")}')
+                        count_skipped = locals().get('count_skipped', 0) + 1
+                        continue  # skip this email entirely — don't create an RFQ
+                except Exception as _spam_err:
+                    print(f'[spam_filter] Error: {_spam_err}')  # never block on spam filter failure
+
             conn.execute(
                 'INSERT INTO rfqs (rfq_number,customer_name,customer_email,company,phone,website,address,source,notes,raw_email,email_message_id,customer_ref) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
                 (rfq_no, cust_name, cust_email, cust_company, cust_phone, cust_website, cust_address, source, subject, body[:6000], message_id, customer_ref))
@@ -4904,17 +5008,19 @@ def invoice_edit(inv_id):
         qtys  = request.form.getlist('qty[]')
         ups   = request.form.getlist('unit_price[]')
         tots  = request.form.getlist('total_price[]')
+        item_notes = request.form.getlist('item_notes[]')
         for i, pn in enumerate(pns):
             if not pn.strip():
                 continue
             conn.execute(
-                'INSERT INTO invoice_items (invoice_id,part_number,description,serial_number,condition,quantity,unit_price,total_price) VALUES (?,?,?,?,?,?,?,?)',
+                'INSERT INTO invoice_items (invoice_id,part_number,description,serial_number,condition,quantity,unit_price,total_price,notes) VALUES (?,?,?,?,?,?,?,?,?)',
                 (inv_id, pn.strip(), descs[i] if i < len(descs) else '',
                  sns[i] if i < len(sns) else '',
                  conds[i] if i < len(conds) else '',
                  float(qtys[i]) if i < len(qtys) and qtys[i] else 1,
                  float(ups[i]) if i < len(ups) and ups[i] else 0,
-                 float(tots[i]) if i < len(tots) and tots[i] else 0)
+                 float(tots[i]) if i < len(tots) and tots[i] else 0,
+                 item_notes[i] if i < len(item_notes) else '')
             )
         conn.commit()
         conn.close()

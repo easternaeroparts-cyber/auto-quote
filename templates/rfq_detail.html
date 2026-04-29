@@ -6,6 +6,11 @@
 <a href="{{ url_for('rfq_list') }}" class="btn btn-sm btn-outline-secondary">
   <i class="bi bi-arrow-left"></i> Back
 </a>
+{% if rfq.customer_email %}
+<button class="btn btn-sm btn-outline-purple" onclick="loadInsights()" title="AI Customer Insights">
+  <i class="bi bi-graph-up"></i> Insights
+</button>
+{% endif %}
 <form action="{{ url_for('rfq_delete', rfq_id=rfq.id) }}" method="post" class="d-inline"
       onsubmit="return confirm('Delete {{ rfq.rfq_number }}? This cannot be undone.')">
   <button class="btn btn-sm btn-outline-danger">
@@ -47,7 +52,6 @@
     <div class="card">
       <div class="card-body">
         {% if quotes %}
-          {# Quote already exists — link directly to the most recent one #}
           <a href="{{ url_for('quote_view', quote_id=quotes[0].id) }}" class="btn btn-navy w-100 fw-semibold">
             <i class="bi bi-file-earmark-text"></i> View Quote
           </a>
@@ -59,12 +63,25 @@
             <input type="hidden" name="markup" value="{{ settings.get('default_markup', 30) }}">
             <input type="hidden" name="valid_days" value="{{ settings.get('quote_valid_days', 30) }}">
             <input type="hidden" name="currency" value="USD">
-            <button type="submit" class="btn btn-gold w-100 fw-semibold">
+            <button type="submit" class="btn btn-gold w-100 fw-semibold mb-2">
               <i class="bi bi-magic"></i> Generate Quote
             </button>
           </form>
+          <button class="btn btn-outline-purple w-100 fw-semibold" onclick="runAutoQuote()">
+            <i class="bi bi-stars"></i> AI Auto Quote
+          </button>
+          <small class="d-block text-center text-muted mt-1" style="font-size:.72rem">AI matches inventory &amp; suggests pricing</small>
         {% endif %}
       </div>
+    </div>
+
+    <!-- Customer Insights panel (hidden until loaded) -->
+    <div id="insightsPanel" class="card mt-3 d-none">
+      <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
+        <strong style="font-size:.85rem"><i class="bi bi-graph-up me-1" style="color:#7c3aed"></i> AI Customer Insights</strong>
+        <button class="btn btn-sm btn-outline-secondary py-0" onclick="document.getElementById('insightsPanel').classList.add('d-none')">×</button>
+      </div>
+      <div id="insightsBody" class="card-body p-3" style="font-size:.82rem"></div>
     </div>
   </div>
 
@@ -144,4 +161,199 @@
   </div>
 
 </div>
+
+<!-- ── AI Auto Quote Modal ──────────────────────────────────────────────── -->
+<div class="modal fade" id="aiQuoteModal" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header" style="background:linear-gradient(135deg,#1a3c6e,#7c3aed);color:#fff">
+        <h6 class="modal-title"><i class="bi bi-stars me-2"></i>AI Auto Quote — Review &amp; Confirm</h6>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <!-- Loading state -->
+        <div id="aqLoading" class="text-center py-5">
+          <div class="spinner-border text-purple mb-3" style="width:2.5rem;height:2.5rem;border-color:#7c3aed;border-right-color:transparent"></div>
+          <div class="fw-semibold" style="color:#7c3aed">AI is analysing inventory &amp; pricing…</div>
+          <small class="text-muted">This usually takes 5–10 seconds</small>
+        </div>
+        <!-- Results table -->
+        <div id="aqResults" class="d-none">
+          <div class="px-3 pt-3 pb-1">
+            <div id="aqSummary" class="alert alert-info py-2 mb-2" style="font-size:.83rem"></div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0" id="aqTable">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-3">Part #</th>
+                  <th>Description</th>
+                  <th>Cond</th>
+                  <th class="text-center">Qty</th>
+                  <th class="text-end">Unit Price</th>
+                  <th>Lead Time</th>
+                  <th>Type</th>
+                  <th>Warranty</th>
+                  <th>Notes</th>
+                  <th class="text-center">No Quote</th>
+                </tr>
+              </thead>
+              <tbody id="aqTbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <!-- Error state -->
+        <div id="aqError" class="d-none text-center py-5 text-danger">
+          <i class="bi bi-exclamation-triangle fs-2 mb-2 d-block"></i>
+          <span id="aqErrorMsg"></span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button id="aqCreateBtn" class="btn btn-sm fw-semibold d-none"
+                style="background:linear-gradient(135deg,#1a3c6e,#7c3aed);color:#fff"
+                onclick="createAiQuote()">
+          <i class="bi bi-check-lg me-1"></i> Create Quote with These Items
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const RFQ_ID  = {{ rfq.id }};
+const CUST_EMAIL = {{ ('"' ~ rfq.customer_email ~ '"') if rfq.customer_email else 'null' }};
+let _aiItems = [];
+
+// ── AI Auto Quote ─────────────────────────────────────────────────────────────
+async function runAutoQuote() {
+  _aiItems = [];
+  document.getElementById('aqLoading').classList.remove('d-none');
+  document.getElementById('aqResults').classList.add('d-none');
+  document.getElementById('aqError').classList.add('d-none');
+  document.getElementById('aqCreateBtn').classList.add('d-none');
+
+  const modal = new bootstrap.Modal(document.getElementById('aiQuoteModal'));
+  modal.show();
+
+  try {
+    const res  = await fetch(`/api/ai/auto-quote/${RFQ_ID}`, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({})});
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    _aiItems = data.quote_items || [];
+    renderAqTable(_aiItems);
+    const matched = _aiItems.filter(i => (i.quantity_available||0) > 0).length;
+    const nq      = _aiItems.filter(i => i.no_quote).length;
+    document.getElementById('aqSummary').innerHTML =
+      `<strong>${_aiItems.length}</strong> part${_aiItems.length!==1?'s':''} · `+
+      `<span class="text-success fw-semibold">${matched} in stock</span> · `+
+      `<span class="text-danger fw-semibold">${nq} no-quote</span>`;
+
+    document.getElementById('aqLoading').classList.add('d-none');
+    document.getElementById('aqResults').classList.remove('d-none');
+    document.getElementById('aqCreateBtn').classList.remove('d-none');
+  } catch(e) {
+    document.getElementById('aqLoading').classList.add('d-none');
+    document.getElementById('aqError').classList.remove('d-none');
+    document.getElementById('aqErrorMsg').textContent = e.message || 'AI service unavailable. Check ANTHROPIC_API_KEY.';
+  }
+}
+
+function renderAqTable(items) {
+  const tbody = document.getElementById('aqTbody');
+  tbody.innerHTML = items.map((it, idx) => {
+    const nq   = it.no_quote ? 1 : 0;
+    const rowBg = nq ? 'style="opacity:.55;background:#fef2f2"' : (it.quantity_available > 0 ? 'style="background:#f0fdf4"' : '');
+    return `<tr ${rowBg}>
+      <td class="ps-3"><code class="fw-bold">${it.part_number||''}</code></td>
+      <td style="font-size:.82rem">${it.description||''}</td>
+      <td><span class="badge text-bg-secondary">${it.condition||'SV'}</span></td>
+      <td class="text-center">
+        <input type="number" class="form-control form-control-sm text-center" style="width:60px;display:inline-block"
+          value="${it.quantity_requested||1}" min="1"
+          onchange="_aiItems[${idx}].quantity_requested=parseInt(this.value)||1">
+      </td>
+      <td class="text-end">
+        <input type="number" class="form-control form-control-sm text-end" style="width:90px;display:inline-block"
+          value="${parseFloat(it.unit_price||0).toFixed(2)}" step="0.01" min="0"
+          onchange="_aiItems[${idx}].unit_price=parseFloat(this.value)||0">
+      </td>
+      <td style="font-size:.82rem">${it.lead_time||'Stock'}</td>
+      <td style="font-size:.82rem">${it.price_type||'Outright'}</td>
+      <td style="font-size:.82rem">${it.warranty||'3 Months'}</td>
+      <td style="font-size:.78rem;color:#555;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${it.notes||''}">${it.notes||''}</td>
+      <td class="text-center">
+        <input type="checkbox" class="form-check-input" ${nq?'checked':''} title="Mark as No Quote"
+          onchange="_aiItems[${idx}].no_quote=this.checked?1:0">
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function createAiQuote() {
+  const btn = document.getElementById('aqCreateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Creating…';
+  try {
+    const res  = await fetch(`/rfqs/${RFQ_ID}/ai-quote`, {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({items:_aiItems})});
+    const data = await res.json();
+    if (data.redirect) window.location.href = data.redirect;
+    else throw new Error(data.error || 'Failed');
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Create Quote with These Items';
+    alert('Error: ' + e.message);
+  }
+}
+
+// ── Customer Insights ─────────────────────────────────────────────────────────
+async function loadInsights() {
+  if (!CUST_EMAIL) return;
+  const panel = document.getElementById('insightsPanel');
+  const body  = document.getElementById('insightsBody');
+  panel.classList.remove('d-none');
+  body.innerHTML = '<div class="text-center py-3"><div class="spinner-border spinner-border-sm text-purple" style="border-color:#7c3aed;border-right-color:transparent"></div><div class="text-muted small mt-2">Analysing customer history…</div></div>';
+  panel.scrollIntoView({behavior:'smooth', block:'nearest'});
+
+  try {
+    const res  = await fetch(`/api/ai/customer-insights/${encodeURIComponent(CUST_EMAIL)}`);
+    const d    = await res.json();
+    if (d.error) throw new Error(d.error);
+
+    const pct  = (d.win_rate_pct||0).toFixed(0);
+    const winColor = pct >= 50 ? '#16a34a' : pct >= 25 ? '#d97706' : '#dc2626';
+    const actions  = (d.recommended_actions||[]).map(a=>`<li>${a}</li>`).join('');
+    const flags    = (d.risk_flags||[]).map(f=>`<span class="badge text-bg-warning me-1 mb-1">${f}</span>`).join('');
+    const parts    = (d.top_parts||[]).map(p=>`<code class="me-1">${p}</code>`).join('');
+
+    body.innerHTML = `
+      <p class="mb-2" style="font-size:.8rem;color:#374151">${d.summary||'No summary available.'}</p>
+      <div class="row g-2 mb-2">
+        <div class="col-4 text-center p-2 rounded" style="background:#f0f4ff">
+          <div class="fw-bold fs-5" style="color:#1a3c6e">${d.total_rfqs||0}</div>
+          <div class="text-muted" style="font-size:.7rem">RFQs</div>
+        </div>
+        <div class="col-4 text-center p-2 rounded" style="background:#f0fdf4">
+          <div class="fw-bold fs-5" style="color:${winColor}">${pct}%</div>
+          <div class="text-muted" style="font-size:.7rem">Win Rate</div>
+        </div>
+        <div class="col-4 text-center p-2 rounded" style="background:#fdf4ff">
+          <div class="fw-bold fs-5" style="color:#7c3aed">$${parseFloat(d.avg_order_value||0).toLocaleString('en-US',{maximumFractionDigits:0})}</div>
+          <div class="text-muted" style="font-size:.7rem">Avg Order</div>
+        </div>
+      </div>
+      ${parts ? `<div class="mb-2"><span class="text-muted" style="font-size:.72rem">TOP PARTS</span><br>${parts}</div>` : ''}
+      ${actions ? `<div class="mb-2"><span class="text-muted" style="font-size:.72rem">ACTIONS</span><ul class="mb-0 ps-3" style="font-size:.78rem">${actions}</ul></div>` : ''}
+      ${flags ? `<div>${flags}</div>` : ''}`;
+  } catch(e) {
+    body.innerHTML = `<div class="text-danger small"><i class="bi bi-exclamation-triangle me-1"></i>${e.message}</div>`;
+  }
+}
+</script>
 {% endblock %}

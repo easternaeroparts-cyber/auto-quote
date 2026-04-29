@@ -115,7 +115,10 @@
       {% for item in items %}
       <tr>
         <td><strong>{{ item.part_number }}</strong></td>
-        <td>{{ item.description }}</td>
+        <td>
+          {{ item.description }}
+          {% if item.notes %}<br><small class="text-muted fst-italic">{{ item.notes }}</small>{% endif %}
+        </td>
         <td>{{ item.serial_number or '—' }}</td>
         <td>{{ item.condition }}</td>
         <td style="text-align:center">{{ item.quantity|int }}</td>
