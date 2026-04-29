@@ -141,7 +141,7 @@ def init_db():
             markup_percent      REAL DEFAULT 30,
             total_amount        REAL DEFAULT 0,
             notes               TEXT,
-            valid_days          INTEGER DEFAULT 30,
+            valid_days          INTEGER DEFAULT 15,
             currency            TEXT DEFAULT 'USD',
             exchange_loan_fee   REAL DEFAULT 0,
             entry_date          TEXT,
@@ -217,7 +217,7 @@ def init_db():
         'company_phone':   '',
         'company_address': '',
         'default_markup':  '30',
-        'quote_valid_days':'30',
+        'quote_valid_days':'15',
         'imap_host':       'imap.gmail.com',
         'imap_port':       '993',
         'imap_user':       'easternaeroparts@gmail.com',
@@ -1152,7 +1152,7 @@ def create_quote(rfq_id):
     items    = conn.execute('SELECT * FROM rfq_items WHERE rfq_id=?', (rfq_id,)).fetchall()
 
     markup     = float(request.form.get('markup', settings.get('default_markup', 30)))
-    valid_days = int(request.form.get('valid_days', settings.get('quote_valid_days', 30)))
+    valid_days = int(request.form.get('valid_days', settings.get('quote_valid_days', 15)))
     notes      = request.form.get('notes', '')
     today      = datetime.now().strftime('%Y-%m-%d')
     quote_no   = gen_quote_number()
@@ -2199,8 +2199,8 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
   </tr>
 </table>
 
-<p style="margin-top:24px;color:#9ca3af;font-size:11px;text-align:center">
-  All prices in {currency}. Quote valid for {quote['valid_days']} days from date of issue.<br>
+<p style="margin-top:24px;color:#dc2626;font-size:11px;text-align:center;font-weight:600">
+  All prices in {currency}. Quote valid for {quote['valid_days']} days from date of issue.
   All parts are certified unless otherwise stated. Terms: COD unless prior credit arrangement established.
 </p>
 

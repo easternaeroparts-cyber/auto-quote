@@ -59,7 +59,7 @@
         {% else %}
           <form method="post" action="{{ url_for('create_quote', rfq_id=rfq.id) }}">
             <input type="hidden" name="markup" value="{{ settings.get('default_markup', 30) }}">
-            <input type="hidden" name="valid_days" value="{{ settings.get('quote_valid_days', 30) }}">
+            <input type="hidden" name="valid_days" value="{{ settings.get('quote_valid_days', 15) }}">
             <input type="hidden" name="currency" value="USD">
             <button type="submit" class="btn btn-gold w-100 fw-semibold">
               <i class="bi bi-magic"></i> Generate Quote
