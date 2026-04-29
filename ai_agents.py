@@ -823,23 +823,43 @@ def inventory_health_check(database_path: str) -> list[dict]:
     pn_counts = Counter(r["part_number"] for r in rows if r["part_number"])
     duplicates = {pn for pn, cnt in pn_counts.items() if cnt > 1}
 
-    # Enrich rows with a duplicate flag to make the model's job easier
-    for r in rows:
-        r["_is_duplicate"] = r["part_number"] in duplicates
+    # Do most of the analysis in Python — only send a summary to Claude
+    zero_cost   = [r["part_number"] for r in rows if not r.get("unit_cost")]
+    zero_price  = [r["part_number"] for r in rows if not r.get("unit_price")]
+    no_desc     = [r["part_number"] for r in rows if not (r.get("description") or "").strip()]
+    no_loc      = [r["part_number"] for r in rows if not (r.get("location") or "").strip()]
+    no_cond     = [r["part_number"] for r in rows if not (r.get("condition") or "").strip()]
+    neg_qty     = [r["part_number"] for r in rows if (r.get("quantity") or 0) < 0]
+    dup_list    = [pn for pn, cnt in pn_counts.items() if cnt > 1]
+    below_cost  = [r["part_number"] for r in rows
+                   if r.get("unit_price") and r.get("unit_cost")
+                   and float(r["unit_price"]) < float(r["unit_cost"])]
 
-    # Send a compact snapshot (drop nulls to reduce tokens)
-    snapshot = json.dumps(rows[:200], indent=1)  # cap at 200 rows
-
-    prompt = (
-        f"Total records in DB: {len(rows)}\n"
-        f"Records in this snapshot: {min(200, len(rows))}\n\n"
-        "Inventory snapshot:\n" + snapshot
+    total_value = sum(
+        (r.get("quantity") or 0) * (r.get("unit_cost") or 0) for r in rows
     )
+
+    # Build a compact pre-analysed summary instead of raw rows
+    summary = {
+        "total_parts": len(rows),
+        "duplicates": dup_list[:20],
+        "zero_cost_pns": zero_cost[:20],
+        "zero_price_pns": zero_price[:20],
+        "no_description_pns": no_desc[:20],
+        "no_location_pns": no_loc[:20],
+        "no_condition_pns": no_cond[:20],
+        "negative_quantity_pns": neg_qty[:10],
+        "selling_below_cost_pns": below_cost[:10],
+        "total_inventory_value_aud": round(total_value, 2),
+        "condition_breakdown": dict(Counter(r.get("condition") or "unknown" for r in rows)),
+    }
+
+    prompt = "Analyse this pre-computed inventory summary and produce findings:\n" + json.dumps(summary, indent=2)
 
     try:
         response = _client.messages.create(
             model=_FAST_MODEL,
-            max_tokens=MAX_TOKENS * 2,
+            max_tokens=MAX_TOKENS,
             system=HEALTH_SYSTEM,
             messages=[{"role": "user", "content": prompt}],
         )
