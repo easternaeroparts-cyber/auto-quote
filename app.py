@@ -627,9 +627,9 @@ def parse_rfq_text(text):
 
     # ── Step 3: Vertical / one-value-per-line table format ───────────────────
     # Handles emails where each column header AND each value is on its own line:
-    #   S/N.          Description      Part Number    Qty    Unit
-    #   1             BRACKET-400      C6E1065-3      3      EA
-    # (each word on a separate line, columns cycling through)
+    #   PART NUMBER    DESCRIPTION    QTY
+    #   C6E1065-3      BRACKET        3
+    # Also handles 2-column only (PART NUMBER + DESCRIPTION, no QTY).
     VERTICAL_HEADERS = {
         'S/N': 'sn', 'S/N.': 'sn', 'SNO': 'sn', 'SN': 'sn', 'NO': 'sn', 'NO.': 'sn',
         'DESCRIPTION': 'desc', 'DESC': 'desc',
@@ -647,7 +647,8 @@ def parse_rfq_text(text):
         if key in VERTICAL_HEADERS:
             col_order.append(VERTICAL_HEADERS[key])
         else:
-            if len(col_order) >= 3 and 'pn' in col_order:
+            # Trigger with 2+ columns (not just 3+) as long as we have a PN column
+            if len(col_order) >= 2 and 'pn' in col_order:
                 header_end = i
                 break
             else:
@@ -734,20 +735,27 @@ def parse_rfq_text(text):
             continue
 
         # Delimited row fallback: first column must be a valid PN
+        # Check tab/pipe/comma first, then fall back to multi-space split
+        row_cols = None
         for delim in ('\t', '|', ','):
             if delim in line:
-                cols = [c.strip() for c in line.split(delim)]
-                if len(cols) >= 2 and is_valid_pn(cols[0]):
-                    desc = cols[1] if len(cols) > 1 else ''
-                    qty  = 1
-                    cond = 'SV'
-                    if len(cols) > 2:
-                        try: qty = int(re.search(r'\d+', cols[2]).group())
-                        except: pass
-                    if len(cols) > 3:
-                        cond = cols[3].strip().upper() or 'SV'
-                    add(cols[0].upper(), desc, qty, cond)
+                row_cols = [c.strip() for c in line.split(delim)]
                 break
+        if row_cols is None:
+            # Multi-space split (copy-pasted tables, e.g. "ABC123   Brake Disc   2")
+            ms = re.split(r'\s{2,}', line.strip())
+            if len(ms) >= 2 and is_valid_pn(ms[0]):
+                row_cols = ms
+        if row_cols and len(row_cols) >= 2 and is_valid_pn(row_cols[0]):
+            desc = row_cols[1] if len(row_cols) > 1 else ''
+            qty  = 1
+            cond = 'SV'
+            if len(row_cols) > 2:
+                try: qty = int(re.search(r'\d+', row_cols[2]).group())
+                except: pass
+            if len(row_cols) > 3:
+                cond = row_cols[3].strip().upper() or 'SV'
+            add(row_cols[0].upper(), desc, qty, cond)
 
     return items
 
