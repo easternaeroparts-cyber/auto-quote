@@ -478,7 +478,18 @@ def parse_rfq_text(text):
       - Inline patterns: P/N: XXX  QTY: N
       - Table formats with header row (S/N | Description | Part Number | Qty | Unit)
       - Various delimiters: tab, pipe, comma, multiple spaces
+      - Gmail/email markdown bold (*value*) and italic (_value_) formatting
     """
+    # ── Strip email client formatting before any parsing ─────────────────────
+    # Gmail wraps bold text in *asterisks* and italic in _underscores_.
+    # These must be removed so "  *011-00883-20*" becomes "011-00883-20".
+    text = re.sub(r'\*{1,2}([^*\n]{1,80})\*{1,2}', r'\1', text)  # *bold* / **bold**
+    text = re.sub(r'_{1,2}([^_\n]{1,80})_{1,2}',   r'\1', text)  # _italic_ / __bold__
+    text = re.sub(r'`([^`\n]{1,80})`',              r'\1', text)  # `code`
+    # Also strip any lone leading/trailing * or _ on a line (partial formatting)
+    text = re.sub(r'^\s*\*\s*', '', text, flags=re.MULTILINE)
+    text = re.sub(r'\s*\*\s*$', '', text, flags=re.MULTILINE)
+
     items = []
     seen  = set()
     lines = [l.rstrip() for l in text.split('\n')]
