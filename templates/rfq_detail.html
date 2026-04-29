@@ -41,14 +41,10 @@
     <div class="card">
       <div class="card-body">
         {% if quotes %}
-          {# Quote already exists — show View and Send buttons #}
-          <a href="{{ url_for('quote_view', quote_id=quotes[0].id) }}" class="btn btn-navy w-100 fw-semibold mb-2">
+          {# Quote already exists — show View button #}
+          <a href="{{ url_for('quote_view', quote_id=quotes[0].id) }}" class="btn btn-navy w-100 fw-semibold">
             <i class="bi bi-file-earmark-text"></i> View Quote
           </a>
-          <button class="btn btn-gold w-100 fw-semibold"
-                  onclick="openSendModal({{ quotes[0].id }}, '{{ quotes[0].quote_number }}', '{{ rfq.customer_name or '' }}', '{{ rfq.customer_email or '' }}')">
-            <i class="bi bi-send"></i> Send to Customer
-          </button>
           {% if quotes|length > 1 %}
           <small class="d-block text-center text-muted mt-2">{{ quotes|length }} quotes — see table below</small>
           {% endif %}

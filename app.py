@@ -318,37 +318,61 @@ def get_settings():
 def extract_forwarded_content(body):
     """
     Detect a forwarded email and extract everything after the divider line as the
-    original email. Treats it identically to a directly received email:
-    - Extracts original sender name + email from the forwarded headers
-    - Extracts original subject, date if present
-    - Returns the full original body (everything after the header block)
-      so it can be parsed for parts, signature, customer info etc.
+    original email. Handles all common email client formats:
+      - Gmail:   ---------- Forwarded message ---------
+      - Outlook: ----- Original Message -----  /  -----Original Message-----
+      - Apple:   Begin forwarded message:
+      - Yahoo/others: --- Forwarded message ---
+      - Fwd prefix with inline From/Date/Subject block at top of body
 
     Returns (original_name, original_email, original_body) or (None, None, body)
     """
-    # All common forwarded message divider patterns
+    # ── Common forwarded divider patterns ────────────────────────────────────
     FWD_MARKERS = re.compile(
-        r'(-{3,}\s*(?:Forwarded [Mm]essage|Original [Mm]essage|Forwarded by)[^-]*-{3,}'
-        r'|Begin forwarded message\s*:)',
+        r'('
+        # Gmail: ---------- Forwarded message --------- (any dash count, optional spaces)
+        r'-{3,}[\s—–]*(?:Forwarded\s+[Mm]essage|Original\s+[Mm]essage|Forwarded\s+by)[^\n]*-{3,}'
+        # Outlook with no spaces: -----Original Message-----
+        r'|_{5,}|={5,}'
+        r'|Begin\s+forwarded\s+message\s*:'
+        # Generic short dividers followed by a From: header on the very next line
+        r'|-{2,}\s*(?:Forwarded|Original)\s*(?:Message|Mail|Email)?\s*-{0,20}'
+        r')',
         re.I
     )
 
     m = FWD_MARKERS.search(body)
-    if not m:
-        return None, None, body  # Not a forwarded email
 
-    # Everything after the divider line, strip leading whitespace/newlines
-    after_divider = body[m.end():].lstrip('\r\n')
+    # ── Fallback: body starts with a From/Date/Subject block (inline forward) ─
+    # Some mobile clients and Gmail app forward without a divider; they just
+    # paste the original headers straight at the top.
+    if not m:
+        INLINE_FWD = re.compile(
+            r'^[\s\r\n]*(?:From|De)\s*:\s*.+[\r\n]+'
+            r'(?:(?:Date|Sent|Fecha|To|Subject|Cc)\s*:.+[\r\n]+){1,5}',
+            re.I
+        )
+        mi = INLINE_FWD.match(body)
+        if mi:
+            # Treat the whole body as the forwarded content
+            m = mi
+            after_divider = body  # parse headers from the start
+        else:
+            return None, None, body  # Not a forwarded email
+    else:
+        # Everything after the divider line, strip leading whitespace/newlines
+        after_divider = body[m.end():].lstrip('\r\n ')
 
     # ── Parse the forwarded header block ─────────────────────────────────────
-    # Header lines look like:  "From: Name <email>"  "Date: ..."  "Subject: ..."  "To: ..."
-    # They end at the first blank line after at least one header was found
+    # Header lines: "From: Name <email>"  "Date: ..."  "Subject: ..."  "To: ..."
+    # They end at the first blank line after at least one header was found.
     HEADER_LINE = re.compile(
-        r'^[ \t]*(From|Date|Subject|To|Cc|Reply-To)\s*:\s*(.+)$', re.I | re.MULTILINE)
+        r'^[ \t]*(From|Date|Sent|Subject|To|Cc|Reply-To|De|Fecha)\s*:\s*(.+)$',
+        re.I | re.MULTILINE
+    )
 
     orig_name  = ''
     orig_email = ''
-    orig_subj  = ''
 
     lines = after_divider.splitlines(keepends=True)
     found_header = False
@@ -357,33 +381,36 @@ def extract_forwarded_content(body):
         stripped = line.strip()
         if not stripped:
             if found_header:
-                # Blank line after headers = end of header block
                 pos += len(line)
                 break
             else:
-                # Leading blank line before headers — skip
                 pos += len(line)
                 continue
         hm = HEADER_LINE.match(line)
         if hm:
             found_header = True
             key, val = hm.group(1).lower(), hm.group(2).strip()
-            if key == 'from':
-                em = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]+', val)
+            if key in ('from', 'de'):
+                em = re.search(r'[\w.+\-]+@[\w\-]+\.[a-zA-Z]{2,}', val)
                 if em:
                     orig_email = em.group()
                 name_part = re.sub(r'<[^>]+>', '', val).strip().strip('"').strip("'")
                 if name_part and name_part.lower() != orig_email.lower():
                     orig_name = name_part
-            elif key == 'subject':
-                orig_subj = val
+        elif found_header and stripped:
+            # Non-header line after headers started → end of header block
+            # (handles headers with no trailing blank line)
+            break
         pos += len(line)
 
-    # Original body = everything after the blank line that ends the header block
+    # Original body = everything after the header block
     orig_body = after_divider[pos:].strip()
-
-    # If no blank-line boundary found, take everything after divider as body
     if not orig_body:
+        orig_body = after_divider.strip()
+
+    # If we found a marker but couldn't extract a header block body,
+    # use everything after the divider as the body to parse.
+    if not orig_body and m:
         orig_body = after_divider.strip()
 
     return orig_name, orig_email, orig_body
@@ -2381,8 +2408,19 @@ def _fetch_imap(settings):
         from_partsbase = 'rfqs@partsbase.com' in from_raw.lower()
 
         # Handle forwarded emails — extract original sender and content
+        # extract_forwarded_content returns (None, None, body) when NOT forwarded,
+        # or (name_or_empty, email_or_empty, orig_body) when a forward is detected.
         fwd_name, fwd_email, parse_body = extract_forwarded_content(body)
-        is_forwarded = fwd_name is not None
+        is_forwarded = (fwd_name is not None)  # True for any forwarded format
+
+        # Also detect by subject line: "Fwd:", "Fw:", "FW:", "FWD:" etc.
+        subject_is_fwd = bool(re.match(r'^fwd?\s*:', subject.strip(), re.I))
+        if subject_is_fwd and not is_forwarded:
+            # Subject says forwarded but body had no marker — treat whole body as parse target
+            is_forwarded = True
+            fwd_name  = fwd_name  or ''
+            fwd_email = fwd_email or ''
+            parse_body = body
 
         # ── Detect PartsBase content inside a forwarded email ─────────────────
         # Pattern: someone forwarded a PartsBase Quick Quote Request to rfq@
