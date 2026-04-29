@@ -4057,7 +4057,7 @@ def api_last_quote_for_pn():
     conn = get_db()
     row  = conn.execute('''
         SELECT qi.unit_price, qi.condition, qi.lead_time, qi.price_type,
-               qi.warranty, qi.trace_to, qi.tag_type, qi.tagged_by,
+               qi.warranty, qi.trace_to, qi.tag_type, qi.tagged_by, qi.notes,
                q.quote_number, q.created_at
         FROM quote_items qi
         JOIN quotes q ON qi.quote_id = q.id
@@ -4082,6 +4082,7 @@ def api_last_quote_for_pn():
         'trace_to':     row['trace_to'] or '',
         'tag_type':     row['tag_type'] or '',
         'tagged_by':    row['tagged_by'] or '',
+        'notes':        row['notes'] or '',
     })
 
 
