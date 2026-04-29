@@ -225,7 +225,7 @@
 {% block scripts %}
 <script>
 const RFQ_ID  = {{ rfq.id }};
-const CUST_EMAIL = {{ ('"' ~ rfq.customer_email ~ '"') if rfq.customer_email else 'null' }};
+const CUST_EMAIL = {{ rfq.customer_email | tojson }};
 let _aiItems = [];
 
 // ── AI Auto Quote ─────────────────────────────────────────────────────────────
