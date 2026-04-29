@@ -8,18 +8,6 @@
 </a>
 {% endblock %}
 
-{% block head %}
-<style>
-  .sev-error   { color:#dc3545; }
-  .sev-warning { color:#856404; }
-  .sev-info    { color:#0a58ca; }
-  #sanityPanel .list-item { padding:6px 0; border-bottom:1px solid #f0f0f0; font-size:.86rem; }
-  #sanityPanel .list-item:last-child { border-bottom:none; }
-  .score-ring { width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;border:4px solid #ccc; }
-  .score-good  { border-color:#28a745;color:#28a745; }
-  .score-warn  { border-color:#ffc107;color:#856404; }
-  .score-bad   { border-color:#dc3545;color:#dc3545; }
-</style>
 {% endblock %}
 
 {% block content %}
@@ -82,15 +70,6 @@
               <i class="bi bi-send{% if q.status == 'sent' %}-fill{% endif %}"></i>
               {% if q.status == 'sent' %}Resend{% else %}Send{% endif %}
             </button>
-            {% if q.status == 'sent' %}
-            <button type="button"
-              class="btn btn-sm btn-outline-purple py-0"
-              style="width:78px;text-align:center;display:inline-block"
-              title="AI Follow-up Email"
-              onclick="openFollowupModal({{ q.id }}, '{{ q.quote_number }}', '{{ q.customer_name or '' }}', '{{ q.customer_email or '' }}')">
-              <i class="bi bi-reply-all"></i> Follow Up
-            </button>
-            {% endif %}
           </div>
         </td>
       </tr>
@@ -102,7 +81,7 @@
   </div>
 </div>
 
-<!-- Quick Send Modal (with AI Sanity Check) -->
+<!-- Quick Send Modal -->
 <div class="modal fade" id="quickSendModal" tabindex="-1" data-bs-backdrop="static">
   <div class="modal-dialog modal-lg">
     <div class="modal-content">
@@ -129,27 +108,6 @@
             No email on file. Enter an email address above to send.
           </div>
 
-          <!-- AI Sanity Check panel -->
-          <div id="sanityPanel">
-            <div id="sanityLoading" class="text-center py-3 text-muted d-none">
-              <div class="spinner-border spinner-border-sm me-2"></div>Running AI sanity check…
-            </div>
-            <div id="sanityResult" class="d-none">
-              <div class="d-flex align-items-center gap-3 mb-2">
-                <div id="scoreRing" class="score-ring">–</div>
-                <div>
-                  <div class="fw-semibold" id="sanityHeadline"></div>
-                  <small class="text-muted">AI Quality Check</small>
-                </div>
-              </div>
-              <div id="sanityIssues" class="mb-1"></div>
-              <div id="sanityWarnings"></div>
-            </div>
-            <div id="sanityError" class="text-muted small d-none">
-              <i class="bi bi-exclamation-circle me-1"></i><span id="sanityErrorMsg"></span>
-            </div>
-          </div>
-
           <p class="text-muted small mt-3 mb-0">A professional HTML quote email will be sent. Only verified attachments are included.</p>
         </div>
         <div class="modal-footer">
@@ -163,48 +121,6 @@
   </div>
 </div>
 
-<!-- AI Follow-up Modal -->
-<div class="modal fade" id="followupModal" tabindex="-1" data-bs-backdrop="static">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-reply-all me-2 text-purple"></i>AI Follow-up Email</h5>
-        <button class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div id="fuLoading" class="text-center py-4 text-muted">
-          <div class="spinner-border text-purple mb-2"></div>
-          <div>Drafting follow-up email…</div>
-        </div>
-        <div id="fuResult" class="d-none">
-          <div class="mb-3">
-            <label class="form-label fw-semibold">To:</label>
-            <input type="text" id="fuTo" class="form-control form-control-sm" readonly>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Subject:</label>
-            <input type="text" id="fuSubject" class="form-control form-control-sm">
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Body:</label>
-            <textarea id="fuBody" class="form-control" rows="12" style="font-family:monospace;font-size:.83rem;"></textarea>
-          </div>
-          <p class="text-muted small mb-0"><i class="bi bi-info-circle me-1"></i>Edit the email above then copy it into your email client.</p>
-        </div>
-        <div id="fuError" class="alert alert-danger d-none"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-outline-secondary" id="fuCopyBtn" onclick="copyFollowup()" disabled>
-          <i class="bi bi-clipboard me-1"></i> Copy to Clipboard
-        </button>
-        <button type="button" class="btn btn-outline-purple fw-semibold" id="fuMailtoBtn" onclick="openFollowupMailto()" disabled>
-          <i class="bi bi-envelope me-1"></i> Open in Email Client
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -236,139 +152,9 @@ function openSendModal(quoteId, quoteNum, customerName, customerEmail, status) {
     if (!customerEmail) submitBtn.disabled = !this.value.trim();
   });
 
-  // Reset sanity panel
-  ['sanityLoading','sanityResult','sanityError'].forEach(id => {
-    document.getElementById(id).classList.add('d-none');
-  });
-
   const modal = new bootstrap.Modal(document.getElementById('quickSendModal'));
   modal.show();
-
-  // Run sanity check in background
-  runSanityCheck(quoteId, submitBtn);
 }
 
-function runSanityCheck(quoteId, submitBtn) {
-  const loading = document.getElementById('sanityLoading');
-  const result  = document.getElementById('sanityResult');
-  const errEl   = document.getElementById('sanityError');
-
-  loading.classList.remove('d-none');
-
-  fetch(`/api/ai/review-quote/${quoteId}`, {method:'POST', headers:{'Content-Type':'application/json'}})
-    .then(r => r.json())
-    .then(data => {
-      loading.classList.add('d-none');
-      if (data.error) {
-        document.getElementById('sanityErrorMsg').textContent = data.error;
-        errEl.classList.remove('d-none');
-        return;
-      }
-      renderSanityResult(data, submitBtn);
-    })
-    .catch(e => {
-      loading.classList.add('d-none');
-      document.getElementById('sanityErrorMsg').textContent = 'Sanity check unavailable.';
-      errEl.classList.remove('d-none');
-    });
-}
-
-function renderSanityResult(data, submitBtn) {
-  const result   = document.getElementById('sanityResult');
-  const ring     = document.getElementById('scoreRing');
-  const headline = document.getElementById('sanityHeadline');
-  const issuesEl = document.getElementById('sanityIssues');
-  const warnsEl  = document.getElementById('sanityWarnings');
-
-  const score = data.score || 0;
-  ring.textContent = score;
-  ring.className   = 'score-ring ' + (score >= 80 ? 'score-good' : score >= 50 ? 'score-warn' : 'score-bad');
-
-  if (data.ok) {
-    headline.innerHTML = `<span class="text-success"><i class="bi bi-check-circle me-1"></i>Quote looks good — ready to send.</span>`;
-    submitBtn.disabled = false;
-  } else {
-    headline.innerHTML = `<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Blocking issues found — please fix before sending.</span>`;
-    submitBtn.disabled = true;
-  }
-
-  // Issues
-  if (data.issues && data.issues.length) {
-    issuesEl.innerHTML = data.issues.map(i =>
-      `<div class="list-item sev-error"><i class="bi bi-x-circle-fill me-1"></i>${i}</div>`
-    ).join('');
-  } else {
-    issuesEl.innerHTML = '';
-  }
-
-  // Warnings
-  if (data.warnings && data.warnings.length) {
-    warnsEl.innerHTML = '<div class="mt-1 fw-semibold text-muted small">Warnings</div>' +
-      data.warnings.map(w =>
-        `<div class="list-item sev-warning"><i class="bi bi-exclamation-triangle me-1"></i>${w}</div>`
-      ).join('');
-  } else {
-    warnsEl.innerHTML = '';
-  }
-
-  result.classList.remove('d-none');
-}
-
-// ── Follow-up email ──────────────────────────────────────────────────────────
-let _fuEmail = '';
-
-function openFollowupModal(quoteId, quoteNum, customerName, customerEmail) {
-  _fuEmail = customerEmail;
-
-  // Reset
-  document.getElementById('fuLoading').classList.remove('d-none');
-  document.getElementById('fuResult').classList.add('d-none');
-  document.getElementById('fuError').classList.add('d-none');
-  document.getElementById('fuCopyBtn').disabled    = true;
-  document.getElementById('fuMailtoBtn').disabled  = true;
-
-  const modal = new bootstrap.Modal(document.getElementById('followupModal'));
-  modal.show();
-
-  fetch(`/api/ai/followup-email/${quoteId}`, {method:'POST', headers:{'Content-Type':'application/json'}})
-    .then(r => r.json())
-    .then(data => {
-      document.getElementById('fuLoading').classList.add('d-none');
-      if (data.error) {
-        document.getElementById('fuError').textContent = data.error;
-        document.getElementById('fuError').classList.remove('d-none');
-        return;
-      }
-      document.getElementById('fuTo').value      = customerEmail || '(no email on file)';
-      document.getElementById('fuSubject').value = data.subject || '';
-      document.getElementById('fuBody').value    = data.body    || '';
-      document.getElementById('fuResult').classList.remove('d-none');
-      document.getElementById('fuCopyBtn').disabled   = false;
-      document.getElementById('fuMailtoBtn').disabled = !customerEmail;
-    })
-    .catch(e => {
-      document.getElementById('fuLoading').classList.add('d-none');
-      document.getElementById('fuError').textContent = 'Failed to generate follow-up. Check your connection.';
-      document.getElementById('fuError').classList.remove('d-none');
-    });
-}
-
-function copyFollowup() {
-  const subj = document.getElementById('fuSubject').value;
-  const body = document.getElementById('fuBody').value;
-  navigator.clipboard.writeText(`Subject: ${subj}\n\n${body}`)
-    .then(() => {
-      const btn = document.getElementById('fuCopyBtn');
-      btn.innerHTML = '<i class="bi bi-check2 me-1"></i> Copied!';
-      setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard me-1"></i> Copy to Clipboard', 2000);
-    });
-}
-
-function openFollowupMailto() {
-  const to   = encodeURIComponent(_fuEmail);
-  const subj = encodeURIComponent(document.getElementById('fuSubject').value);
-  const body = encodeURIComponent(document.getElementById('fuBody').value);
-  window.open(`mailto:${to}?subject=${subj}&body=${body}`, '_blank');
-}
 </script>
 {% endblock %}

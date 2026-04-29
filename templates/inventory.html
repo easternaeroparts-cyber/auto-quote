@@ -9,9 +9,6 @@
 <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#uploadModal">
   <i class="bi bi-upload"></i> Upload CSV / Excel
 </button>
-<button class="btn btn-sm btn-outline-purple" onclick="runHealthCheck()" data-bs-toggle="modal" data-bs-target="#healthModal" title="AI Inventory Health Check">
-  <i class="bi bi-heart-pulse"></i> Health Check
-</button>
 {% endblock %}
 
 {% block content %}
@@ -457,50 +454,6 @@
         <!-- embed renders PDF scaled-to-fit in all browsers including Safari -->
         <embed id="dvFrame" src="" type="application/pdf"
                style="width:100%;border:none;display:none;vertical-align:top">
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- AI Inventory Health Modal -->
-<div class="modal fade" id="healthModal" tabindex="-1">
-  <div class="modal-dialog modal-xl">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-heart-pulse me-2 text-purple"></i>AI Inventory Health Check</h5>
-        <button class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div id="hlLoading" class="text-center py-5 text-muted">
-          <div class="spinner-border text-purple mb-3"></div>
-          <div>Analysing inventory — this may take a moment…</div>
-        </div>
-        <div id="hlResult" class="d-none">
-          <!-- Summary badges -->
-          <div class="d-flex gap-3 mb-3 flex-wrap" id="hlSummary"></div>
-          <!-- Findings table -->
-          <table class="table table-sm table-hover mb-0">
-            <thead class="table-light">
-              <tr>
-                <th style="width:80px">Severity</th>
-                <th style="width:140px">Part Number</th>
-                <th>Issue</th>
-                <th>Suggestion</th>
-              </tr>
-            </thead>
-            <tbody id="hlFindings"></tbody>
-          </table>
-          <p class="text-muted small mt-2 mb-0"><i class="bi bi-info-circle me-1"></i>
-            AI-generated findings — review before acting. Re-run anytime by clicking Health Check again.
-          </p>
-        </div>
-        <div id="hlError" class="alert alert-danger d-none"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-outline-purple" onclick="runHealthCheck()">
-          <i class="bi bi-arrow-clockwise me-1"></i> Re-run
-        </button>
       </div>
     </div>
   </div>
@@ -1358,84 +1311,4 @@ document.getElementById('addPartModal').addEventListener('hidden.bs.modal', func
   .doc-indicator:hover { opacity:1 !important; transform:scale(1.15); transition:transform .1s; }
   mark.inv-hl { background:#fff3cd; padding:0; border-radius:2px; color:inherit; }
 </style>
-<script>
-// ── AI Inventory Health Check ────────────────────────────────────────────────
-let _healthLoaded = false;
-
-function runHealthCheck() {
-  if (_healthLoaded) return; // already ran — re-run resets below
-  _healthLoaded = false;
-
-  const loading = document.getElementById('hlLoading');
-  const result  = document.getElementById('hlResult');
-  const errEl   = document.getElementById('hlError');
-  const summary = document.getElementById('hlSummary');
-  const tbody   = document.getElementById('hlFindings');
-
-  loading.classList.remove('d-none');
-  result.classList.add('d-none');
-  errEl.classList.add('d-none');
-  summary.innerHTML = '';
-  tbody.innerHTML   = '';
-
-  fetch('/api/ai/inventory-health')
-    .then(r => r.json())
-    .then(data => {
-      loading.classList.add('d-none');
-      if (data.error) {
-        errEl.textContent = data.error;
-        errEl.classList.remove('d-none');
-        return;
-      }
-
-      const counts   = data.counts || {};
-      const findings = data.findings || [];
-
-      // Summary badges
-      const badgeMap = {
-        error:   ['bg-danger',  'bi-x-circle-fill',         'Errors'],
-        warning: ['bg-warning text-dark', 'bi-exclamation-triangle-fill', 'Warnings'],
-        info:    ['bg-info text-dark',    'bi-info-circle-fill',           'Info'],
-      };
-      Object.entries(badgeMap).forEach(([sev, [cls, icon, label]]) => {
-        const cnt = counts[sev] || 0;
-        summary.innerHTML += `<span class="badge ${cls} fs-6 px-3 py-2">
-          <i class="bi ${icon} me-1"></i>${cnt} ${label}
-        </span>`;
-      });
-
-      // Findings rows
-      const sevIcon = {
-        error:   '<i class="bi bi-x-circle-fill text-danger"></i>',
-        warning: '<i class="bi bi-exclamation-triangle-fill text-warning"></i>',
-        info:    '<i class="bi bi-info-circle-fill text-info"></i>',
-      };
-      if (findings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-success py-3"><i class="bi bi-check-circle me-1"></i>No issues found — inventory looks healthy!</td></tr>';
-      } else {
-        tbody.innerHTML = findings.map(f => `
-          <tr>
-            <td>${sevIcon[f.severity] || ''} <small>${f.severity}</small></td>
-            <td><code>${f.part_number || '—'}</code></td>
-            <td>${f.issue}</td>
-            <td class="text-muted">${f.suggestion}</td>
-          </tr>`).join('');
-      }
-
-      result.classList.remove('d-none');
-      _healthLoaded = true;
-    })
-    .catch(e => {
-      loading.classList.add('d-none');
-      errEl.textContent = 'Health check failed — check your connection.';
-      errEl.classList.remove('d-none');
-    });
-}
-
-// Allow re-run by resetting flag when modal closes
-document.addEventListener('DOMContentLoaded', () => {
-  const hm = document.getElementById('healthModal');
-  if (hm) hm.addEventListener('hidden.bs.modal', () => { _healthLoaded = false; });
-});
-</script>
 {% endblock %}

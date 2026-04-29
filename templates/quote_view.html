@@ -19,18 +19,12 @@
    class="btn btn-sm btn-outline-info no-print">
   <i class="bi bi-eye"></i> Preview Email
 </a>
-<button class="btn btn-sm btn-outline-purple no-print" onclick="runDraftReply()" title="AI Draft Reply">
-  <i class="bi bi-stars"></i> AI Draft Reply
-</button>
 <form method="post" action="{{ url_for('quote_convert_to_invoice', quote_id=quote.id) }}" class="d-inline no-print"
       onsubmit="return confirm('Create an invoice from this quote?')">
   <button type="submit" class="btn btn-sm btn-outline-success fw-semibold">
     <i class="bi bi-receipt"></i> Convert to Invoice
   </button>
 </form>
-<button class="btn btn-sm btn-outline-secondary no-print" onclick="runSanityCheck()" title="AI Sanity Check before sending" data-bs-toggle="modal" data-bs-target="#sanityModal">
-  <i class="bi bi-shield-check"></i> Sanity Check
-</button>
 <button class="btn btn-sm {% if quote.status == 'sent' %}btn-outline-secondary{% else %}btn-gold fw-semibold{% endif %} no-print" data-bs-toggle="modal" data-bs-target="#sendModal">
   <i class="bi bi-send"></i> {% if quote.status == 'sent' %}Resend{% else %}Send to Customer{% endif %}
 </button>
@@ -87,15 +81,6 @@
   * { page-break-after: auto !important; }
   body > *:last-child { page-break-after: avoid !important; }
 }
-</style>
-<style>
-  /* Sanity check styles */
-  .score-ring{width:58px;height:58px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.1rem;font-weight:700;border:4px solid #ccc;}
-  .score-good{border-color:#28a745;color:#28a745;}
-  .score-warn{border-color:#ffc107;color:#856404;}
-  .score-bad {border-color:#dc3545;color:#dc3545;}
-  .sq-item{padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:.85rem;}
-  .sq-item:last-child{border-bottom:none;}
 </style>
 {% endblock %}
 
@@ -500,43 +485,6 @@
   </div>
 </div>
 
-<!-- AI Sanity Check Modal -->
-<div class="modal fade" id="sanityModal" tabindex="-1">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-shield-check me-2"></i>AI Quote Sanity Check</h5>
-        <button class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div id="sqLoading" class="text-center py-4 text-muted">
-          <div class="spinner-border mb-2"></div>
-          <div>Analysing quote…</div>
-        </div>
-        <div id="sqResult" class="d-none">
-          <div class="d-flex align-items-center gap-3 mb-3">
-            <div id="sqScoreRing" class="score-ring">–</div>
-            <div>
-              <div id="sqHeadline" class="fw-semibold"></div>
-              <small class="text-muted">Quality score / 100</small>
-            </div>
-          </div>
-          <div id="sqIssues" class="mb-2"></div>
-          <div id="sqWarnings"></div>
-        </div>
-        <div id="sqError" class="alert alert-warning d-none"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-gold fw-semibold" data-bs-dismiss="modal"
-                data-bs-toggle="modal" data-bs-target="#sendModal">
-          <i class="bi bi-send me-1"></i> Proceed to Send
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <!-- Add Part Modal -->
 <div class="modal fade" id="addItemModal" tabindex="-1"
      data-bs-backdrop="static" data-bs-keyboard="false">
@@ -755,52 +703,6 @@
       <div class="modal-footer">
         <button class="btn btn-secondary btn-sm" onclick="_closeModal()">Cancel</button>
         <button class="btn btn-navy btn-sm" onclick="saveItem()">Save Changes</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ── AI Draft Reply Modal ───────────────────────────────────────────────── -->
-<div class="modal fade" id="aiDraftModal" tabindex="-1" data-bs-backdrop="static">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header" style="background:linear-gradient(135deg,#1a3c6e,#7c3aed);color:#fff">
-        <h6 class="modal-title"><i class="bi bi-stars me-2"></i>AI Draft Reply Email</h6>
-        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <!-- Loading -->
-        <div id="drLoading" class="text-center py-4">
-          <div class="spinner-border mb-3" style="color:#7c3aed;border-right-color:transparent;width:2.5rem;height:2.5rem"></div>
-          <div class="fw-semibold" style="color:#7c3aed">Drafting your reply…</div>
-          <small class="text-muted">Claude is writing a professional response</small>
-        </div>
-        <!-- Result -->
-        <div id="drResult" class="d-none">
-          <div class="mb-2">
-            <label class="form-label fw-semibold" style="font-size:.8rem">SUBJECT</label>
-            <input id="drSubject" class="form-control form-control-sm" readonly>
-          </div>
-          <div>
-            <label class="form-label fw-semibold" style="font-size:.8rem">EMAIL BODY <span class="text-muted fw-normal">(editable)</span></label>
-            <textarea id="drBody" class="form-control" rows="16" style="font-family:monospace;font-size:.82rem;resize:vertical"></textarea>
-          </div>
-        </div>
-        <!-- Error -->
-        <div id="drError" class="d-none text-center py-4 text-danger">
-          <i class="bi bi-exclamation-triangle fs-2 mb-2 d-block"></i>
-          <span id="drErrorMsg"></span>
-        </div>
-      </div>
-      <div class="modal-footer gap-2">
-        <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-        <button id="drCopyBtn" class="btn btn-outline-secondary btn-sm d-none" onclick="copyDraft()">
-          <i class="bi bi-clipboard me-1"></i> Copy
-        </button>
-        <button id="drOpenSend" class="btn btn-sm btn-gold fw-semibold d-none"
-                onclick="openSendWithDraft()">
-          <i class="bi bi-send me-1"></i> Open Send &amp; Use Draft
-        </button>
       </div>
     </div>
   </div>
@@ -1552,105 +1454,5 @@ function openEmailPreview() {
   window.open('{{ url_for("preview_quote_email", quote_id=quote.id) }}', '_blank');
 }
 
-// ── AI Draft Reply ────────────────────────────────────────────────────────────
-const QUOTE_ID = {{ quote.id }};
-
-async function runDraftReply() {
-  ['drResult','drError','drCopyBtn','drOpenSend'].forEach(id =>
-    document.getElementById(id).classList.add('d-none'));
-  document.getElementById('drLoading').classList.remove('d-none');
-
-  const modal = new bootstrap.Modal(document.getElementById('aiDraftModal'));
-  modal.show();
-
-  try {
-    const res  = await fetch(`/api/ai/draft-reply/${QUOTE_ID}`, {method:'POST',
-      headers:{'Content-Type':'application/json'}});
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-
-    document.getElementById('drSubject').value = data.subject || '';
-    document.getElementById('drBody').value    = data.body    || '';
-    document.getElementById('drLoading').classList.add('d-none');
-    document.getElementById('drResult').classList.remove('d-none');
-    document.getElementById('drCopyBtn').classList.remove('d-none');
-    document.getElementById('drOpenSend').classList.remove('d-none');
-  } catch(e) {
-    document.getElementById('drLoading').classList.add('d-none');
-    document.getElementById('drError').classList.remove('d-none');
-    document.getElementById('drErrorMsg').textContent = e.message || 'AI service unavailable — check ANTHROPIC_API_KEY.';
-  }
-}
-
-async function copyDraft() {
-  const text = document.getElementById('drBody').value;
-  await navigator.clipboard.writeText(text);
-  const btn = document.getElementById('drCopyBtn');
-  btn.innerHTML = '<i class="bi bi-check-lg me-1"></i> Copied!';
-  setTimeout(() => btn.innerHTML = '<i class="bi bi-clipboard me-1"></i> Copy', 2000);
-}
-
-function openSendWithDraft() {
-  const body = document.getElementById('drBody').value;
-  // Pre-fill the send modal's message textarea if it exists
-  const msgEl = document.getElementById('emailMessageBody') || document.getElementById('sendMessage');
-  if (msgEl) msgEl.value = body;
-  bootstrap.Modal.getInstance(document.getElementById('aiDraftModal')).hide();
-  const sendModal = document.getElementById('sendModal');
-  if (sendModal) new bootstrap.Modal(sendModal).show();
-  else openEmailPreview();
-}
-
-// ── Sanity Check ─────────────────────────────────────────────────────────────
-function runSanityCheck() {
-  // Reset modal
-  document.getElementById('sqLoading').classList.remove('d-none');
-  document.getElementById('sqResult').classList.add('d-none');
-  document.getElementById('sqError').classList.add('d-none');
-
-  fetch('/api/ai/review-quote/{{ quote.id }}', {method:'POST', headers:{'Content-Type':'application/json'}})
-    .then(r => r.json())
-    .then(data => {
-      document.getElementById('sqLoading').classList.add('d-none');
-      if (data.error) {
-        document.getElementById('sqError').textContent = data.error;
-        document.getElementById('sqError').classList.remove('d-none');
-        return;
-      }
-      const score = data.score || 0;
-      const ring  = document.getElementById('sqScoreRing');
-      ring.textContent = score;
-      ring.className   = 'score-ring ' + (score >= 80 ? 'score-good' : score >= 50 ? 'score-warn' : 'score-bad');
-
-      const headline = document.getElementById('sqHeadline');
-      if (data.ok) {
-        headline.innerHTML = '<span class="text-success"><i class="bi bi-check-circle me-1"></i>Quote looks good — ready to send.</span>';
-      } else {
-        headline.innerHTML = '<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Issues found — please fix before sending.</span>';
-      }
-
-      const issuesEl = document.getElementById('sqIssues');
-      issuesEl.innerHTML = (data.issues || []).map(i =>
-        `<div class="sq-item text-danger"><i class="bi bi-x-circle-fill me-1"></i>${i}</div>`
-      ).join('');
-
-      const warnsEl = document.getElementById('sqWarnings');
-      if ((data.warnings || []).length) {
-        warnsEl.innerHTML = '<div class="fw-semibold text-muted small mb-1 mt-2">Warnings</div>' +
-          (data.warnings || []).map(w =>
-            `<div class="sq-item text-warning-emphasis"><i class="bi bi-exclamation-triangle me-1"></i>${w}</div>`
-          ).join('');
-      } else {
-        warnsEl.innerHTML = '';
-      }
-
-      document.getElementById('sqResult').classList.remove('d-none');
-    })
-    .catch(() => {
-      document.getElementById('sqLoading').classList.add('d-none');
-      document.getElementById('sqError').textContent = 'Sanity check unavailable — check connection.';
-      document.getElementById('sqError').classList.remove('d-none');
-    });
-}
 </script>
 {% endblock %}
