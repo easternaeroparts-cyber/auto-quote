@@ -509,6 +509,7 @@ All parts certified unless otherwise stated. Terms: COD unless prior credit arra
               <span class="text-muted">Type:</span> <span id="pnSugType"></span>
               &nbsp;|&nbsp;
               <span class="text-muted">Warranty:</span> <span id="pnSugWarranty"></span>
+              <span id="pnSugNotesWrap" class="d-none">&nbsp;|&nbsp;<span class="text-muted">Notes:</span> <span id="pnSugNotes" class="fst-italic"></span></span>
             </div>
             <button class="btn btn-sm btn-warning fw-semibold ms-3 flex-shrink-0" onclick="applySuggestion()">
               <i class="bi bi-lightning-fill"></i> Use This
@@ -1038,6 +1039,13 @@ function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo,
         document.getElementById('pnSugLead').textContent     = d.lead_time || 'Stock';
         document.getElementById('pnSugType').textContent     = d.price_type || 'Outright';
         document.getElementById('pnSugWarranty').textContent = d.warranty || '—';
+        const notesWrap = document.getElementById('pnSugNotesWrap');
+        if (d.notes) {
+          document.getElementById('pnSugNotes').textContent = d.notes;
+          notesWrap.classList.remove('d-none');
+        } else {
+          notesWrap.classList.add('d-none');
+        }
         document.getElementById('pnSuggestion').classList.remove('d-none');
       }).catch(() => {});
   }
@@ -1051,6 +1059,7 @@ function applySuggestion() {
   document.getElementById('editTraceTo').value  = _pnSugData.trace_to || '';
   document.getElementById('editTagType').value  = _pnSugData.tag_type || '';
   document.getElementById('editTaggedBy').value = _pnSugData.tagged_by || '';
+  if (_pnSugData.notes) document.getElementById('editNotes').value = _pnSugData.notes;
   const sel = document.getElementById('editPriceType');
   for (let o of sel.options) o.selected = (o.value === (_pnSugData.price_type || 'Outright'));
   const csel = document.getElementById('editCondition');

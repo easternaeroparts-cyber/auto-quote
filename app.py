@@ -1495,6 +1495,23 @@ def delete_attachment(quote_id, att_id):
     return jsonify({'success': True})
 
 
+@app.route('/quotes/<int:quote_id>/preview-email')
+@login_required
+def preview_quote_email(quote_id):
+    """Render the quote email HTML in the browser for preview."""
+    conn        = get_db()
+    quote       = conn.execute('SELECT * FROM quotes WHERE id=?', (quote_id,)).fetchone()
+    rfq         = conn.execute('SELECT * FROM rfqs WHERE id=?', (quote['rfq_id'],)).fetchone()
+    items       = conn.execute('SELECT * FROM quote_items WHERE quote_id=?', (quote_id,)).fetchall()
+    attachments = conn.execute(
+        'SELECT * FROM quote_attachments WHERE quote_id=? AND verified=1', (quote_id,)).fetchall()
+    settings    = get_settings()
+    conn.close()
+    html = build_quote_email(dict(quote), dict(rfq), [dict(i) for i in items],
+                             dict(settings), [dict(a) for a in attachments])
+    return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
+
+
 @app.route('/quotes/<int:quote_id>/send', methods=['POST'])
 @login_required
 def send_quote(quote_id):
@@ -1507,9 +1524,9 @@ def send_quote(quote_id):
     settings    = get_settings()
     conn.close()
 
-    to_email = rfq['customer_email']
+    to_email = request.form.get('override_email', '').strip() or rfq['customer_email']
     if not to_email:
-        flash('No customer email on file.', 'error')
+        flash('No customer email on file. Enter an override email address.', 'error')
         return redirect(url_for('quote_view', quote_id=quote_id))
 
     smtp_host = settings.get('smtp_host', 'smtp.gmail.com').strip()
@@ -2535,7 +2552,7 @@ def api_last_quote_for_pn():
     row  = conn.execute('''
         SELECT qi.unit_price, qi.condition, qi.lead_time, qi.price_type,
                qi.warranty, qi.trace_to, qi.tag_type, qi.tagged_by,
-               q.quote_number, q.created_at
+               qi.notes, q.quote_number, q.created_at
         FROM quote_items qi
         JOIN quotes q ON qi.quote_id = q.id
         WHERE qi.part_number = ? AND q.id != ? AND q.status = 'sent'
@@ -2556,6 +2573,7 @@ def api_last_quote_for_pn():
         'trace_to':     row['trace_to'] or '',
         'tag_type':     row['tag_type'] or '',
         'tagged_by':    row['tagged_by'] or '',
+        'notes':        row['notes'] or '',
     })
 
 
