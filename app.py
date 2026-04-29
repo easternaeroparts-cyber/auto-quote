@@ -2104,6 +2104,7 @@ def build_quote_email(quote, rfq, items, settings, attachments_d=None):
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Trace To:</td><td>{trace}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tag Type:</td><td>{tag_type}</td></tr>
           <tr><td style="padding:2px 16px 2px 0;color:#6b7280">Tagged by:</td><td>{tagged}</td></tr>
+          {f'<tr><td style="padding:2px 16px 2px 0;color:#6b7280">Notes:</td><td style="font-style:italic">{it.get("notes","")}</td></tr>' if it.get('notes') else ''}
         </table>
       </td>
     </tr>

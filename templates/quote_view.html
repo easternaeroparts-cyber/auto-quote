@@ -238,6 +238,10 @@
           {% if not it.matched %}<span class="badge text-bg-danger">Not in Inventory</span>{% else %}<span class="badge text-bg-success">In Stock ({{ it.quantity_available }} avail)</span>{% endif %}
         </div>
       </div>
+      <div id="notes-wrap-{{ it.id }}" class="mt-1{% if not it.notes %} d-none{% endif %}">
+        <span class="text-muted">Notes:</span>
+        <span id="notes-{{ it.id }}" class="fst-italic">{{ it.notes or '' }}</span>
+      </div>
     </div>
   </div>
   {% endfor %}
@@ -1007,7 +1011,9 @@ function editItem(id, price, qty, notes, leadTime, priceType, warranty, traceTo,
   document.getElementById('editItemId').value    = id;
   document.getElementById('editPrice').value     = price;
   document.getElementById('editQty').value       = qty;
-  document.getElementById('editNotes').value     = notes;
+  // Always read notes from the live DOM span so it reflects the latest saved value
+  const notesEl = document.getElementById('notes-' + id);
+  document.getElementById('editNotes').value     = notesEl ? notesEl.textContent : notes;
   document.getElementById('editLeadTime').value  = leadTime;
   document.getElementById('editWarranty').value  = warranty;
   document.getElementById('editTraceTo').value   = traceTo;
@@ -1153,6 +1159,10 @@ async function saveItem() {
     document.getElementById(`tagtype-${id}`).textContent  = tagType;
     document.getElementById(`taggedby-${id}`).textContent = taggedBy;
     document.getElementById(`cond-${id}`).textContent     = condition;
+    const notesSpan = document.getElementById(`notes-${id}`);
+    const notesWrap = document.getElementById(`notes-wrap-${id}`);
+    if (notesSpan) notesSpan.textContent = notes;
+    if (notesWrap) notesWrap.classList.toggle('d-none', !notes);
     const fmtTotal = data.total.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
     document.getElementById('grandTotal').textContent  = fmtTotal;
     document.getElementById('headerTotal').textContent = fmtTotal;
