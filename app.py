@@ -330,38 +330,21 @@ def extract_forwarded_content(body):
     # ── Common forwarded divider patterns ────────────────────────────────────
     FWD_MARKERS = re.compile(
         r'('
-        # Gmail: ---------- Forwarded message --------- (any dash count, optional spaces)
-        r'-{3,}[\s—–]*(?:Forwarded\s+[Mm]essage|Original\s+[Mm]essage|Forwarded\s+by)[^\n]*-{3,}'
-        # Outlook with no spaces: -----Original Message-----
-        r'|_{5,}|={5,}'
+        # Gmail:   ---------- Forwarded message ---------
+        # Outlook: ----- Original Message -----  or  -----Original Message-----
+        r'-{3,}[^\S\n]*(?:Forwarded\s+[Mm]essage|Original\s+[Mm]essage|Forwarded\s+by)[^\n]*'
         r'|Begin\s+forwarded\s+message\s*:'
-        # Generic short dividers followed by a From: header on the very next line
-        r'|-{2,}\s*(?:Forwarded|Original)\s*(?:Message|Mail|Email)?\s*-{0,20}'
+        r'|-{2,}\s*(?:Forwarded|Original)\s+(?:Message|Mail|Email)\s*-{0,10}'
         r')',
         re.I
     )
 
     m = FWD_MARKERS.search(body)
-
-    # ── Fallback: body starts with a From/Date/Subject block (inline forward) ─
-    # Some mobile clients and Gmail app forward without a divider; they just
-    # paste the original headers straight at the top.
     if not m:
-        INLINE_FWD = re.compile(
-            r'^[\s\r\n]*(?:From|De)\s*:\s*.+[\r\n]+'
-            r'(?:(?:Date|Sent|Fecha|To|Subject|Cc)\s*:.+[\r\n]+){1,5}',
-            re.I
-        )
-        mi = INLINE_FWD.match(body)
-        if mi:
-            # Treat the whole body as the forwarded content
-            m = mi
-            after_divider = body  # parse headers from the start
-        else:
-            return None, None, body  # Not a forwarded email
-    else:
-        # Everything after the divider line, strip leading whitespace/newlines
-        after_divider = body[m.end():].lstrip('\r\n ')
+        return None, None, body  # Not a forwarded email
+
+    # Everything after the divider line, strip leading whitespace/newlines
+    after_divider = body[m.end():].lstrip('\r\n ')
 
     # ── Parse the forwarded header block ─────────────────────────────────────
     # Header lines: "From: Name <email>"  "Date: ..."  "Subject: ..."  "To: ..."
@@ -2387,9 +2370,13 @@ def _fetch_imap(settings):
                 continue
 
         # Subject
-        subj_raw = msg.get('Subject', 'RFQ')
-        subj_dec = decode_header(subj_raw)[0][0]
-        subject  = subj_dec.decode('utf-8', errors='ignore') if isinstance(subj_dec, bytes) else str(subj_dec)
+        try:
+            subj_raw = msg.get('Subject', 'RFQ') or 'RFQ'
+            subj_parts = decode_header(subj_raw)
+            subj_dec = subj_parts[0][0] if subj_parts else subj_raw
+            subject  = subj_dec.decode('utf-8', errors='ignore') if isinstance(subj_dec, bytes) else str(subj_dec)
+        except Exception:
+            subject = 'RFQ'
 
         # Sender
         from_raw   = msg.get('From', '')
