@@ -9,6 +9,10 @@
 <button onclick="window.print()" class="btn btn-sm btn-outline-secondary no-print">
   <i class="bi bi-printer"></i> Print / PDF
 </button>
+<a href="{{ url_for('preview_quote_email', quote_id=quote.id) }}" target="_blank"
+   class="btn btn-sm btn-outline-info no-print">
+  <i class="bi bi-eye"></i> Preview Email
+</a>
 <button class="btn btn-sm {% if quote.status == 'sent' %}btn-outline-secondary{% else %}btn-gold fw-semibold{% endif %} no-print" data-bs-toggle="modal" data-bs-target="#sendModal">
   <i class="bi bi-send"></i> {% if quote.status == 'sent' %}Resend{% else %}Send to Customer{% endif %}
 </button>
