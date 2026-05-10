@@ -2459,23 +2459,52 @@ def _fetch_imap(settings):
         else:
             parse_body = body
 
+        # ── Hard-skip: notification / response emails from PartsBase ─────────
+        # These are outbound alerts ("awaiting your response") not inbound RFQs.
+        NON_RFQ_PHRASES = [
+            'here is the response to your request for quotation',
+            'is currently awaiting your immediate response',
+            'awaiting your immediate response',
+            'this is an automated',
+            'this is an auto-generated',
+            'do not reply to this email',
+            'do not reply to this message',
+            'unsubscribe',
+            'this message was sent to you because',
+            'you are receiving this',
+        ]
+        body_lower_check = (body + ' ' + subject).lower()
+        is_notification = any(p in body_lower_check for p in NON_RFQ_PHRASES)
+        if is_notification and not is_forwarded:
+            # Mark as imported so it won't be re-fetched
+            if message_id:
+                conn.execute('INSERT OR IGNORE INTO imported_emails (message_id) VALUES (?)', (message_id,))
+                conn.commit()
+            continue
+
         # Decide if it looks like an RFQ
         to_header = (msg.get('To', '') + ' ' + msg.get('Delivered-To', '') + ' ' + msg.get('X-Original-To', '')).lower()
         addressed_to_rfq = 'rfq@eastern-aero.com' in to_header
 
         combined = (subject + ' ' + parse_body).lower()
 
-        # Keywords that identify a genuine RFQ from a customer
-        rfq_keywords = [
-            'rfq', 'request for quote', 'request for quotation',
-            'quote', 'quotation', 'part no', 'part number', 'part #',
-            'p/n', 'pn:', 'p/n:', 'description', 'quantity', 'qty',
-            'parts needed', 'availability', 'aircraft part', 'aviation part',
-            'aog', 'nsn', 'pricing', 'price request', 'stock', 'lead time',
-            'need parts', 'looking for', 'do you have',
-            'partsbase', 'quick quote request']
-
-        has_rfq_keywords = any(kw in combined for kw in rfq_keywords)
+        # Strong RFQ signals — must have at least one of these to qualify
+        STRONG_RFQ_KEYWORDS = [
+            'request for quote', 'request for quotation', 'rfq',
+            'part no', 'part number', 'part #', 'p/n', 'pn:',
+            'parts needed', 'aog', 'nsn',
+            'availability', 'lead time',
+            'partsbase', 'quick quote request',
+        ]
+        # Weak signals — only count if combined with a strong signal or addressed directly
+        WEAK_RFQ_KEYWORDS = [
+            'quote', 'quotation', 'quantity', 'qty', 'pricing',
+            'price request', 'stock', 'need parts', 'looking for', 'do you have',
+            'aircraft part', 'aviation part',
+        ]
+        has_strong_rfq  = any(kw in combined for kw in STRONG_RFQ_KEYWORDS)
+        has_weak_rfq    = any(kw in combined for kw in WEAK_RFQ_KEYWORDS)
+        has_rfq_keywords = has_strong_rfq or (has_weak_rfq and addressed_to_rfq)
 
         # ── Sender blocklist: known non-RFQ automated senders ────────────────
         BLOCKED_DOMAINS = [
@@ -2489,14 +2518,24 @@ def _fetch_imap(settings):
         sender_blocked = any(b in cust_email.lower() for b in BLOCKED_DOMAINS)
 
         # ── Final RFQ determination ───────────────────────────────────────────
-        # PartsBase and forwarded emails always qualify.
-        # Direct emails to rfq@ must have RFQ keywords AND not be from a blocked sender.
+        # PartsBase direct emails always qualify.
+        # Forwarded emails qualify only if they have RFQ signals OR parts were found.
+        # Direct emails need strong RFQ keywords AND not be from a blocked sender.
         is_rfq = (
             from_partsbase
-            or is_forwarded
-            or (addressed_to_rfq and has_rfq_keywords and not sender_blocked)
+            or (is_forwarded and (has_rfq_keywords or addressed_to_rfq))
+            or (has_rfq_keywords and not sender_blocked)
         )
         parsed = parse_rfq_text(parse_body)
+
+        # ── Extra gate: skip emails with no parts AND weak signal ─────────────
+        # If nothing was parsed and the signal is only weak (e.g. just "quote"
+        # in an auto-reply), don't import it.
+        if not parsed and not has_strong_rfq and not from_partsbase and not addressed_to_rfq:
+            if message_id:
+                conn.execute('INSERT OR IGNORE INTO imported_emails (message_id) VALUES (?)', (message_id,))
+                conn.commit()
+            continue
 
         if parsed or is_rfq:
             rfq_no = gen_rfq_number()
