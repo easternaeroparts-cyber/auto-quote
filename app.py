@@ -515,7 +515,7 @@ def parse_rfq_text(text):
 
     # ── Step 1: Try to detect a table with a header row ──────────────────────
     HEADER_KEYWORDS = re.compile(
-        r'(?:part[\s_]?n(?:o|umber|r)?\.?|p/?n|description|desc|qty|quantity|s/?n\.?)',
+        r'(?:part[\s_]?n(?:o|umber|r)?\.?|p/?n|description|desc|noun|nomenclature|item\s*name|qty|quantity|s\s*/?\.?\s*no\.?)',
         re.I)
 
     header_idx = None
@@ -534,10 +534,11 @@ def parse_rfq_text(text):
 
             if len(cols) >= 2:
                 for ci, col in enumerate(cols):
-                    col_clean = re.sub(r'[^A-Z/]', '', col)
+                    col_clean = re.sub(r'[^A-Z/]', '', col.upper())
+                    col_orig  = col.strip().upper()
                     if re.search(r'P/?N|PART.*N|PN', col_clean):
                         col_pn = ci
-                    elif re.search(r'DESC', col_clean):
+                    elif re.search(r'DESC|NOUN|NOMENCLATURE|ITEM\s*NAME', col_orig):
                         col_desc = ci
                     elif re.search(r'QTY|QUAN', col_clean):
                         col_qty = ci
@@ -626,11 +627,13 @@ def parse_rfq_text(text):
     # Also handles 2-column only (PART NUMBER + DESCRIPTION, no QTY).
     VERTICAL_HEADERS = {
         'S/N': 'sn', 'S/N.': 'sn', 'SNO': 'sn', 'SN': 'sn', 'NO': 'sn', 'NO.': 'sn',
-        'DESCRIPTION': 'desc', 'DESC': 'desc',
+        'S NO': 'sn', 'S. NO': 'sn', 'S.NO': 'sn', 'SR NO': 'sn', 'SR': 'sn',
+        'DESCRIPTION': 'desc', 'DESC': 'desc', 'NOUN': 'desc',
+        'NOMENCLATURE': 'desc', 'ITEM NAME': 'desc', 'ITEM DESCRIPTION': 'desc',
         'PART NUMBER': 'pn', 'PART NO': 'pn', 'PARTNO': 'pn', 'PART NO.': 'pn',
-        'P/N': 'pn', 'PN': 'pn',
-        'QTY': 'qty', 'QUANTITY': 'qty',
-        'UNIT': 'unit', 'UOM': 'unit',
+        'P/N': 'pn', 'PN': 'pn', 'PART#': 'pn', 'PART #': 'pn',
+        'QTY': 'qty', 'QUANTITY': 'qty', 'QTY.': 'qty',
+        'UNIT': 'unit', 'UOM': 'unit', 'U/I': 'unit', 'U/M': 'unit',
         'CONDITION': 'cond', 'COND': 'cond',
     }
     stripped_lines = [l.strip() for l in lines if l.strip()]
@@ -1764,20 +1767,26 @@ def _fetch_logo_b64(url):
 
 
 def _strip_html(html):
-    """Strip HTML tags and decode entities, returning clean plain text."""
+    """Strip HTML tags and decode entities, returning clean plain text.
+    Table cells (td/th) are separated by tabs so the table structure is
+    preserved for the part-number parser (which splits on tabs first).
+    """
     # Remove scripts and styles entirely
     html = re.sub(r'<(script|style)[^>]*>.*?</\1>', ' ', html, flags=re.I | re.S)
-    # Replace block-level tags with newlines
-    html = re.sub(r'<(br|tr|p|div|li)[^>]*/?>',  '\n', html, flags=re.I)
-    html = re.sub(r'</(p|div|tr|table|ul|ol)>', '\n', html, flags=re.I)
+    # Table cells → tab-delimited so column structure survives
+    html = re.sub(r'</(?:td|th)>', '\t', html, flags=re.I)
+    html = re.sub(r'<(?:td|th)[^>]*>', '', html, flags=re.I)
+    # Row / block tags → newline
+    html = re.sub(r'<(?:br|tr|p|div|li)[^>]*/?>',  '\n', html, flags=re.I)
+    html = re.sub(r'</(?:p|div|tr|table|ul|ol)>', '\n', html, flags=re.I)
     # Remove all remaining tags
-    html = re.sub(r'<[^>]+>', ' ', html)
+    html = re.sub(r'<[^>]+>', '', html)
     # Decode common HTML entities
     entities = {'&nbsp;': ' ', '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'"}
     for ent, ch in entities.items():
         html = html.replace(ent, ch)
-    # Collapse whitespace
-    html = re.sub(r'[ \t]+', ' ', html)
+    # Collapse spaces/tabs within a field but keep tab as column separator
+    html = re.sub(r'[ ]{2,}', ' ', html)
     html = re.sub(r'\n{3,}', '\n\n', html)
     return html.strip()
 
